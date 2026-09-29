@@ -42,6 +42,7 @@ from chatddx.core.manifest.ledger import (
     compare_prompt_tokens,
     seal_prompt_tokens,
 )
+from chatddx.core.manifest.lint import lint
 from chatddx.core.manifest.request import (
     Example,
     FewShot,
@@ -69,7 +70,14 @@ from chatddx.core.manifest.scoring import (
     Scoring,
     View,
 )
-from chatddx.core.manifest.trial import Canary, CanarySet, RunPlan, Trial, Verification
+from chatddx.core.manifest.trial import (
+    Canary,
+    CanarySet,
+    RunPlan,
+    Trial,
+    Verification,
+    suggest_seeds,
+)
 
 KEY = b"test-key"
 RIG = Code(distribution="chatddx", version="0.0.0+dev", revision="abc123")
@@ -194,13 +202,14 @@ def world(reg: Registry) -> dict[str, str]:
                             expectation="/ddx",
                             metric="match",
                         ),
+                        View(name="graded", metric="judge", judge=judge),
                     ),
+                    resources={"synonyms": "sha256:" + SHA},
                 )
             ),
             expectations=reg.add(
                 ExpectationSet(json_schema=schema, items=(expectation,))
             ),
-            judges=(judge,),
         )
     )
     return {
@@ -380,7 +389,6 @@ def test_engine_argv_cannot_override_manifest(reg: Registry) -> None:
 def test_bundle_roundtrip_and_tamper(reg: Registry) -> None:
     ids = world(reg)
     bundle = reg.bundle([ids["plan"], ids["scoring"]], generator=RIG)
-    assert bundle.case_derived
     loaded, findings = Bundle.model_validate_json(bundle.model_dump_json()).load()
     assert findings == []
     assert ids["case"] in loaded
@@ -566,3 +574,26 @@ def test_chat_template_check(reg: Registry) -> None:
         "engine.chat_template",
         "engine.chat_template_date",
     ]
+
+
+def test_suggested_seeds_are_distinct_31_bit() -> None:
+    seeds = suggest_seeds(8)
+    assert len(set(seeds)) == 8
+    assert all(0 <= s < 2**31 for s in seeds)
+
+
+def test_lint(reg: Registry) -> None:
+    ids = world(reg)
+    codes = {f.code for f in lint(reg)}
+    assert codes == {"model.revision", "engine.closure"}
+    skeleton = reg.add(
+        Skeleton(
+            messages=(Message(role="user", content=(Slot(slot="case"),)),),
+            body={"temperature": 0.005},
+            contract=TextOutput(),
+        )
+    )
+    trial = reg.add(
+        Trial(skeleton=skeleton, engine=ids["engine"], cases=(ids["case"],), seeds=(1,))
+    )
+    assert [f.code for f in lint(reg, [trial])] == ["vllm.temperature_clamped"]

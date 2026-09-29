@@ -137,7 +137,6 @@ Resolver = Callable[[str], "Component"]
 class Component(Frozen):
     # Bump when an existing field's meaning or default changes; additive fields don't.
     schema_version: ClassVar[int] = 1
-    case_derived: ClassVar[bool] = False
     registry: ClassVar[dict[str, type["Component"]]] = {}
 
     @classmethod

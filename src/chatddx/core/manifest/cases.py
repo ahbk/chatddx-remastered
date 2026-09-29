@@ -1,7 +1,7 @@
 import re
 import unicodedata
 from collections.abc import Callable, Sequence
-from typing import Annotated, ClassVar, Literal, override
+from typing import Annotated, Literal, override
 
 from pydantic import Field
 
@@ -15,7 +15,6 @@ class SourceCase(Frozen):
 
 class Appendix(Component):
     kind: Literal["appendix"] = "appendix"
-    case_derived: ClassVar[bool] = True
     case: SourceCase
     vignette: Hmac
     text: str = Field(min_length=1)

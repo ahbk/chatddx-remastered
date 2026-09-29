@@ -1,3 +1,4 @@
+import secrets
 from typing import Annotated, Literal, override
 
 from pydantic import Field, JsonValue, field_validator
@@ -35,6 +36,11 @@ class Trial(Component):
         if skeleton.purpose != "generation":
             return [f"trial uses a {skeleton.purpose} skeleton"]
         return []
+
+
+def suggest_seeds(n: int) -> tuple[int, ...]:
+    # 31 bits keeps seeds within a signed 32-bit int, which some servers require.
+    return tuple(secrets.randbits(31) for _ in range(n))
 
 
 TrialRef = Annotated[Digest, RefTo("trial")]

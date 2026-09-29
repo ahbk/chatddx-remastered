@@ -19,7 +19,7 @@ from .identity import (
     sha256_digest,
 )
 from .request import SkeletonRef
-from .scoring import Judge, JudgeRef, Scoring, ScoringRef
+from .scoring import Judge, JudgeRef, Scorer, Scoring, ScoringRef
 from .trial import RunPlan, RunPlanRef, Trial
 
 
@@ -198,7 +198,9 @@ def check_score(
     scoring = registry.get(score.scoring)
     assert isinstance(scoring, Scoring)
     run_keys = {i.key for i in run.items}
-    judges = {j: registry.get(j) for j in scoring.judges}
+    scorer = registry.get(scoring.scorer)
+    assert isinstance(scorer, Scorer)
+    judges = {j: registry.get(j) for j in scorer.judges}
     for item in score.items:
         if item.key not in run_keys:
             raise StructuralError(f"score item {item.key} is not in the run")

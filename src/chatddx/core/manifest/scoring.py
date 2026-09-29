@@ -1,4 +1,4 @@
-from typing import Annotated, ClassVar, Literal, override
+from typing import Annotated, Literal, override
 
 from pydantic import Field, JsonValue, field_validator
 
@@ -18,7 +18,6 @@ ExpectationSchemaRef = Annotated[Digest, RefTo("expectation_schema")]
 
 class Expectation(Component):
     kind: Literal["expectation"] = "expectation"
-    case_derived: ClassVar[bool] = True
     case: CaseInputRef
     json_schema: ExpectationSchemaRef
     data: JsonValue
@@ -50,33 +49,6 @@ class ExpectationSet(Component):
 ExpectationSetRef = Annotated[Digest, RefTo("expectation_set")]
 
 
-class View(Frozen):
-    name: str
-    output: JsonPointer = ""
-    expectation: JsonPointer = ""
-    metric: str
-    params: dict[str, JsonValue] = Field(default_factory=dict)
-
-
-class Scorer(Component):
-    kind: Literal["scorer"] = "scorer"
-    code: Code
-    consumes: ExpectationSchemaRef
-    views: tuple[View, ...] = Field(min_length=1)
-    params: dict[str, JsonValue] = Field(default_factory=dict)
-
-    @field_validator("views")
-    @classmethod
-    def _unique_names(cls, views: tuple[View, ...]) -> tuple[View, ...]:
-        names = [v.name for v in views]
-        if len(set(names)) != len(names):
-            raise ValueError("duplicate view names")
-        return views
-
-
-ScorerRef = Annotated[Digest, RefTo("scorer")]
-
-
 class Judge(Component):
     kind: Literal["judge"] = "judge"
     skeleton: SkeletonRef
@@ -95,11 +67,43 @@ class Judge(Component):
 JudgeRef = Annotated[Digest, RefTo("judge")]
 
 
+class View(Frozen):
+    name: str
+    output: JsonPointer = ""
+    expectation: JsonPointer = ""
+    metric: str
+    judge: JudgeRef | None = None
+    params: dict[str, JsonValue] = Field(default_factory=dict)
+
+
+class Scorer(Component):
+    kind: Literal["scorer"] = "scorer"
+    code: Code
+    consumes: ExpectationSchemaRef
+    views: tuple[View, ...] = Field(min_length=1)
+    resources: dict[str, str] = Field(default_factory=dict)
+    params: dict[str, JsonValue] = Field(default_factory=dict)
+
+    @property
+    def judges(self) -> tuple[str, ...]:
+        return tuple(dict.fromkeys(v.judge for v in self.views if v.judge is not None))
+
+    @field_validator("views")
+    @classmethod
+    def _unique_names(cls, views: tuple[View, ...]) -> tuple[View, ...]:
+        names = [v.name for v in views]
+        if len(set(names)) != len(names):
+            raise ValueError("duplicate view names")
+        return views
+
+
+ScorerRef = Annotated[Digest, RefTo("scorer")]
+
+
 class Scoring(Component):
     kind: Literal["scoring"] = "scoring"
     scorer: ScorerRef
     expectations: ExpectationSetRef
-    judges: tuple[JudgeRef, ...] = ()
 
     @override
     def cross_check(self, get: Resolver) -> list[str]:

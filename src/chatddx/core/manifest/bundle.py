@@ -88,15 +88,6 @@ class Bundle(Frozen):
     roots: tuple[Digest, ...]
     components: dict[Digest, str]
 
-    @property
-    def case_derived(self) -> bool:
-        return any(
-            Component.registry[k].case_derived
-            for k in {
-                parse_component(t.encode()).kind_name for t in self.components.values()
-            }
-        )
-
     def load(self) -> tuple[Registry, list[Finding]]:
         registry = Registry()
         findings: list[Finding] = []
