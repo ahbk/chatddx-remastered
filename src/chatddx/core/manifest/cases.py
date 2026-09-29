@@ -5,7 +5,7 @@ from typing import Annotated, Literal, override
 
 from pydantic import Field
 
-from .identity import Component, Digest, Frozen, Hmac, RefTo, Resolver
+from .identity import Component, Digest, Fingerprint, Frozen, RefTo, Resolver
 
 
 class SourceCase(Frozen):
@@ -16,7 +16,7 @@ class SourceCase(Frozen):
 class Appendix(Component):
     kind: Literal["appendix"] = "appendix"
     case: SourceCase
-    vignette: Hmac
+    vignette: Fingerprint
     text: str = Field(min_length=1)
 
 
@@ -26,7 +26,7 @@ AppendixRef = Annotated[Digest, RefTo("appendix")]
 class CaseInput(Component):
     kind: Literal["case"] = "case"
     case: SourceCase
-    vignette: Hmac
+    vignette: Fingerprint
     appendices: tuple[AppendixRef, ...] = ()
 
     @override

@@ -26,6 +26,7 @@ from pydantic import (
     SerializerFunctionWrapHandler,
     StringConstraints,
     model_serializer,
+    model_validator,
 )
 from pydantic.json_schema import JsonSchemaValue
 from pydantic_core import CoreSchema
@@ -179,6 +180,15 @@ class Component(Frozen):
         return []
 
 
+def resolve[C: Component](get: Resolver, digest: str, cls: type[C]) -> C:
+    component = get(digest)
+    if not isinstance(component, cls):
+        raise StructuralError(
+            f"{digest} is a {component.kind_name}, not a {cls.__name__}"
+        )
+    return component
+
+
 def parse_component(data: bytes) -> Component:
     loaded: object = json.loads(data)
     if not isinstance(loaded, dict):
@@ -194,13 +204,27 @@ def parse_component(data: bytes) -> Component:
     return cls.model_validate(doc)
 
 
-class Hmac(Frozen):
-    key_id: str
+class Fingerprint(Frozen):
+    alg: Literal["sha256", "hmac-sha256"] = "sha256"
+    key_id: str | None = None
     hex: Sha256Hex
 
+    @model_validator(mode="after")
+    def _key_id(self) -> "Fingerprint":
+        if (self.alg == "hmac-sha256") != (self.key_id is not None):
+            raise ValueError("key_id goes with hmac-sha256, and only with it")
+        return self
+
     @classmethod
-    def of(cls, key_id: str, key: bytes, data: bytes) -> "Hmac":
-        return cls(key_id=key_id, hex=hmac.new(key, data, hashlib.sha256).hexdigest())
+    def of(cls, data: bytes, key: tuple[str, bytes] | None = None) -> "Fingerprint":
+        if key is None:
+            return cls(hex=hashlib.sha256(data).hexdigest())
+        key_id, secret = key
+        return cls(
+            alg="hmac-sha256",
+            key_id=key_id,
+            hex=hmac.new(secret, data, hashlib.sha256).hexdigest(),
+        )
 
 
 class Code(Frozen):

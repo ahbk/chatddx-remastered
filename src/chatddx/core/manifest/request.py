@@ -1,9 +1,17 @@
 from collections.abc import Mapping
-from typing import Annotated, Literal, cast, override
+from typing import Annotated, Literal, cast
 
 from pydantic import Field, JsonValue, model_validator
 
-from .identity import Component, Digest, Frozen, RefTo, Resolver, StructuralError
+from .identity import (
+    Component,
+    Digest,
+    Frozen,
+    RefTo,
+    Resolver,
+    StructuralError,
+    resolve,
+)
 
 SlotName = Literal["case", "appendices", "completion", "expectation"]
 Purpose = Literal["generation", "judge"]
@@ -173,8 +181,7 @@ class AppendixLayout(Frozen):
         return self.before + self.between.join(appendices) + self.after
 
 
-class RequestSpec(Component):
-    kind: Literal["request"] = "request"
+class Recipe(Frozen):
     purpose: Purpose = "generation"
     instructions: Annotated[Digest, RefTo("chunk.instructions")] | None = None
     few_shot: Annotated[Digest, RefTo("chunk.few_shot")] | None = None
@@ -184,14 +191,6 @@ class RequestSpec(Component):
     reasoning: Annotated[Digest, RefTo("chunk.reasoning")] | None = None
     passthrough: Annotated[Digest, RefTo("chunk.passthrough")] | None = None
     appendix_layout: AppendixLayout = AppendixLayout()
-
-    @override
-    def cross_check(self, get: Resolver) -> list[str]:
-        prompt = get(self.prompt)
-        assert isinstance(prompt, Prompt)
-        if prompt.purpose != self.purpose:
-            return [f"{prompt.purpose} prompt in a {self.purpose} request"]
-        return []
 
 
 # The frozen request: what a trial or judge actually references.
@@ -286,19 +285,17 @@ def _check_slots(purpose: Purpose, contents: list[tuple[Segment, ...]]) -> None:
         raise ValueError(f"slots used more than once: {sorted(dupes)}")
 
 
-def compile_request(spec: RequestSpec, get: Resolver) -> Skeleton:
-    prompt = get(spec.prompt)
-    output = get(spec.output)
-    sampling = get(spec.sampling)
-    assert isinstance(prompt, Prompt)
-    assert isinstance(output, Output)
-    assert isinstance(sampling, Sampling)
+def compile_request(spec: Recipe, get: Resolver) -> Skeleton:
+    prompt = resolve(get, spec.prompt, Prompt)
+    output = resolve(get, spec.output, Output)
+    sampling = resolve(get, spec.sampling, Sampling)
+    if prompt.purpose != spec.purpose:
+        raise StructuralError(f"{prompt.purpose} prompt in a {spec.purpose} recipe")
 
     system = ""
     role: Literal["system", "developer"] = "system"
     if spec.instructions is not None:
-        instructions = get(spec.instructions)
-        assert isinstance(instructions, Instructions)
+        instructions = resolve(get, spec.instructions, Instructions)
         system, role = instructions.text, instructions.role
     if output.guidance:
         system = f"{system}\n\n{output.guidance}" if system else output.guidance
@@ -307,8 +304,7 @@ def compile_request(spec: RequestSpec, get: Resolver) -> Skeleton:
     if system:
         messages.append(Message(role=role, content=(system,)))
     if spec.few_shot is not None:
-        few_shot = get(spec.few_shot)
-        assert isinstance(few_shot, FewShot)
+        few_shot = resolve(get, spec.few_shot, FewShot)
         messages.extend(
             Message(role=m.role, content=(m.content,)) for m in few_shot.messages
         )
@@ -316,13 +312,11 @@ def compile_request(spec: RequestSpec, get: Resolver) -> Skeleton:
 
     body: dict[str, JsonValue] = {}
     if spec.passthrough is not None:
-        passthrough = get(spec.passthrough)
-        assert isinstance(passthrough, Passthrough)
+        passthrough = resolve(get, spec.passthrough, Passthrough)
         body.update(passthrough.body)
     managed = sampling.body()
     if spec.reasoning is not None:
-        reasoning = get(spec.reasoning)
-        assert isinstance(reasoning, Reasoning)
+        reasoning = resolve(get, spec.reasoning, Reasoning)
         if reasoning.effort is not None:
             managed["reasoning_effort"] = reasoning.effort
         if reasoning.thinking_token_budget is not None:

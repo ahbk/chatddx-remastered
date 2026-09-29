@@ -28,19 +28,27 @@ from chatddx.core.manifest.governance import (
     ClearanceError,
     require_clearance,
 )
-from chatddx.core.manifest.identity import Code, Component, Hmac, StructuralError
+from chatddx.core.manifest.identity import (
+    Code,
+    Component,
+    Fingerprint,
+    StructuralError,
+)
 from chatddx.core.manifest.ledger import (
     Call,
+    CanaryCall,
     ItemKey,
     JudgeCall,
+    Run,
     RunItem,
-    RunRecord,
+    RunStarted,
+    Score,
     ScoreItem,
-    ScoreRecord,
+    ScoreStarted,
     check_run,
     check_score,
     compare_prompt_tokens,
-    seal_prompt_tokens,
+    fingerprint_prompt_tokens,
 )
 from chatddx.core.manifest.lint import lint
 from chatddx.core.manifest.request import (
@@ -52,7 +60,7 @@ from chatddx.core.manifest.request import (
     Output,
     Prompt,
     Reasoning,
-    RequestSpec,
+    Recipe,
     Sampling,
     Skeleton,
     Slot,
@@ -73,9 +81,7 @@ from chatddx.core.manifest.trial import (
     Canary,
     CanarySet,
     Execution,
-    RunPlan,
     Trial,
-    Verification,
     suggest_seeds,
 )
 
@@ -85,8 +91,8 @@ NOW = datetime(2026, 9, 29, tzinfo=UTC)
 SHA = "0" * 64
 
 
-def hmac_of(text: str) -> Hmac:
-    return Hmac.of("k1", KEY, text.encode())
+def fp(text: str) -> Fingerprint:
+    return Fingerprint.of(text.encode())
 
 
 @pytest.fixture
@@ -115,7 +121,7 @@ def local_engine(reg: Registry) -> LocalEngine:
 
 
 def generation_skeleton(reg: Registry) -> Skeleton:
-    spec = RequestSpec(
+    spec = Recipe(
         instructions=reg.add(Instructions(text="You are an emergency physician.")),
         prompt=reg.add(
             Prompt(
@@ -144,13 +150,12 @@ def generation_skeleton(reg: Registry) -> Skeleton:
         ),
         reasoning=reg.add(Reasoning(chat_template_kwargs={"enable_thinking": False})),
     )
-    _ = reg.add(spec)
     return compile_request(spec, reg.get)
 
 
 def world(reg: Registry) -> dict[str, str]:
     case = SourceCase(source="registry", id="c1")
-    vignette = hmac_of("A 54-year-old with chest pain.")
+    vignette = fp("A 54-year-old with chest pain.")
     appendix = reg.add(Appendix(case=case, vignette=vignette, text="Troponin 80 ng/L."))
     case_input = reg.add(
         CaseInput(case=case, vignette=vignette, appendices=(appendix,))
@@ -170,9 +175,6 @@ def world(reg: Registry) -> dict[str, str]:
         CanarySet(
             probes=(Canary(messages=({"role": "user", "content": "2+2?"},), seed=0),)
         )
-    )
-    plan = reg.add(
-        RunPlan(trial=trial, verification=reg.add(Verification(canaries=canaries)))
     )
     schema = reg.add(ExpectationSchema(json_schema={"type": "object"}))
     expectation = reg.add(
@@ -210,7 +212,8 @@ def world(reg: Registry) -> dict[str, str]:
         )
     )
     return {
-        "plan": plan,
+        "trial": trial,
+        "canaries": canaries,
         "case": case_input,
         "scoring": scoring,
         "judge": judge,
@@ -250,7 +253,7 @@ def test_adding_a_defaulted_field_keeps_digests() -> None:
 
 def test_references_come_from_field_types(reg: Registry) -> None:
     ids = world(reg)
-    trial = reg.get(reg.get(ids["plan"]).refs()[0].digest)
+    trial = reg.get(ids["trial"])
     paths = {site.path: site.kinds for site in trial.refs()}
     assert paths == {
         "/skeleton": ("skeleton",),
@@ -312,7 +315,7 @@ def test_compile_and_render(reg: Registry) -> None:
 
 
 def test_few_shot_developer_role_and_budgets(reg: Registry) -> None:
-    spec = RequestSpec(
+    spec = Recipe(
         instructions=reg.add(Instructions(role="developer", text="Be terse.")),
         few_shot=reg.add(
             FewShot(
@@ -385,7 +388,7 @@ def test_engine_argv_cannot_override_manifest(reg: Registry) -> None:
 
 def test_bundle_roundtrip_and_tamper(reg: Registry) -> None:
     ids = world(reg)
-    bundle = reg.bundle([ids["plan"], ids["scoring"]], generator=RIG)
+    bundle = reg.bundle([ids["trial"], ids["canaries"], ids["scoring"]], generator=RIG)
     loaded, findings = Bundle.model_validate_json(bundle.model_dump_json()).load()
     assert findings == []
     assert ids["case"] in loaded
@@ -405,7 +408,7 @@ def test_dangling_and_mistyped_refs(reg: Registry) -> None:
     _ = reg.add(bad)
     with pytest.raises(StructuralError, match="is not one of"):
         reg.check([bad.digest])
-    dangling = RunPlan(trial="sha256:" + SHA)
+    dangling = Judge(skeleton="sha256:" + SHA, engine=ids["engine"], seeds=(1,))
     _ = reg.add(dangling)
     with pytest.raises(StructuralError, match="is missing"):
         reg.check([dangling.digest])
@@ -415,10 +418,10 @@ def test_cross_checks(reg: Registry) -> None:
     case = SourceCase(source="registry", id="c1")
     other = reg.add(
         Appendix(
-            case=SourceCase(source="registry", id="c2"), vignette=hmac_of("v"), text="x"
+            case=SourceCase(source="registry", id="c2"), vignette=fp("v"), text="x"
         )
     )
-    ci = CaseInput(case=case, vignette=hmac_of("v"), appendices=(other,))
+    ci = CaseInput(case=case, vignette=fp("v"), appendices=(other,))
     _ = reg.add(ci)
     with pytest.raises(StructuralError, match="bound to another case"):
         reg.check([ci.digest])
@@ -434,13 +437,14 @@ def test_run_and_score_checks(reg: Registry) -> None:
     ids = world(reg)
     engine = reg.get(ids["engine"])
     assert isinstance(engine, LocalEngine)
+    run_id = uuid4()
 
     def call(model: str, tokens: list[JsonValue] | None = None) -> Call:
-        response, prompt_tokens = seal_prompt_tokens(
-            {"model": model, "prompt_token_ids": tokens or [2, 106, 1645]}, "k1", KEY
+        response, prompt_tokens = fingerprint_prompt_tokens(
+            {"model": model, "prompt_token_ids": tokens or [2, 106, 1645]}
         )
         return Call(
-            request=hmac_of("body"),
+            request=fp("body"),
             started_at=NOW,
             finished_at=NOW,
             status=200,
@@ -448,82 +452,77 @@ def test_run_and_score_checks(reg: Registry) -> None:
             prompt_tokens=prompt_tokens,
         )
 
-    run = RunRecord(
-        id=uuid4(),
-        plan=ids["plan"],
-        rig=RIG,
-        started_at=NOW,
-        finished_at=NOW,
-        items=(
-            RunItem(
-                key=ItemKey(case=ids["case"], replicate=0),
-                vignette=hmac_of("v"),
-                call=call(engine.served_model_name),
-            ),
-            RunItem(
-                key=ItemKey(case=ids["case"], replicate=1),
-                vignette=hmac_of("v"),
-                call=call("other"),
-            ),
-        ),
+    def item(replicate: int, c: Call) -> RunItem:
+        return RunItem(
+            run=run_id,
+            key=ItemKey(case=ids["case"], replicate=replicate),
+            vignette=fp("v"),
+            call=c,
+        )
+
+    started = RunStarted(
+        run=run_id, at=NOW, rig=RIG, trial=ids["trial"], canaries=ids["canaries"]
     )
+    items = (item(0, call(engine.served_model_name)), item(1, call("other")))
+    canaries = (CanaryCall(run=run_id, phase="start", probe=0, call=call("c")),)
+    open_run = Run(stages=(started,), items=items, canaries=canaries)
+    run = Run(stages=(started, open_run.finish(NOW)), items=items, canaries=canaries)
     assert [f.code for f in check_run(run, reg)] == ["attestation.model"]
     assert run.items[0].call.response == {"model": engine.served_model_name}
 
-    rerun = run.model_copy(
-        update={
-            "items": (
-                run.items[0].model_copy(
-                    update={"call": call(engine.served_model_name, [2, 106, 9])}
-                ),
-                run.items[1].model_copy(
-                    update={
-                        "call": run.items[1].call.model_copy(
-                            update={"prompt_tokens": None}
-                        )
-                    }
-                ),
-            )
-        }
+    tampered = run.model_copy(update={"items": items[:1]})
+    assert "ledger.seal" in [f.code for f in check_run(tampered, reg)]
+
+    rerun = Run(
+        stages=(started,),
+        items=(
+            item(0, call(engine.served_model_name, [2, 106, 9])),
+            item(1, items[1].call.model_copy(update={"prompt_tokens": None})),
+        ),
     )
     assert [f.code for f in compare_prompt_tokens(rerun, run)] == [
         "attestation.prompt_tokens_drift"
     ]
     assert "attestation.prompt_tokens" in [f.code for f in check_run(rerun, reg)]
-    assert run.seal().startswith("sha256:")
 
-    stray = run.model_copy(
-        update={
-            "items": (
-                *run.items,
-                run.items[0].model_copy(
-                    update={"key": ItemKey(case=ids["case"], replicate=2)}
-                ),
-            )
-        }
-    )
     with pytest.raises(StructuralError, match="outside the trial"):
-        _ = check_run(stray, reg)
+        _ = check_run(Run(stages=(started,), items=(*items, item(2, call("m")))), reg)
+    with pytest.raises(StructuralError, match="not planned"):
+        bad_canary = CanaryCall(run=run_id, phase="start", probe=1, call=call("c"))
+        _ = check_run(Run(stages=(started,), canaries=(bad_canary,)), reg)
+    with pytest.raises(ValidationError, match="different logs"):
+        _ = Run(
+            stages=(started,), items=(items[0].model_copy(update={"run": uuid4()}),)
+        )
+    with pytest.raises(ValidationError, match="do not follow"):
+        _ = Run(stages=(started, started))
 
-    def score(*items: ScoreItem) -> ScoreRecord:
-        return ScoreRecord(
-            id=uuid4(),
-            run=run.id,
-            scoring=ids["scoring"],
-            rig=RIG,
-            scorer_observed=RIG,
-            created_at=NOW,
-            items=items,
+    score_id = uuid4()
+
+    def score(*score_items: ScoreItem) -> Score:
+        return Score(
+            stages=(
+                ScoreStarted(
+                    score=score_id,
+                    run=run_id,
+                    at=NOW,
+                    rig=RIG,
+                    scorer_code=RIG,
+                    scoring=ids["scoring"],
+                ),
+            ),
+            items=score_items,
         )
 
     ok = ScoreItem(
+        score=score_id,
         key=ItemKey(case=ids["case"], replicate=0),
-        view=0,
+        view=1,
         value=1.0,
         judge_calls=(JudgeCall(judge=ids["judge"], seed_index=0, call=call("j")),),
     )
     assert check_score(score(ok), run, reg) == []
-    with pytest.raises(StructuralError, match="out of range"):
+    with pytest.raises(StructuralError, match="seed index 1 out of range"):
         _ = check_score(
             score(
                 ok.model_copy(
@@ -537,6 +536,8 @@ def test_run_and_score_checks(reg: Registry) -> None:
             run,
             reg,
         )
+    with pytest.raises(StructuralError, match="view 2 is out of range"):
+        _ = check_score(score(ok.model_copy(update={"view": 2})), run, reg)
 
 
 def test_remote_engine_identity() -> None:
@@ -610,3 +611,16 @@ def test_execution_schedule() -> None:
     assert sorted(shuffled.schedule(cases, 2)) == Execution().schedule(cases, 2)
     with pytest.raises(ValidationError, match="shuffle_seed"):
         _ = Execution(shuffle_seed=7)
+
+
+def test_fingerprint_algorithms() -> None:
+    plain = Fingerprint.of(b"vignette")
+    assert (
+        plain.alg == "sha256" and plain.hex == hashlib.sha256(b"vignette").hexdigest()
+    )
+    keyed = Fingerprint.of(b"vignette", ("k1", KEY))
+    assert (
+        keyed.alg == "hmac-sha256" and keyed.key_id == "k1" and keyed.hex != plain.hex
+    )
+    with pytest.raises(ValidationError, match="key_id"):
+        _ = Fingerprint(key_id="k1", hex=plain.hex)

@@ -10,7 +10,8 @@ Layout of the new package, now at `chatddx.core.manifest`:
 - `identity.py`: canonical bytes, digests, typed refs, `Component` registry
 - `engine.py`, `request.py`, `cases.py`, `scoring.py`, `trial.py`: factor components
 - `bundle.py`: `Registry` and `Bundle`
-- `ledger.py`: records, which are not components
+- `ledger.py`: records (append-only stage logs and item rows), which are not components
+- `lint.py`: warnings about risky but valid settings
 - `governance.py`: clearance
 
 ## Surprises found along the way
@@ -47,4 +48,9 @@ Layout of the new package, now at `chatddx.core.manifest`:
 ## Table classification follow-ups
 - `expectation_set` dropped: `Scoring.expectations` lists expectations directly.
 - Views and scorer resources are referred to by position; labels belong to bookkeeping.
-- Open: whether `request`, `skeleton`, `verification`, `run_plan` and `canary_set` need tables; HMAC vs plain sha256 fingerprints; how staged run records are written.
+- `request` is no longer a component: its chunk refs are a `Recipe` inside the `Compilation` record.
+- `skeleton` and `canary_set` keep tables; `run_plan` and `verification` folded into `RunStarted`.
+- Fingerprints are plain sha256 by default, with `alg` so `hmac-sha256` + `key_id` can return per source.
+- Runs and scores are append-only stage logs (`RunStarted`/`RunFinished`, `ScoreStarted`/`ScoreFinished`) plus
+  item rows; `Run`/`Score` assemble a log and `finish()` seals it.
+- Noted by the user, deferred: database-level read restriction on case-derived record tables.

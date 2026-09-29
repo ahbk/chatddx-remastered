@@ -66,15 +66,6 @@ class CanarySet(Component):
 CanarySetRef = Annotated[Digest, RefTo("canary_set")]
 
 
-class Verification(Component):
-    kind: Literal["verification"] = "verification"
-    canaries: CanarySetRef
-    at: tuple[Literal["start", "end"], ...] = ("start", "end")
-
-
-VerificationRef = Annotated[Digest, RefTo("verification")]
-
-
 # Execution changes outputs only on engines that aren't batch invariant, so it is
 # declared per run rather than as part of the trial.
 class Execution(Frozen):
@@ -101,13 +92,3 @@ class Execution(Frozen):
                 ).digest()
             )
         return items
-
-
-class RunPlan(Component):
-    kind: Literal["run_plan"] = "run_plan"
-    trial: TrialRef
-    verification: VerificationRef | None = None
-    execution: Execution = Execution()
-
-
-RunPlanRef = Annotated[Digest, RefTo("run_plan")]

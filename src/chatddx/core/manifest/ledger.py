@@ -1,8 +1,8 @@
-from datetime import datetime
+from collections.abc import Sequence
 from typing import Annotated, ClassVar, Literal, override
 from uuid import UUID
 
-from pydantic import AwareDatetime, Field, JsonValue
+from pydantic import AwareDatetime, Field, JsonValue, model_validator
 
 from .bundle import Registry
 from .cases import CaseInputRef
@@ -11,32 +11,31 @@ from .identity import (
     Code,
     Digest,
     Finding,
+    Fingerprint,
     Frozen,
-    Hmac,
-    RefTo,
     StructuralError,
     canonical_bytes,
+    resolve,
     sha256_digest,
 )
-from .request import SkeletonRef
+from .request import Recipe, SkeletonRef
 from .scoring import Judge, JudgeRef, Scorer, Scoring, ScoringRef
-from .trial import RunPlan, RunPlanRef, Trial
+from .trial import CanarySet, CanarySetRef, Execution, Trial, TrialRef
+
+Phase = Literal["start", "end"]
 
 
 class Record(Frozen):
     case_derived: ClassVar[bool] = True
 
-    def seal(self) -> str:
-        return sha256_digest(canonical_bytes(self.model_dump(mode="json")))
-
 
 class Call(Frozen):
-    request: Hmac
+    request: Fingerprint
     started_at: AwareDatetime
     finished_at: AwareDatetime
     status: int | None = None
     response: dict[str, JsonValue] | None = None
-    prompt_tokens: Hmac | None = None
+    prompt_tokens: Fingerprint | None = None
     attempts: int = Field(default=1, ge=1)
     error: str | None = None
 
@@ -51,15 +50,15 @@ class Call(Frozen):
         return fp if isinstance(fp, str) else None
 
 
-def seal_prompt_tokens(
-    response: dict[str, JsonValue], key_id: str, key: bytes
-) -> tuple[dict[str, JsonValue], Hmac | None]:
-    # prompt_token_ids encode the case text, so only their HMAC may be stored.
+def fingerprint_prompt_tokens(
+    response: dict[str, JsonValue], key: tuple[str, bytes] | None = None
+) -> tuple[dict[str, JsonValue], Fingerprint | None]:
+    # prompt_token_ids encode the case text, so only their fingerprint may be stored.
     kept = {k: v for k, v in response.items() if k != "prompt_token_ids"}
     ids = response.get("prompt_token_ids")
     if not isinstance(ids, list):
         return kept, None
-    return kept, Hmac.of(key_id, key, canonical_bytes(ids))
+    return kept, Fingerprint.of(canonical_bytes(ids), key)
 
 
 class ItemKey(Frozen):
@@ -71,27 +70,85 @@ class ItemKey(Frozen):
         return hash((self.case, self.replicate))
 
 
-class RunItem(Frozen):
+# Runs and scores are append-only: one row per stage, plus item rows.
+
+
+class RunStarted(Record):
+    stage: Literal["started"] = "started"
+    run: UUID
+    at: AwareDatetime
+    rig: Code
+    trial: TrialRef
+    execution: Execution = Execution()
+    canaries: CanarySetRef | None = None
+    verify_at: tuple[Phase, ...] = ("start", "end")
+
+
+class RunFinished(Record):
+    stage: Literal["finished"] = "finished"
+    run: UUID
+    at: AwareDatetime
+    findings: tuple[Finding, ...] = ()
+    seal: Digest
+
+
+RunStage = Annotated[RunStarted | RunFinished, Field(discriminator="stage")]
+RUN_STAGES = ("started", "finished")
+
+
+class RunItem(Record):
+    run: UUID
     key: ItemKey
-    vignette: Hmac
+    vignette: Fingerprint
     call: Call
 
 
-class CanaryCall(Frozen):
-    phase: Literal["start", "end"]
+class CanaryCall(Record):
+    run: UUID
+    phase: Phase
     probe: int = Field(ge=0)
     call: Call
 
 
-class RunRecord(Record):
-    id: UUID
-    plan: RunPlanRef
-    rig: Code
-    started_at: AwareDatetime
-    finished_at: AwareDatetime
+class Run(Frozen):
+    stages: tuple[RunStage, ...] = Field(min_length=1)
+    items: tuple[RunItem, ...] = ()
     canaries: tuple[CanaryCall, ...] = ()
-    items: tuple[RunItem, ...]
-    findings: tuple[Finding, ...] = ()
+
+    @model_validator(mode="after")
+    def _log(self) -> "Run":
+        _check_log(
+            self.stages, RUN_STAGES, self.stages[0].run, [*self.items, *self.canaries]
+        )
+        return self
+
+    @property
+    def started(self) -> RunStarted:
+        stage = self.stages[0]
+        assert isinstance(stage, RunStarted)
+        return stage
+
+    @property
+    def finished(self) -> RunFinished | None:
+        return next((s for s in self.stages if isinstance(s, RunFinished)), None)
+
+    def seal(self) -> str:
+        return sha256_digest(
+            canonical_bytes(
+                {
+                    "started": self.started.model_dump(mode="json"),
+                    "items": [i.model_dump(mode="json") for i in self.items],
+                    "canaries": [c.model_dump(mode="json") for c in self.canaries],
+                }
+            )
+        )
+
+    def finish(
+        self, at: AwareDatetime, findings: Sequence[Finding] = ()
+    ) -> RunFinished:
+        return RunFinished(
+            run=self.started.run, at=at, findings=tuple(findings), seal=self.seal()
+        )
 
 
 class JudgeCall(Frozen):
@@ -100,7 +157,30 @@ class JudgeCall(Frozen):
     call: Call
 
 
-class ScoreItem(Frozen):
+class ScoreStarted(Record):
+    stage: Literal["started"] = "started"
+    score: UUID
+    run: UUID
+    at: AwareDatetime
+    rig: Code
+    scorer_code: Code
+    scoring: ScoringRef
+
+
+class ScoreFinished(Record):
+    stage: Literal["finished"] = "finished"
+    score: UUID
+    at: AwareDatetime
+    findings: tuple[Finding, ...] = ()
+    seal: Digest
+
+
+ScoreStage = Annotated[ScoreStarted | ScoreFinished, Field(discriminator="stage")]
+SCORE_STAGES = ("started", "finished")
+
+
+class ScoreItem(Record):
+    score: UUID
     key: ItemKey
     view: int = Field(ge=0)
     value: float | None
@@ -108,35 +188,107 @@ class ScoreItem(Frozen):
     judge_calls: tuple[JudgeCall, ...] = ()
 
 
-class ScoreRecord(Record):
-    id: UUID
-    run: UUID
-    scoring: ScoringRef
-    rig: Code
-    scorer_observed: Code
-    created_at: AwareDatetime
-    items: tuple[ScoreItem, ...]
-    findings: tuple[Finding, ...] = ()
+class Score(Frozen):
+    stages: tuple[ScoreStage, ...] = Field(min_length=1)
+    items: tuple[ScoreItem, ...] = ()
+
+    @model_validator(mode="after")
+    def _log(self) -> "Score":
+        _check_log(self.stages, SCORE_STAGES, self.stages[0].score, self.items)
+        return self
+
+    @property
+    def started(self) -> ScoreStarted:
+        stage = self.stages[0]
+        assert isinstance(stage, ScoreStarted)
+        return stage
+
+    @property
+    def finished(self) -> ScoreFinished | None:
+        return next((s for s in self.stages if isinstance(s, ScoreFinished)), None)
+
+    def seal(self) -> str:
+        return sha256_digest(
+            canonical_bytes(
+                {
+                    "started": self.started.model_dump(mode="json"),
+                    "items": [i.model_dump(mode="json") for i in self.items],
+                }
+            )
+        )
+
+    def finish(
+        self, at: AwareDatetime, findings: Sequence[Finding] = ()
+    ) -> ScoreFinished:
+        return ScoreFinished(
+            score=self.started.score, at=at, findings=tuple(findings), seal=self.seal()
+        )
+
+
+type _Row = (
+    RunStarted
+    | RunFinished
+    | RunItem
+    | CanaryCall
+    | ScoreStarted
+    | ScoreFinished
+    | ScoreItem
+)
+
+
+def _owner(row: _Row) -> UUID:
+    match row:
+        case ScoreStarted() | ScoreFinished() | ScoreItem():
+            return row.score
+        case RunStarted() | RunFinished() | RunItem() | CanaryCall():
+            return row.run
+
+
+def _check_log(
+    stages: Sequence[RunStarted | RunFinished | ScoreStarted | ScoreFinished],
+    order: tuple[str, ...],
+    owner: UUID,
+    rows: Sequence[_Row],
+) -> None:
+    names = [s.stage for s in stages]
+    if names != list(order[: len(names)]):
+        raise StructuralError(f"stages {names} do not follow {order}")
+    if any(_owner(r) != owner for r in [*stages, *rows]):
+        raise StructuralError("rows belong to different logs")
 
 
 class Compilation(Record):
     case_derived: ClassVar[bool] = False
-    request: Annotated[Digest, RefTo("request")]
+    recipe: Recipe
     skeleton: SkeletonRef
     compiler: Code
-    compiled_at: datetime
+    at: AwareDatetime
 
 
-def _trial(run: RunRecord, get: Registry) -> Trial:
-    plan = get.get(run.plan)
-    assert isinstance(plan, RunPlan)
-    trial = get.get(plan.trial)
-    assert isinstance(trial, Trial)
-    return trial
+def _sealed(log: Run | Score, subject: str) -> list[Finding]:
+    finished = log.finished
+    if finished is not None and finished.seal != log.seal():
+        return [
+            Finding(
+                code="ledger.seal",
+                message="rows changed after the log was sealed",
+                subject=subject,
+            )
+        ]
+    return []
 
 
-def check_run(run: RunRecord, registry: Registry) -> list[Finding]:
-    trial = _trial(run, registry)
+def check_run(run: Run, registry: Registry) -> list[Finding]:
+    started = run.started
+    trial = resolve(registry.get, started.trial, Trial)
+    if started.canaries is not None:
+        canaries = resolve(registry.get, started.canaries, CanarySet)
+        for c in run.canaries:
+            if c.phase not in started.verify_at or c.probe >= len(canaries.probes):
+                raise StructuralError(f"canary call {c.phase}/{c.probe} is not planned")
+    elif run.canaries:
+        raise StructuralError("canary calls in a run without canaries")
+
     expected = {
         ItemKey(case=c, replicate=r)
         for c in trial.cases
@@ -148,8 +300,8 @@ def check_run(run: RunRecord, registry: Registry) -> list[Finding]:
     if len(set(keys)) != len(keys):
         raise StructuralError("duplicate run items")
 
-    findings: list[Finding] = []
-    if missing := expected - set(keys):
+    findings = _sealed(run, str(started.run))
+    if run.finished is not None and (missing := expected - set(keys)):
         findings.append(
             Finding(code="run.incomplete", message=f"{len(missing)} items missing")
         )
@@ -166,17 +318,17 @@ def check_run(run: RunRecord, registry: Registry) -> list[Finding]:
                     subject=str(item.key),
                 )
             )
-    if unsealed := sum(1 for i in run.items if i.call.prompt_tokens is None):
+    if unfingerprinted := sum(1 for i in run.items if i.call.prompt_tokens is None):
         findings.append(
             Finding(
                 code="attestation.prompt_tokens",
-                message=f"{unsealed} items have no prompt token HMAC",
+                message=f"{unfingerprinted} items have no prompt token fingerprint",
             )
         )
     return findings
 
 
-def compare_prompt_tokens(a: RunRecord, b: RunRecord) -> list[Finding]:
+def compare_prompt_tokens(a: Run, b: Run) -> list[Finding]:
     theirs = {i.key: i.call.prompt_tokens for i in b.items}
     return [
         Finding(
@@ -191,17 +343,14 @@ def compare_prompt_tokens(a: RunRecord, b: RunRecord) -> list[Finding]:
     ]
 
 
-def check_score(
-    score: ScoreRecord, run: RunRecord, registry: Registry
-) -> list[Finding]:
-    if score.run != run.id:
+def check_score(score: Score, run: Run, registry: Registry) -> list[Finding]:
+    started = score.started
+    if started.run != run.started.run:
         raise StructuralError("score does not belong to this run")
-    scoring = registry.get(score.scoring)
-    assert isinstance(scoring, Scoring)
+    scoring = resolve(registry.get, started.scoring, Scoring)
+    scorer = resolve(registry.get, scoring.scorer, Scorer)
+    judges = {j: resolve(registry.get, j, Judge) for j in scorer.judges}
     run_keys = {i.key for i in run.items}
-    scorer = registry.get(scoring.scorer)
-    assert isinstance(scorer, Scorer)
-    judges = {j: registry.get(j) for j in scorer.judges}
     for item in score.items:
         if item.view >= len(scorer.views):
             raise StructuralError(f"score item view {item.view} is out of range")
@@ -211,7 +360,6 @@ def check_score(
             judge = judges.get(jc.judge)
             if judge is None:
                 raise StructuralError(f"judge {jc.judge} is not part of the scoring")
-            assert isinstance(judge, Judge)
             if jc.seed_index >= len(judge.seeds):
                 raise StructuralError(f"judge seed index {jc.seed_index} out of range")
-    return []
+    return _sealed(score, str(started.score))
