@@ -40,6 +40,8 @@ from chatddx.core.manifest.ledger import (
     check_score,
 )
 from chatddx.core.manifest.request import (
+    Example,
+    FewShot,
     Instructions,
     Message,
     NativeOutput,
@@ -124,7 +126,11 @@ def generation_skeleton(reg: Registry) -> Skeleton:
                 guidance="Answer in JSON.",
             )
         ),
-        sampling=reg.add(Sampling(temperature=0.7, top_p=0.9, max_tokens=1024)),
+        sampling=reg.add(
+            Sampling(
+                temperature=0.7, top_p=0.9, max_output_tokens=1024, stop=("</ddx>",)
+            )
+        ),
         reasoning=reg.add(Reasoning(chat_template_kwargs={"enable_thinking": False})),
     )
     _ = reg.add(spec)
@@ -266,6 +272,8 @@ def test_compile_and_render(reg: Registry) -> None:
         "You are an emergency physician.\n\nAnswer in JSON.",
     )
     assert skeleton.body["chat_template_kwargs"] == {"enable_thinking": False}
+    assert skeleton.body["stop"] == ["</ddx>"]
+    assert skeleton.body["max_completion_tokens"] == 1024
     assert skeleton.output_schema == {
         "type": "object",
         "properties": {"ddx": {"type": "array"}},
@@ -288,6 +296,39 @@ def test_compile_and_render(reg: Registry) -> None:
             "content": "Case:\n{{not a template}}\n\nTroponin 80 ng/L.\n\nDifferential?",
         },
     ]
+
+
+def test_few_shot_developer_role_and_budgets(reg: Registry) -> None:
+    spec = RequestSpec(
+        instructions=reg.add(Instructions(role="developer", text="Be terse.")),
+        few_shot=reg.add(
+            FewShot(
+                messages=(
+                    Example(role="user", content="Fever and rash."),
+                    Example(role="assistant", content='{"ddx": ["measles"]}'),
+                )
+            )
+        ),
+        prompt=reg.add(Prompt(segments=(Slot(slot="case"),))),
+        output=reg.add(Output(contract=TextOutput())),
+        sampling=reg.add(
+            Sampling(temperature=0, max_output_tokens=64, max_tokens_key="max_tokens")
+        ),
+        reasoning=reg.add(Reasoning(effort="low", thinking_token_budget=256)),
+    )
+    skeleton = compile_request(spec, reg.get)
+    assert [m.role for m in skeleton.messages] == [
+        "developer",
+        "user",
+        "assistant",
+        "user",
+    ]
+    assert skeleton.body == {
+        "temperature": 0.0,
+        "max_tokens": 64,
+        "reasoning_effort": "low",
+        "thinking_token_budget": 256,
+    }
 
 
 def test_skeleton_structure_is_enforced() -> None:

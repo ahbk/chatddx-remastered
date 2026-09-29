@@ -31,7 +31,7 @@ Segment = str | Slot
 
 
 class Message(Frozen):
-    role: Literal["system", "user", "assistant"]
+    role: Literal["system", "developer", "user", "assistant"]
     content: tuple[Segment, ...] = Field(min_length=1)
 
 
@@ -49,7 +49,18 @@ def _canonical_sampling(data: object) -> object:
 
 class Instructions(Component):
     kind: Literal["chunk.instructions"] = "chunk.instructions"
+    role: Literal["system", "developer"] = "system"
     text: str
+
+
+class Example(Frozen):
+    role: Literal["user", "assistant"]
+    content: str
+
+
+class FewShot(Component):
+    kind: Literal["chunk.few_shot"] = "chunk.few_shot"
+    messages: tuple[Example, ...] = Field(min_length=1)
 
 
 class Prompt(Component):
@@ -104,20 +115,36 @@ class Sampling(Component):
     top_p: float | None = None
     top_k: int | None = None
     min_p: float | None = None
-    max_tokens: int | None = None
     presence_penalty: float | None = None
     frequency_penalty: float | None = None
     repetition_penalty: float | None = None
+    stop: tuple[str, ...] = ()
+    max_output_tokens: int | None = Field(default=None, ge=1)
+    max_tokens_key: Literal["max_completion_tokens", "max_tokens"] = (
+        "max_completion_tokens"
+    )
 
     @model_validator(mode="before")
     @classmethod
     def _greedy(cls, data: object) -> object:
         return _canonical_sampling(data)
 
+    def body(self) -> dict[str, JsonValue]:
+        body: dict[str, JsonValue] = self.model_dump(
+            exclude_none=True,
+            exclude={"kind", "stop", "max_output_tokens", "max_tokens_key"},
+        )
+        if self.stop:
+            body["stop"] = list(self.stop)
+        if self.max_output_tokens is not None:
+            body[self.max_tokens_key] = self.max_output_tokens
+        return body
+
 
 class Reasoning(Component):
     kind: Literal["chunk.reasoning"] = "chunk.reasoning"
     effort: Literal["none", "minimal", "low", "medium", "high"] | None = None
+    thinking_token_budget: int | None = Field(default=None, ge=0)
     chat_template_kwargs: dict[str, JsonValue] = Field(default_factory=dict)
 
 
@@ -148,6 +175,7 @@ class RequestSpec(Component):
     kind: Literal["request"] = "request"
     purpose: Purpose = "generation"
     instructions: Annotated[Digest, RefTo("chunk.instructions")] | None = None
+    few_shot: Annotated[Digest, RefTo("chunk.few_shot")] | None = None
     prompt: Annotated[Digest, RefTo("chunk.prompt")]
     output: Annotated[Digest, RefTo("chunk.output")]
     sampling: Annotated[Digest, RefTo("chunk.sampling")]
@@ -265,16 +293,23 @@ def compile_request(spec: RequestSpec, get: Resolver) -> Skeleton:
     assert isinstance(sampling, Sampling)
 
     system = ""
+    role: Literal["system", "developer"] = "system"
     if spec.instructions is not None:
         instructions = get(spec.instructions)
         assert isinstance(instructions, Instructions)
-        system = instructions.text
+        system, role = instructions.text, instructions.role
     if output.guidance:
         system = f"{system}\n\n{output.guidance}" if system else output.guidance
 
     messages: list[Message] = []
     if system:
-        messages.append(Message(role="system", content=(system,)))
+        messages.append(Message(role=role, content=(system,)))
+    if spec.few_shot is not None:
+        few_shot = get(spec.few_shot)
+        assert isinstance(few_shot, FewShot)
+        messages.extend(
+            Message(role=m.role, content=(m.content,)) for m in few_shot.messages
+        )
     messages.append(Message(role="user", content=prompt.segments))
 
     body: dict[str, JsonValue] = {}
@@ -282,14 +317,14 @@ def compile_request(spec: RequestSpec, get: Resolver) -> Skeleton:
         passthrough = get(spec.passthrough)
         assert isinstance(passthrough, Passthrough)
         body.update(passthrough.body)
-    managed: dict[str, JsonValue] = dict(
-        sampling.model_dump(exclude_none=True, exclude={"kind"})
-    )
+    managed = sampling.body()
     if spec.reasoning is not None:
         reasoning = get(spec.reasoning)
         assert isinstance(reasoning, Reasoning)
         if reasoning.effort is not None:
             managed["reasoning_effort"] = reasoning.effort
+        if reasoning.thinking_token_budget is not None:
+            managed["thinking_token_budget"] = reasoning.thinking_token_budget
         if reasoning.chat_template_kwargs:
             managed["chat_template_kwargs"] = reasoning.chat_template_kwargs
     match output.contract:
