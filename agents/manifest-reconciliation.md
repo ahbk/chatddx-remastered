@@ -1,9 +1,12 @@
-# Manifest reconciliation: `chatddx.core.manifest` (old) vs `chatddx.manifest` (new)
+# Manifest reconciliation: old single-file manifest vs the new package
+
+The old module was `src/chatddx/core/manifest.py`, removed in D1. It is still readable with
+`git show de843eb:src/chatddx/core/manifest.py`.
 
 The new package was written from `docs/manifest.md` without reading the old module first. This file tracks the
 differences. Each one gets a decision, and the decision is recorded here.
 
-Layout of the new package:
+Layout of the new package, now at `chatddx.core.manifest`:
 - `identity.py`: canonical bytes, digests, typed refs, `Component` registry
 - `engine.py`, `request.py`, `cases.py`, `scoring.py`, `trial.py`: factor components
 - `bundle.py`: `Registry` and `Bundle`
@@ -21,10 +24,10 @@ Layout of the new package:
 
 | # | Topic | Old | New | Decision |
 |---|-------|-----|-----|----------|
-| D1 | Location | single file `chatddx.core.manifest` | package `chatddx.manifest` | open |
-| D2 | Digest / schema evolution (#5) | `model_dump()` incl. defaults, salted with `MANIFEST_VERSION`; bundle stores objects | canonical form omits defaults, per-kind `schema_version`, bundle stores canonical text and verifies bytes | open |
-| D3 | References (#1) | hand-written `references()` | `Annotated[Digest, RefTo(kind…)]`, generic walker, `x-ref` in JSON Schema | open |
-| D4 | Records (#2, #4) | `RunRecord`/`ScoreRecord` are Components | `Record` base outside the union, UUID id + `seal()`, `ItemKey(case, replicate)`, `check_run`/`check_score` | open |
+| D1 | Location | single file `chatddx.core.manifest` | package `chatddx.manifest` | package replaces the old module at `chatddx.core.manifest` |
+| D2 | Digest / schema evolution (#5) | `model_dump()` incl. defaults, salted with `MANIFEST_VERSION`; bundle stores objects | canonical form omits defaults, per-kind `schema_version`, bundle stores canonical text and verifies bytes | new: defaults omitted, per-kind versions |
+| D3 | References (#1) | hand-written `references()` | `Annotated[Digest, RefTo(kind…)]`, generic walker, `x-ref` in JSON Schema | typed refs; dotted kind names |
+| D4 | Records (#2, #4) | `RunRecord`/`ScoreRecord` are Components | `Record` base outside the union, UUID id + `seal()`, `ItemKey(case, replicate)`, `check_run`/`check_score` | new: records outside the component graph |
 | D5 | Verification plan (#3) | canaries referenced only by run | `RunPlan{trial, verification}`, `Verification{canaries, at}`; canaries are literal bodies | open |
 | D6 | Engine (#9) | typed `LoadParams` (0.24 flags), Hardware/Closure as components, `assess_engine`, `vllm_launch` | inline Hardware/Runtime, raw `argv`/`env` with owned flags forbidden, required chat-template digest, no tier assessment | open |
 | D7 | Request composition (#6, #8) | sections + generic `fills`, few-shot, lineage in `BundleContext` | chunk components + `RequestSpec` → `compile_request` → `Skeleton`; lineage as `Compilation` record; only output guidance → system | open |

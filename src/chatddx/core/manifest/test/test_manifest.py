@@ -6,9 +6,15 @@ from uuid import uuid4
 import pytest
 from pydantic import HttpUrl, ValidationError
 
-from chatddx.manifest.bundle import Bundle, Registry
-from chatddx.manifest.cases import Appendix, CaseInput, CaseSet, SourceCase, normalize
-from chatddx.manifest.engine import (
+from chatddx.core.manifest.bundle import Bundle, Registry
+from chatddx.core.manifest.cases import (
+    Appendix,
+    CaseInput,
+    CaseSet,
+    SourceCase,
+    normalize,
+)
+from chatddx.core.manifest.engine import (
     FileDigest,
     Hardware,
     LocalEngine,
@@ -16,9 +22,13 @@ from chatddx.manifest.engine import (
     RemoteEngine,
     Runtime,
 )
-from chatddx.manifest.governance import Clearance, ClearanceError, require_clearance
-from chatddx.manifest.identity import Code, Component, Hmac, StructuralError
-from chatddx.manifest.ledger import (
+from chatddx.core.manifest.governance import (
+    Clearance,
+    ClearanceError,
+    require_clearance,
+)
+from chatddx.core.manifest.identity import Code, Component, Hmac, StructuralError
+from chatddx.core.manifest.ledger import (
     Call,
     ItemKey,
     JudgeCall,
@@ -29,7 +39,7 @@ from chatddx.manifest.ledger import (
     check_run,
     check_score,
 )
-from chatddx.manifest.request import (
+from chatddx.core.manifest.request import (
     Instructions,
     Message,
     NativeOutput,
@@ -45,7 +55,7 @@ from chatddx.manifest.request import (
     compile_request,
     render,
 )
-from chatddx.manifest.scoring import (
+from chatddx.core.manifest.scoring import (
     Expectation,
     ExpectationSchema,
     ExpectationSet,
@@ -54,7 +64,7 @@ from chatddx.manifest.scoring import (
     Scoring,
     View,
 )
-from chatddx.manifest.trial import Canary, CanarySet, RunPlan, Trial, Verification
+from chatddx.core.manifest.trial import Canary, CanarySet, RunPlan, Trial, Verification
 
 KEY = b"test-key"
 RIG = Code(distribution="chatddx", version="0.0.0+dev", revision="abc123")
