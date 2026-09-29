@@ -1,0 +1,41 @@
+[project]
+name = "chatddx"
+version = "0.0.0+dev"
+description = "A reproducible and composable rig for accuracy assessment of LLMs in emergency care"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "pydantic>=2.13.5",
+]
+
+[project.scripts]
+chatddx = "chatddx:hello"
+
+[dependency-groups]
+dev = [
+  { include-group = "lint" },
+  { include-group = "test" },
+  { include-group = "typing" },
+]
+lint = ["ruff>=0.16.9"]
+test = [
+  "pytest>=9.1.1",
+]
+typing = [
+  "basedpyright>=1.40.1",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.20,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.basedpyright]
+include = ["src"]
+reportAny = false
+reportExplicitAny = false
+
+[tool.ruff.lint]
+extend-select = ["I"]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
