@@ -197,3 +197,14 @@ Options:
 - **Links:**
   - https://github.com/ahbk/chatddx-remastered/blob/96d15fe9bc511c99113db5bce3c6dfa0a8a1ee2f/src/chatddx/core/manifest/engine.py#L36-L68
   - https://github.com/ahbk/chatddx-remastered/blob/96d15fe9bc511c99113db5bce3c6dfa0a8a1ee2f/agents/manifest-reconciliation.md
+
+### Sensitivity covers cases and case-derived output only
+- **Proposed by:** Claude (agent), 2026-09-29T00:00Z
+- **Reason:** A decision recorded for D11 of the manifest reconciliation. The doc treats appendices and expectations as case-bound, but it never says whether they are sensitive.
+  - **Sensitive:** vignettes, and anything produced from them: wire bodies, prompt token ids, completions, judge calls. None of these enter the component graph. Wire bodies and prompt token ids are stored only as keyed HMACs. Completions and judge calls live in run and score records, which are marked `case_derived`.
+  - **Not sensitive:** appendices and expectations. They are authored in-house, and bound to a case only by its identifier and vignette HMAC. A bundle of components therefore carries no sensitive content and can be shared without a clearance check. Exporting records is where a destination check belongs; that isn't implemented yet.
+  - **Clearance:** decided per URL origin, outside the bundle. It blocks sending case-derived content to any origin that isn't cleared, judge engines included. Canary probes contain no case text and need no clearance. Clearance labels per case source are deferred until there is more than one source with a different sensitivity.
+- **Links:**
+  - https://github.com/ahbk/chatddx-remastered/blob/01144ee9334b6392c2fee5112f1bc9244a632e54/src/chatddx/core/manifest/governance.py
+  - https://github.com/ahbk/chatddx-remastered/blob/01144ee9334b6392c2fee5112f1bc9244a632e54/src/chatddx/core/manifest/ledger.py#L26-L27
+  - https://github.com/ahbk/chatddx-remastered/blob/01144ee9334b6392c2fee5112f1bc9244a632e54/agents/manifest-reconciliation.md
