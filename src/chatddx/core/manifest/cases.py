@@ -3,7 +3,7 @@ import unicodedata
 from collections.abc import Callable, Sequence
 from typing import Annotated, ClassVar, Literal, override
 
-from pydantic import Field, field_validator
+from pydantic import Field
 
 from .identity import Component, Digest, Frozen, Hmac, RefTo, Resolver
 
@@ -60,19 +60,3 @@ def normalize(text: str, ops: Sequence[NormalizeOp]) -> str:
     for op in ops:
         text = _OPS[op](text)
     return text
-
-
-class CaseSet(Component):
-    kind: Literal["case_set"] = "case_set"
-    normalization: tuple[NormalizeOp, ...] = ()
-    cases: tuple[CaseInputRef, ...] = Field(min_length=1)
-
-    @field_validator("cases")
-    @classmethod
-    def _unique(cls, cases: tuple[str, ...]) -> tuple[str, ...]:
-        if len(set(cases)) != len(cases):
-            raise ValueError("duplicate case inputs")
-        return cases
-
-
-CaseSetRef = Annotated[Digest, RefTo("case_set")]

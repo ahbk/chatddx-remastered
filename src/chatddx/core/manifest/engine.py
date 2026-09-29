@@ -1,8 +1,10 @@
+import hashlib
+import re
 from typing import Annotated, Literal
 
 from pydantic import Field, HttpUrl, field_validator
 
-from .identity import Component, Digest, Frozen, RefTo, Sha256Hex
+from .identity import Component, Digest, Finding, Frozen, RefTo, Sha256Hex
 
 # Flags the start-up script derives from the manifest itself; argv may not set them.
 OWNED_FLAGS = frozenset(
@@ -77,3 +79,28 @@ class RemoteEngine(Component):
 
 Engine = LocalEngine | RemoteEngine
 EngineRef = Annotated[Digest, RefTo("engine.local", "engine.remote")]
+
+
+# Templates that insert the current date make the prompt depend on when a run happens.
+_READS_DATE = re.compile(r"strftime_now|date_string|\bnow\s*\(")
+
+
+def check_chat_template(engine: LocalEngine, template: bytes) -> list[Finding]:
+    findings: list[Finding] = []
+    if hashlib.sha256(template).hexdigest() != engine.chat_template.sha256:
+        findings.append(
+            Finding(
+                code="engine.chat_template",
+                message="chat template does not match the declared digest",
+                subject=engine.digest,
+            )
+        )
+    if _READS_DATE.search(template.decode(errors="replace")):
+        findings.append(
+            Finding(
+                code="engine.chat_template_date",
+                message="chat template reads the current date",
+                subject=engine.digest,
+            )
+        )
+    return findings

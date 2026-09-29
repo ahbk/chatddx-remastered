@@ -5,7 +5,7 @@ from uuid import UUID
 from pydantic import AwareDatetime, Field, JsonValue
 
 from .bundle import Registry
-from .cases import CaseInputRef, CaseSet
+from .cases import CaseInputRef
 from .engine import LocalEngine, RemoteEngine
 from .identity import (
     Code,
@@ -36,6 +36,7 @@ class Call(Frozen):
     finished_at: AwareDatetime
     status: int | None = None
     response: dict[str, JsonValue] | None = None
+    prompt_tokens: Hmac | None = None
     error: str | None = None
 
     @property
@@ -47,6 +48,17 @@ class Call(Frozen):
     def system_fingerprint(self) -> str | None:
         fp = (self.response or {}).get("system_fingerprint")
         return fp if isinstance(fp, str) else None
+
+
+def seal_prompt_tokens(
+    response: dict[str, JsonValue], key_id: str, key: bytes
+) -> tuple[dict[str, JsonValue], Hmac | None]:
+    # prompt_token_ids encode the case text, so only their HMAC may be stored.
+    kept = {k: v for k, v in response.items() if k != "prompt_token_ids"}
+    ids = response.get("prompt_token_ids")
+    if not isinstance(ids, list):
+        return kept, None
+    return kept, Hmac.of(key_id, key, canonical_bytes(ids))
 
 
 class ItemKey(Frozen):
@@ -124,11 +136,9 @@ def _trial(run: RunRecord, get: Registry) -> Trial:
 
 def check_run(run: RunRecord, registry: Registry) -> list[Finding]:
     trial = _trial(run, registry)
-    case_set = registry.get(trial.cases)
-    assert isinstance(case_set, CaseSet)
     expected = {
         ItemKey(case=c, replicate=r)
-        for c in case_set.cases
+        for c in trial.cases
         for r in range(len(trial.seeds))
     }
     keys = [i.key for i in run.items]
@@ -155,7 +165,29 @@ def check_run(run: RunRecord, registry: Registry) -> list[Finding]:
                     subject=str(item.key),
                 )
             )
+    if unsealed := sum(1 for i in run.items if i.call.prompt_tokens is None):
+        findings.append(
+            Finding(
+                code="attestation.prompt_tokens",
+                message=f"{unsealed} items have no prompt token HMAC",
+            )
+        )
     return findings
+
+
+def compare_prompt_tokens(a: RunRecord, b: RunRecord) -> list[Finding]:
+    theirs = {i.key: i.call.prompt_tokens for i in b.items}
+    return [
+        Finding(
+            code="attestation.prompt_tokens_drift",
+            message="the engine read different prompt tokens for the same item",
+            subject=str(item.key),
+        )
+        for item in a.items
+        if item.call.prompt_tokens is not None
+        and (other := theirs.get(item.key)) is not None
+        and other != item.call.prompt_tokens
+    ]
 
 
 def check_score(

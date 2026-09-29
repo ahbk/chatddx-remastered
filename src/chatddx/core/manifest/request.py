@@ -18,7 +18,9 @@ REQUIRED_SLOTS: dict[Purpose, frozenset[SlotName]] = {
 }
 
 # Body keys filled at send time or fixed by the rig; no chunk or skeleton may set them.
-RUNTIME_KEYS = frozenset({"model", "messages", "seed", "stream", "n"})
+RUNTIME_KEYS = frozenset(
+    {"model", "messages", "seed", "stream", "n", "return_token_ids"}
+)
 OUTPUT_KEYS = frozenset({"response_format", "tools", "tool_choice"})
 GREEDY_DROPS = ("top_p", "top_k", "min_p")
 
@@ -366,6 +368,7 @@ def render(
     model: str,
     seed: int | None,
     fills: Mapping[SlotName, str],
+    return_token_ids: bool = True,
 ) -> dict[str, JsonValue]:
     messages: list[JsonValue] = []
     for m in skeleton.messages:
@@ -374,4 +377,6 @@ def render(
     body: dict[str, JsonValue] = {"model": model, "messages": messages, **skeleton.body}
     if seed is not None and not skeleton.greedy:
         body["seed"] = seed
+    if return_token_ids:
+        body["return_token_ids"] = True
     return body

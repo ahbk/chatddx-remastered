@@ -1,16 +1,16 @@
+import hashlib
 import json
 from datetime import UTC, datetime
 from typing import Literal
 from uuid import uuid4
 
 import pytest
-from pydantic import HttpUrl, ValidationError
+from pydantic import HttpUrl, JsonValue, ValidationError
 
 from chatddx.core.manifest.bundle import Bundle, Registry
 from chatddx.core.manifest.cases import (
     Appendix,
     CaseInput,
-    CaseSet,
     SourceCase,
     normalize,
 )
@@ -21,6 +21,7 @@ from chatddx.core.manifest.engine import (
     ModelArtifact,
     RemoteEngine,
     Runtime,
+    check_chat_template,
 )
 from chatddx.core.manifest.governance import (
     Clearance,
@@ -38,6 +39,8 @@ from chatddx.core.manifest.ledger import (
     ScoreRecord,
     check_run,
     check_score,
+    compare_prompt_tokens,
+    seal_prompt_tokens,
 )
 from chatddx.core.manifest.request import (
     Example,
@@ -144,13 +147,16 @@ def world(reg: Registry) -> dict[str, str]:
     case_input = reg.add(
         CaseInput(case=case, vignette=vignette, appendices=(appendix,))
     )
-    case_set = reg.add(
-        CaseSet(normalization=("newlines.lf@1", "strip@1"), cases=(case_input,))
-    )
     engine = reg.add(local_engine(reg))
     skeleton = reg.add(generation_skeleton(reg))
     trial = reg.add(
-        Trial(skeleton=skeleton, engine=engine, cases=case_set, seeds=(1, 2))
+        Trial(
+            skeleton=skeleton,
+            engine=engine,
+            cases=(case_input,),
+            normalization=("newlines.lf@1", "strip@1"),
+            seeds=(1, 2),
+        )
     )
     canaries = reg.add(
         CanarySet(
@@ -243,7 +249,7 @@ def test_references_come_from_field_types(reg: Registry) -> None:
     assert paths == {
         "/skeleton": ("skeleton",),
         "/engine": ("engine.local", "engine.remote"),
-        "/cases": ("case_set",),
+        "/cases/0": ("case",),
     }
     schema = Trial.model_json_schema()
     assert schema["properties"]["engine"]["x-ref"] == ["engine.local", "engine.remote"]
@@ -286,6 +292,7 @@ def test_compile_and_render(reg: Registry) -> None:
         fills={"case": "{{not a template}}", "appendices": appendices},
     )
     assert body["seed"] == 3
+    assert body["return_token_ids"] is True
     assert body["messages"] == [
         {
             "role": "system",
@@ -388,7 +395,7 @@ def test_bundle_roundtrip_and_tamper(reg: Registry) -> None:
 def test_dangling_and_mistyped_refs(reg: Registry) -> None:
     ids = world(reg)
     bad = Trial(
-        skeleton=ids["engine"], engine=ids["engine"], cases=ids["case"], seeds=(1,)
+        skeleton=ids["engine"], engine=ids["engine"], cases=(ids["case"],), seeds=(1,)
     )
     _ = reg.add(bad)
     with pytest.raises(StructuralError, match="is not one of"):
@@ -423,13 +430,17 @@ def test_run_and_score_checks(reg: Registry) -> None:
     engine = reg.get(ids["engine"])
     assert isinstance(engine, LocalEngine)
 
-    def call(model: str) -> Call:
+    def call(model: str, tokens: list[JsonValue] | None = None) -> Call:
+        response, prompt_tokens = seal_prompt_tokens(
+            {"model": model, "prompt_token_ids": tokens or [2, 106, 1645]}, "k1", KEY
+        )
         return Call(
             request=hmac_of("body"),
             started_at=NOW,
             finished_at=NOW,
             status=200,
-            response={"model": model},
+            response=response,
+            prompt_tokens=prompt_tokens,
         )
 
     run = RunRecord(
@@ -452,6 +463,28 @@ def test_run_and_score_checks(reg: Registry) -> None:
         ),
     )
     assert [f.code for f in check_run(run, reg)] == ["attestation.model"]
+    assert run.items[0].call.response == {"model": engine.served_model_name}
+
+    rerun = run.model_copy(
+        update={
+            "items": (
+                run.items[0].model_copy(
+                    update={"call": call(engine.served_model_name, [2, 106, 9])}
+                ),
+                run.items[1].model_copy(
+                    update={
+                        "call": run.items[1].call.model_copy(
+                            update={"prompt_tokens": None}
+                        )
+                    }
+                ),
+            )
+        }
+    )
+    assert [f.code for f in compare_prompt_tokens(rerun, run)] == [
+        "attestation.prompt_tokens_drift"
+    ]
+    assert "attestation.prompt_tokens" in [f.code for f in check_run(rerun, reg)]
     assert run.seal().startswith("sha256:")
 
     stray = run.model_copy(
@@ -516,3 +549,20 @@ def test_clearance_is_a_hard_block() -> None:
     require_clearance("https://a100.example.org/v1/chat/completions", cleared)
     with pytest.raises(ClearanceError):
         require_clearance("https://elsewhere.example.org/v1", cleared)
+
+
+def test_chat_template_check(reg: Registry) -> None:
+    template = b"{{ bos_token }}{% for m in messages %}{{ m.content }}{% endfor %}"
+    engine = local_engine(reg).model_copy(
+        update={
+            "chat_template": FileDigest(
+                path="chat_template.jinja", sha256=hashlib.sha256(template).hexdigest()
+            )
+        }
+    )
+    assert check_chat_template(engine, template) == []
+    dated = template + b'{{ strftime_now("%d %b %Y") }}'
+    assert [f.code for f in check_chat_template(engine, dated)] == [
+        "engine.chat_template",
+        "engine.chat_template_date",
+    ]

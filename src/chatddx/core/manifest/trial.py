@@ -2,7 +2,7 @@ from typing import Annotated, Literal, override
 
 from pydantic import Field, JsonValue, field_validator
 
-from .cases import CaseSetRef
+from .cases import CaseInputRef, NormalizeOp
 from .engine import EngineRef
 from .identity import Component, Digest, Frozen, RefTo, Resolver
 from .request import RUNTIME_KEYS, Skeleton, SkeletonRef
@@ -15,17 +15,18 @@ class Trial(Component):
     kind: Literal["trial"] = "trial"
     skeleton: SkeletonRef
     engine: EngineRef
-    cases: CaseSetRef
+    cases: tuple[CaseInputRef, ...] = Field(min_length=1)
+    normalization: tuple[NormalizeOp, ...] = ()
     seeds: tuple[int, ...] = Field(min_length=1)
     order: Order = "case_major@1"
     concurrency: int = Field(default=1, ge=1)
 
-    @field_validator("seeds")
+    @field_validator("cases", "seeds")
     @classmethod
-    def _unique(cls, seeds: tuple[int, ...]) -> tuple[int, ...]:
-        if len(set(seeds)) != len(seeds):
-            raise ValueError("duplicate seeds")
-        return seeds
+    def _unique[T](cls, values: tuple[T, ...]) -> tuple[T, ...]:
+        if len(set(values)) != len(values):
+            raise ValueError("duplicates are not allowed")
+        return values
 
     @override
     def cross_check(self, get: Resolver) -> list[str]:
