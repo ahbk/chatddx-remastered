@@ -12,7 +12,6 @@ Layout of the new package, now at `chatddx.core.manifest`:
 - `bundle.py`: `Registry` and `Bundle`
 - `ledger.py`: records (append-only stage logs and item rows), which are not components
 - `lint.py`: warnings about risky but valid settings
-- `governance.py`: clearance
 
 ## Surprises found along the way
 - `docs/manifest.md` stops mid-sentence in issue 12, option C.
@@ -40,7 +39,7 @@ Layout of the new package, now at `chatddx.core.manifest`:
 | D8 | Seeds / replicates | seeds in sampling section / skeleton | seeds on `Trial` / `Judge`; skeleton reusable; greedy → seed not sent | new + `suggest_seeds` |
 | D9 | Cases | reusable titled appendices, `Normalization` per case input, `CaseSource` component, expectations keyed by source case, case set sorted | appendices bound to (case, vignette HMAC), normalization on `CaseSet`, expectations keyed by `CaseInput`, case set ordered | (a) appendices bound to vignette HMAC, (b) expectations keyed by case+appendices, (c)/(d) no CaseSet: `Trial.cases` + `Trial.normalization`, order from `Trial.order` |
 | D10 | Scoring (#7) | `ParsePolicy`, typed metrics per view, judge per view, `resources` | no parsing in manifest, `View.metric: str`, `Judge` component on `Scoring` | new + `Scorer.resources`, `View.judge`; judges derived from views |
-| D11 | Governance / export (#10) | `BundleContext` (endpoints, clearance labels, lineage, sections) | no context; `Clearance` by URL origin outside bundle; `case_derived` flag per kind | URL-origin clearance; only cases and case-derived outputs (records) are sensitive; appendices and expectations are not (doc amendment) |
+| D11 | Governance / export (#10) | `BundleContext` (endpoints, clearance labels, lineage, sections) | no context; `Clearance` by URL origin outside bundle; `case_derived` flag per kind | clearance moved to the bookkeeping layer (`governance.py` removed); only cases and case-derived outputs (records) are sensitive; appendices and expectations are not (doc amendment) |
 | D12 | Chat template (#12) | optional `LoadParams.chat_template` | required `LocalEngine.chat_template` file digest; remote unpinned | A + D: `check_chat_template` (digest + date use); `render` sends `return_token_ids`, `seal_prompt_tokens` keeps only an HMAC, `compare_prompt_tokens` across runs |
 | D13 | Lint | rich per-component `lint()` | only structural errors + run attestation | `lint.py`: model revision, closure path, scorer revision, vLLM 0.24 temperature clamp |
 | D14 | Execution policy | order incl. shuffled, concurrency, retries, timeout | `Trial.order`, `Trial.concurrency` | A: `RunPlan.execution` (order incl. shuffled, concurrency, timeout, retries); trial identity is intent only; `Call.attempts` |

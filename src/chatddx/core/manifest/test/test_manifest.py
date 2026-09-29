@@ -23,11 +23,6 @@ from chatddx.core.manifest.engine import (
     Runtime,
     check_chat_template,
 )
-from chatddx.core.manifest.governance import (
-    Clearance,
-    ClearanceError,
-    require_clearance,
-)
 from chatddx.core.manifest.identity import (
     Code,
     Component,
@@ -548,13 +543,6 @@ def test_remote_engine_identity() -> None:
             base_url=HttpUrl("https://a100.example.org/v1"), model="gemma-2"
         ).digest
     )
-
-
-def test_clearance_is_a_hard_block() -> None:
-    cleared = [Clearance(origin=HttpUrl("https://a100.example.org"), case_derived=True)]
-    require_clearance("https://a100.example.org/v1/chat/completions", cleared)
-    with pytest.raises(ClearanceError):
-        require_clearance("https://elsewhere.example.org/v1", cleared)
 
 
 def test_chat_template_check(reg: Registry) -> None:
