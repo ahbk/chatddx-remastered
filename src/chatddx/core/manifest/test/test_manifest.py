@@ -64,7 +64,6 @@ from chatddx.core.manifest.request import (
 from chatddx.core.manifest.scoring import (
     Expectation,
     ExpectationSchema,
-    ExpectationSet,
     Judge,
     Scorer,
     Scoring,
@@ -198,19 +197,16 @@ def world(reg: Registry) -> dict[str, str]:
                     consumes=schema,
                     views=(
                         View(
-                            name="top1",
                             output="/ddx/0",
                             expectation="/ddx",
                             metric="match",
                         ),
-                        View(name="graded", metric="judge", judge=judge),
+                        View(metric="judge", judge=judge),
                     ),
-                    resources={"synonyms": "sha256:" + SHA},
+                    resources=("sha256:" + SHA,),
                 )
             ),
-            expectations=reg.add(
-                ExpectationSet(json_schema=schema, items=(expectation,))
-            ),
+            expectations=(expectation,),
         )
     )
     return {
@@ -522,7 +518,7 @@ def test_run_and_score_checks(reg: Registry) -> None:
 
     ok = ScoreItem(
         key=ItemKey(case=ids["case"], replicate=0),
-        view="top1",
+        view=0,
         value=1.0,
         judge_calls=(JudgeCall(judge=ids["judge"], seed_index=0, call=call("j")),),
     )

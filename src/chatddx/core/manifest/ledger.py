@@ -102,7 +102,7 @@ class JudgeCall(Frozen):
 
 class ScoreItem(Frozen):
     key: ItemKey
-    view: str
+    view: int = Field(ge=0)
     value: float | None
     detail: JsonValue = None
     judge_calls: tuple[JudgeCall, ...] = ()
@@ -203,6 +203,8 @@ def check_score(
     assert isinstance(scorer, Scorer)
     judges = {j: registry.get(j) for j in scorer.judges}
     for item in score.items:
+        if item.view >= len(scorer.views):
+            raise StructuralError(f"score item view {item.view} is out of range")
         if item.key not in run_keys:
             raise StructuralError(f"score item {item.key} is not in the run")
         for jc in item.judge_calls:

@@ -43,3 +43,8 @@ Layout of the new package, now at `chatddx.core.manifest`:
 | D12 | Chat template (#12) | optional `LoadParams.chat_template` | required `LocalEngine.chat_template` file digest; remote unpinned | A + D: `check_chat_template` (digest + date use); `render` sends `return_token_ids`, `seal_prompt_tokens` keeps only an HMAC, `compare_prompt_tokens` across runs |
 | D13 | Lint | rich per-component `lint()` | only structural errors + run attestation | `lint.py`: model revision, closure path, scorer revision, vLLM 0.24 temperature clamp |
 | D14 | Execution policy | order incl. shuffled, concurrency, retries, timeout | `Trial.order`, `Trial.concurrency` | A: `RunPlan.execution` (order incl. shuffled, concurrency, timeout, retries); trial identity is intent only; `Call.attempts` |
+
+## Table classification follow-ups
+- `expectation_set` dropped: `Scoring.expectations` lists expectations directly.
+- Views and scorer resources are referred to by position; labels belong to bookkeeping.
+- Open: whether `request`, `skeleton`, `verification`, `run_plan` and `canary_set` need tables; HMAC vs plain sha256 fingerprints; how staged run records are written.
