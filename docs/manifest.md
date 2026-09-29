@@ -221,7 +221,7 @@ Options:
   - **To check:** whether hashes of pseudonymised health data count as personal data (GDPR) is a question for the data protection officer.
 - **Links:**
   - https://github.com/ahbk/chatddx-remastered/blob/083fd84119efd4d6dfe6d0049d08118758df5ae6/src/chatddx/core/manifest/identity.py#L207-L227
-  - https://github.com/ahbk/chatddx-remastered/blob/083fd84119efd4d6dfe6d0049d08118758df5ae6/src/chatddx/core/manifest/ledger.py#L57-L64
+  - https://github.com/ahbk/chatddx-remastered/blob/083fd84119efd4d6dfe6d0049d08118758df5ae6/src/chatddx/core/manifest/ledger.py#L53-L62
 
 ### The verification plan and the request recipe live in records
 - **Proposed by:** Claude (agent), 2026-09-29T00:00Z
