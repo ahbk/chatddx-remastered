@@ -37,6 +37,7 @@ class Call(Frozen):
     status: int | None = None
     response: dict[str, JsonValue] | None = None
     prompt_tokens: Hmac | None = None
+    attempts: int = Field(default=1, ge=1)
     error: str | None = None
 
     @property

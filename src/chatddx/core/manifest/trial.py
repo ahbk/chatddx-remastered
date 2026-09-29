@@ -1,15 +1,16 @@
+import hashlib
 import secrets
+from collections.abc import Sequence
 from typing import Annotated, Literal, override
 
-from pydantic import Field, JsonValue, field_validator
+from pydantic import Field, JsonValue, field_validator, model_validator
 
 from .cases import CaseInputRef, NormalizeOp
 from .engine import EngineRef
 from .identity import Component, Digest, Frozen, RefTo, Resolver
 from .request import RUNTIME_KEYS, Skeleton, SkeletonRef
 
-# How the runner walks (case, replicate) pairs; matters only where batching is variant.
-Order = Literal["case_major@1", "replicate_major@1"]
+Order = Literal["case_major@1", "replicate_major@1", "shuffled@1"]
 
 
 class Trial(Component):
@@ -19,8 +20,6 @@ class Trial(Component):
     cases: tuple[CaseInputRef, ...] = Field(min_length=1)
     normalization: tuple[NormalizeOp, ...] = ()
     seeds: tuple[int, ...] = Field(min_length=1)
-    order: Order = "case_major@1"
-    concurrency: int = Field(default=1, ge=1)
 
     @field_validator("cases", "seeds")
     @classmethod
@@ -76,10 +75,39 @@ class Verification(Component):
 VerificationRef = Annotated[Digest, RefTo("verification")]
 
 
+# Execution changes outputs only on engines that aren't batch invariant, so it is
+# declared per run rather than as part of the trial.
+class Execution(Frozen):
+    order: Order = "case_major@1"
+    shuffle_seed: int | None = None
+    concurrency: int = Field(default=1, ge=1)
+    timeout_s: float | None = Field(default=None, gt=0)
+    retries: int = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def _shuffle_seed(self) -> "Execution":
+        if (self.order == "shuffled@1") != (self.shuffle_seed is not None):
+            raise ValueError("shuffle_seed goes with shuffled order, and only with it")
+        return self
+
+    def schedule(self, cases: Sequence[str], replicates: int) -> list[tuple[str, int]]:
+        if self.order == "replicate_major@1":
+            return [(c, r) for r in range(replicates) for c in cases]
+        items = [(c, r) for c in cases for r in range(replicates)]
+        if self.order == "shuffled@1":
+            items.sort(
+                key=lambda cr: hashlib.sha256(
+                    f"{self.shuffle_seed}:{cr[0]}:{cr[1]}".encode()
+                ).digest()
+            )
+        return items
+
+
 class RunPlan(Component):
     kind: Literal["run_plan"] = "run_plan"
     trial: TrialRef
     verification: VerificationRef | None = None
+    execution: Execution = Execution()
 
 
 RunPlanRef = Annotated[Digest, RefTo("run_plan")]

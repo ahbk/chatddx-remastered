@@ -73,6 +73,7 @@ from chatddx.core.manifest.scoring import (
 from chatddx.core.manifest.trial import (
     Canary,
     CanarySet,
+    Execution,
     RunPlan,
     Trial,
     Verification,
@@ -597,3 +598,19 @@ def test_lint(reg: Registry) -> None:
         Trial(skeleton=skeleton, engine=ids["engine"], cases=(ids["case"],), seeds=(1,))
     )
     assert [f.code for f in lint(reg, [trial])] == ["vllm.temperature_clamped"]
+
+
+def test_execution_schedule() -> None:
+    cases = ["a", "b"]
+    assert Execution().schedule(cases, 2) == [("a", 0), ("a", 1), ("b", 0), ("b", 1)]
+    assert Execution(order="replicate_major@1").schedule(cases, 2) == [
+        ("a", 0),
+        ("b", 0),
+        ("a", 1),
+        ("b", 1),
+    ]
+    shuffled = Execution(order="shuffled@1", shuffle_seed=7)
+    assert shuffled.schedule(cases, 2) == shuffled.schedule(cases, 2)
+    assert sorted(shuffled.schedule(cases, 2)) == Execution().schedule(cases, 2)
+    with pytest.raises(ValidationError, match="shuffle_seed"):
+        _ = Execution(shuffle_seed=7)
