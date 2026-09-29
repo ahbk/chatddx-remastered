@@ -208,3 +208,63 @@ Options:
   - https://github.com/ahbk/chatddx-remastered/blob/01144ee9334b6392c2fee5112f1bc9244a632e54/src/chatddx/core/manifest/governance.py
   - https://github.com/ahbk/chatddx-remastered/blob/01144ee9334b6392c2fee5112f1bc9244a632e54/src/chatddx/core/manifest/ledger.py#L26-L27
   - https://github.com/ahbk/chatddx-remastered/blob/01144ee9334b6392c2fee5112f1bc9244a632e54/agents/manifest-reconciliation.md
+
+### Fingerprints are plain sha256 by default
+- **Proposed by:** Claude (agent), 2026-09-29T00:00Z
+- **Reason:** This replaces "Drift detection relies on a keyed HMAC of the raw vignette only" under Decisions → Cases. The clinicians who de-identify and organise the cases work on unencrypted files on dedicated storage, so a keyed HMAC protects little and costs a lot.
+  - **Gained:** anyone holding a case file can verify its fingerprint, including reviewers the cage is delivered to. There are no keys to store, rotate, back up or lose.
+  - **Accepted risks:**
+    - A plain hash lets someone who already holds a de-identified text confirm that it is in the study.
+    - Short or low-variety values, such as a structured field, could be recovered by brute force. Full vignettes cannot.
+    - Wire bodies and prompt-token fingerprints carry the same risks, because the prompt around the case text is known.
+  - **Kept open:** a fingerprint names its algorithm (`sha256`, or `hmac-sha256` with a `key_id`). A future source with short or structured cases can therefore switch back without a schema change.
+  - **To check:** whether hashes of pseudonymised health data count as personal data (GDPR) is a question for the data protection officer.
+- **Links:**
+  - https://github.com/ahbk/chatddx-remastered/blob/083fd84119efd4d6dfe6d0049d08118758df5ae6/src/chatddx/core/manifest/identity.py#L207-L227
+  - https://github.com/ahbk/chatddx-remastered/blob/083fd84119efd4d6dfe6d0049d08118758df5ae6/src/chatddx/core/manifest/ledger.py#L57-L64
+
+### The verification plan and the request recipe live in records
+- **Proposed by:** Claude (agent), 2026-09-29T00:00Z
+- **Reason:** This resolves possible design issues 3 and 8 by deciding what earns a table: things that are reused, compared by hash, or referenced from more than one place.
+  - **Verification plan (issue 3):** it is declared in the run's first log row (`RunStarted`), next to the trial, the execution settings, the canary set and when canaries run. It is declared before the run and never changes afterwards, but it is not part of trial identity. "Run it exactly like run X" means copying X's first row. Canary sets stay components, because canary drift is found by comparing the same set across runs.
+  - **Sections vs skeleton (issue 8):** a trial references only the frozen skeleton, so compiler code is not a factor. The chunks a skeleton was compiled from form a `Recipe`, stored in a `Compilation` record together with the compiler version. Recompiling with a newer compiler adds a new record, not a new factor. The UI's unsaved selection of chunks is interface state until it is compiled.
+- **Links:**
+  - https://github.com/ahbk/chatddx-remastered/blob/083fd84119efd4d6dfe6d0049d08118758df5ae6/src/chatddx/core/manifest/ledger.py#L76-L84
+  - https://github.com/ahbk/chatddx-remastered/blob/083fd84119efd4d6dfe6d0049d08118758df5ae6/src/chatddx/core/manifest/ledger.py#L260-L265
+  - https://github.com/ahbk/chatddx-remastered/blob/083fd84119efd4d6dfe6d0049d08118758df5ae6/src/chatddx/core/manifest/request.py#L184-L193
+
+### Execution settings belong to the run, not the trial
+- **Proposed by:** Claude (agent), 2026-09-29T00:00Z
+- **Reason:** A researcher should be able to say "re-run this trial" without matching the order or concurrency of some earlier batch.
+  - **The trial** is the scientific intent: skeleton × engine × cases × normalization × seeds.
+  - **Execution** is declared per run in `RunStarted`: order (case-major, replicate-major, or shuffled with a seed), concurrency, timeout and retries.
+  - **Whether execution matters is a property of the engine.** With batch invariance declared in the engine's environment, re-runs are expected to be bitwise identical. Without it, execution adds noise and the run falls in the best-effort tier. Canaries, prompt-token fingerprints and comparing completions between runs of the same trial show which case applies.
+  - **Timeouts and retries** never change a successful output. The attempt count is recorded per call.
+- **Links:**
+  - https://github.com/ahbk/chatddx-remastered/blob/083fd84119efd4d6dfe6d0049d08118758df5ae6/src/chatddx/core/manifest/trial.py#L16-L22
+  - https://github.com/ahbk/chatddx-remastered/blob/083fd84119efd4d6dfe6d0049d08118758df5ae6/src/chatddx/core/manifest/trial.py#L71-L94
+
+### Records are append-only stage logs
+- **Proposed by:** Claude (agent), 2026-09-29T00:00Z
+- **Reason:** This answers the open question in possible design issue 2 and settles issue 4.
+  - **Outside the component graph:** records are a separate ledger that references components by digest.
+  - **Written as rows:** a run is written as it happens:
+    - a `RunStarted` row;
+    - item rows and canary-call rows;
+    - a `RunFinished` row carrying the end time, the run's warnings and a seal (a hash over the started row and all item rows).
+  - **Scores** are written the same way.
+  - **No updates:** no table needs one. Adding a stage adds a row type, not a table.
+  - **No repeated keys:** item rows are keyed by (case, replicate index) and never repeat the engine or the seed. Checks against the trial reject items the trial does not contain.
+  - **Rows changed after sealing** produce a warning, in keeping with "warnings, not crashes".
+- **Links:**
+  - https://github.com/ahbk/chatddx-remastered/blob/083fd84119efd4d6dfe6d0049d08118758df5ae6/src/chatddx/core/manifest/ledger.py#L73-L151
+  - https://github.com/ahbk/chatddx-remastered/blob/083fd84119efd4d6dfe6d0049d08118758df5ae6/src/chatddx/core/manifest/ledger.py#L154-L236
+
+### Clearance belongs to the bookkeeping layer
+- **Proposed by:** Claude (agent), 2026-09-29T00:00Z
+- **Reason:** Clearance is not a factor and not an observation, and it is the only governance data that changes over time. It moves to the bookkeeping layer next to ownership and collaborators. This supersedes the "Clearance" point of the amendment "Sensitivity covers cases and case-derived output only".
+  - **The hard block stays.** Sending case-derived content to an engine without clearance must still be refused, judge engines included, and the runner enforces it from bookkeeping data.
+  - **What the manifest keeps:** only what is needed to decide sensitivity. Components carry no case text, and records are marked case-derived.
+- **Links:**
+  - https://github.com/ahbk/chatddx-remastered/blob/083fd84119efd4d6dfe6d0049d08118758df5ae6/src/chatddx/core/manifest/ledger.py#L28-L29
+  - https://github.com/ahbk/chatddx-remastered/blob/083fd84119efd4d6dfe6d0049d08118758df5ae6/agents/manifest-reconciliation.md
