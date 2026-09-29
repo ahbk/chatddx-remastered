@@ -184,3 +184,16 @@ Options:
 - **A. Server-side template, tightened.** Require the literal template text or its hash on local engines, and flag templates that read the date. The request shape stays the same everywhere, but the prompt text is still not in the cage.
 - **B. Per-request `chat_template`.** Needs `--trust-request-chat-template`. It puts model-specific syntax in request chunks, and the remote engine is likely to ignore or reject it. Not recommended.
 - **C. Client-side rendering + `/v1/completions`.** The skeleton holds the literal prompt with slots, produced at compile time
+
+## Proposed amendments
+
+### Hardware and runtime are declared inside the local engine
+- **Proposed by:** Claude (agent), 2026-09-29T00:00Z
+- **Reason:** A trade-off recorded for decision D6 of the manifest reconciliation. `Hardware` and `Runtime` are plain value objects inside `LocalEngine`; they are not separate content-addressed components.
+  - **Gained:** one component per engine and no extra references to resolve. The hardware class and the closure sit next to the load arguments, so each engine digest names a complete cage. This fits "each hardware class is its own cage".
+  - **Given up:** hardware and closures can't be listed, picked or reused as standalone rows, for example in the UI or as Postgres foreign keys. The same GPU or closure is repeated in every engine that uses it. Asking "which engines share this closure" means scanning engines instead of following a reference.
+  - **Unaffected:** digests stay stable either way, because defaults are omitted from canonical form. Promoting them to components later would change `LocalEngine`'s shape and needs a schema version bump.
+  - **Related:** load parameters are raw `argv`/`env` rather than typed per vLLM release. The start-up script owns `--model`, `--served-model-name`, `--chat-template`, `--tokenizer` and `--revision`. Version-specific lints belong outside the data layer.
+- **Links:**
+  - https://github.com/ahbk/chatddx-remastered/blob/96d15fe9bc511c99113db5bce3c6dfa0a8a1ee2f/src/chatddx/core/manifest/engine.py#L36-L68
+  - https://github.com/ahbk/chatddx-remastered/blob/96d15fe9bc511c99113db5bce3c6dfa0a8a1ee2f/agents/manifest-reconciliation.md
