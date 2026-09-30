@@ -554,3 +554,15 @@ A fake vLLM based on 0.24.0 should pin both (AGENTS.md asks for one; none exists
 - The closed set of text-cleanup operations has four members. The old code also had non-breaking spaces to spaces, zero-width character removal, Unicode line breaks to newlines and trailing-whitespace stripping; vignettes may need some of them.
 - `Hardware` has no GPU count, so tensor-parallel engines can't be told apart by hardware (the old code had `gpu_count`).
 - The engine's `system_fingerprint` is kept in each call's raw response (`Call.system_fingerprint`) but never compared between calls or runs.
+
+## Proposed amendments
+
+### Triage of "Possible design issues" before Postgres
+- name: Claude (agent)
+- datetime: 2026-09-30
+- reason: the list was triaged against the code at 034193f. Three new issues block Postgres: run and score seals depend on item order, on non-canonical dumps (defaults included) and on timezone offsets, so rows read back from Postgres can fail `ledger.seal`. The two vLLM 0.24 assumptions are confirmed at tag v0.24.0, so that section can be closed. Full triage, with recommendations per item: `agents/manifest-triage.md`.
+- permalinks:
+  - https://github.com/ahbk/chatddx-remastered/blob/034193f742e0fe0eac9da5b02494923b1920ef22/src/chatddx/core/manifest/ledger.py#L135-L144
+  - https://github.com/ahbk/chatddx-remastered/blob/034193f742e0fe0eac9da5b02494923b1920ef22/src/chatddx/core/manifest/ledger.py#L210-L217
+  - https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/chat_completion/protocol.py#L129
+  - https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/sampling_params.py#L428-L438
