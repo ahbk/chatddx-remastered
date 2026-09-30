@@ -20,14 +20,21 @@ It must be possible to deliver the cage together with the results, for scientifi
 - **Cage:** the constrained environment a bundle enforces
 - **Digest:** the factor's identity and how it's referenced, an `sha256:<hex>` over the component's canonical bytes.
 - **Kind:** the discriminator of a component, e.g. `engine.local`, `chunk.prompt`.
-- **Canonical form:** sorted-key JSON with fields left out when equal to their default.
-- **Chunk:** a factor authored in the portal that fills one slot of a request.
+- **Canonical form:** sorted-key JSON with fields left out when equal to their default, plus the kind's schema version.
+- **Chunk:** a factor authored in the portal that fills one part of a recipe (not to be confused with a slot).
 - **Recipe:** the chunks a skeleton was compiled from.
 - **Skeleton:** the frozen request.
 - **Slot:** a placeholder filled at send time.
 - **Segment:** a literal string or a slot.
+- **Purpose:** whether a prompt or skeleton is for `generation` or for a `judge`; it decides which slots are allowed.
+- **Contract:** how an output chunk constrains the answer: `native`, `tool` or `text`.
+- **Normalization:** the text-cleanup steps a trial applies to vignettes.
 - **Trial:** see "Trials".
 - **Replicate:** one seed of a trial, identified by its index.
+- **Item key:** (case, replicate index), which identifies one request of a run.
+- **Execution:** how a run issues requests: order, concurrency, timeout and retries.
+- **View:** the part of an output and of an expectation that a scorer scores, and how.
+- **Compilation:** the record of which recipe and compiler produced a skeleton.
 - **Run** and **Score:** a stage log.
 - **Record** / **ledger:** events logged while running or scoring.
 - **Seal:** the hash over a finished log.
@@ -84,7 +91,7 @@ None of this relates to the manifest directly, but the manifest must permit this
 ### On the table
 - The result from scorers needs to be aggregated and exported. Since python is well-suited for statistical analysis, processing the data into publishable results may become a requirement.
 
-## Current stack situation
+## Target stack
 - **Local inference.** Two servers, an RTX 3070 (sm_86, 8 GB) and an RTX 5090 (sm_120, 32 GB). Both serve vLLM 0.24.0 in a NixOS container that reads a `LocalEngine`, the model files, via `ModelArtifact`, the chat-template file and raw `argv`/`env`.
 
 The start-up script owns `--model`, `--served-model-name` (set to the engine digest), `--chat-template`, `--tokenizer` and `--revision` (`engine.py: OWNED_FLAGS`).
@@ -216,229 +223,89 @@ There is however an intended flow of data behind the pieces, which is described 
 The "scored results" are just those ScoreItem rows. What aggregates them isn't named by the manifest.
 
 ## Factors (Components)
-Factors are immutable components. They reference each other by the digest of their canonical form which forms a graph.
+A factor is an immutable component identified by its digest: the sha256 of its canonical form. The canonical form is sorted-key JSON that leaves out fields equal to their default and carries the kind's own schema version. A new field must therefore default to the old behavior, and changing a default requires bumping that kind's schema version. Bundles store these canonical bytes, so a bundle verifies against its bytes rather than against whatever the current code would produce.
 
-The canonical form:
-- leaves out fields equal to their default (a new field must default to the old behavior, and a default must never change without bumping the kind's schema version)
-- each kind has its own schema version
-- bundles store canonical bytes.
+Factors reference each other by digest, forming a graph. Each reference is typed (`Annotated[Digest, RefTo(kind, …)]`). From these types, `Registry.check` derives the graph and checks that every reference exists and has an allowed kind, and the JSON Schema gains `x-ref` entries from which the portal and the Postgres foreign keys can be derived. Rules that span components, such as "a trial must use a generation skeleton", are `cross_check` hooks run by the same check.
 
-References are typed. `Annotated[Digest, RefTo(kind, …)]` gives:
- - the reference graph and its checks (`bundle.py: Registry.check`);
- - the `x-ref` entries in the JSON Schema, from which the portal and Postgres foreign keys can be derived.
-
-Cross-component rules (e.g. a trial must use a generation skeleton) are `cross_check` hooks.
-
-The factors are:
- - `model`, `engine.local`, `engine.remote`;
- - the seven `chunk.*` kinds;
- - `skeleton`, `appendix`, `case`, `trial`;
- - `expectation_schema`, `expectation`, `scorer`, `judge`, `scoring`;
- - `canary_set`.
+The kinds are `model`, `engine.local`, `engine.remote`, the seven `chunk.*` kinds, `skeleton`, `appendix`, `case`, `trial`, `expectation_schema`, `expectation`, `scorer`, `judge`, `scoring` and `canary_set`. Each is produced by a different party: ops, developers, researchers, clinicians, or (for skeletons only) the compiler.
 
 ### Case
-A case is a reference to a text file fetched from an uncertain environment. Their content is called vignette, which is sensitive.
+A case (`cases.py: CaseInput`, kind `case`) names a vignette in the predefined source by source name and id (`SourceCase`), records the fingerprint of that vignette, and lists the appendices to append, in order. Researchers or clinicians create cases in the portal; an import script supplies the vignette fingerprint, taken over the raw vignette as fetched. The vignette itself is sensitive, unstructured and never edited, and it is never stored: only its fingerprint is. The case's digest covers all three parts (source reference, fingerprint and appendix list), so the vignette is not its sole contributor, and the same source case with different appendices is a different case. Expectations are keyed by this digest, which lets appendices change the correct answer.
 
-Vignettes are unstructured and cannot be edited. so drift is detected by comparing fingerprints. The fingerprint is taken over the raw vignette as fetched.
-
-In the code, a case (`cases.py: CaseInput`, kind `case`) is three things: a source reference (`SourceCase`: source name + id), the vignette's fingerprint, and an ordered list of appendix digests. So:
- - the case's *digest* covers source, id, vignette fingerprint and appendices. The vignette is not its "sole contributor";
- - the *vignette fingerprint* is a field of the case, supplied when the case is created.
-
-Normalization is chosen per trial (`trial.py: Trial.normalization`). The set of operations is closed, and each name pins one behavior: `newlines.lf@1`, `unicode.nfc@1`, `strip@1`, `blank_lines.collapse@1` (`cases.py: NormalizeOp`). A changed behavior gets a new name.
-
-Expectations are keyed by the case, including its appendices, so appendices can change the correct answer.
-
-When the source's vignette changes, its fingerprint changes. That means a new case, new appendices bound to the new fingerprint, and new expectations. Who re-binds them, a user or an automatic step, is still open.
+A changed vignette at the source has a new fingerprint. It therefore needs a new case, new appendices bound to the new fingerprint, and new expectations; whether a user or an automatic step re-binds them is open. Text cleanup is not part of the case: a trial chooses it (see "Trial").
 
 ### Appendix
-Appendices are notes bound to a source case and vignette fingerprint. It is the only means for clinicians to attach additional information to a vignette.
+An appendix (kind `appendix`) is a block of plain text that clinicians write in the portal and attach to one source case and one vignette fingerprint. It is the only way to add information to a vignette; anchored edits to the vignette were considered and ruled out as too complex. Appendices are not sensitive. They are stored and sent exactly as entered, and text cleanup does not apply to them.
 
-They are appended to the case in a pinned order of `CaseInput.appendices`, which is part of the case's digest.
-
-They are joined into the prompt with the recipe's `AppendixLayout` (text before, between and after), which is frozen into the skeleton.
-
-Appendices are written and maintained in the portal and are not sensitive.
-
-Appendix text is stored and sent as entered; normalization applies only to the vignette.
-
-A case rejects appendices bound to another case or vignette (`CaseInput.cross_check`), so appendices can't be reused across cases. Why can they even be bound to more than one case though?
-
-Note: Anchored edits has been considered but ruled out due to the complexity of such implementation.
+A case lists its appendices in a pinned order that is part of the case's digest, and rejects any appendix bound to another source case or vignette (`CaseInput.cross_check`), so an appendix is never reused across source cases. It can, however, appear in several cases of the same source case, for example a case with a lab appendix and one without. At send time the appendices are joined into one text by the recipe's `AppendixLayout`, which is frozen into the skeleton (see "Rendering and runtime keys").
 
 ### Request
-Request chunks fill typed slots, and "cross-component effects" happen only in pre-specified ways. The manifest owns this mechanics:
-  - output type injects guidance into the instructions;
-  - canonicalization, e.g. greedy sampling drops the seed, top_p, top_k and min_p.
-
-- **No validation retries.** Parsing moves to scoring; a run stores the raw completion, transport retries exist, are declared per run (`trial.py: Execution.retries`), and are counted per call (`ledger.py: Call.attempts`). (True for *parsing*).
+The request side is built in three layers. Researchers author chunks in the portal; a recipe selects one chunk per part; the compiler turns a recipe into a frozen skeleton, which is what trials and judges reference. Chunks affect each other only in two pre-specified ways, both owned by the manifest: the output chunk's guidance is appended to the instructions, and greedy sampling drops `top_p`, `top_k` and `min_p` (the seed is left out at send time). There are no validation retries: the run stores the raw completion and parsing belongs to scoring. Transport retries are a separate matter, declared per run (`Execution.retries`) and counted per call (`Call.attempts`).
 
 #### Chunks
-(list each chunk along with the special "cross-component effects" attached to them)
-`chunk.sampling`
-`chunk.reasoning`
-`chunk.passthrough`
+Each chunk is a component that fills one part of a recipe. None of them is a template: text is plain text, and the only runtime placeholders are the prompt's slots, filled by concatenation, so clinical text is never interpreted.
 
- - **Instructions** (`chunk.instructions`): *plain text*, **not a Jinja2 template**. The design avoids templating everywhere, so clinical text is never interpreted. The role is `system` or `developer`.
- - **FewShot** (`chunk.few_shot`): user/assistant example messages in plain text, placed between the instructions and the prompt.
- - **Prompt** (`chunk.prompt`): a list of segments, each a literal string or a slot.
-   - A generation prompt must contain the `case` slot exactly once and may contain `appendices` once.
-   - A judge prompt must contain `completion` and may use `case`, `appendices` and `expectation`.
-   - "A string or slot for JIT insertion" understates this.
-
- - **Output** (`chunk.output`): one of three contracts:
-   - `native`: `response_format` with a JSON schema;
-   - `tool`: one forced function call;
-   - `text`: optionally carrying a schema used only by scoring.
-
-    It also carries optional guidance, which is appended to the instructions.
-    There is **no coercion method**, because parsing belongs to the scorer.
-
- - **Sampling** (`chunk.sampling`): temperature, top-p/k, min-p, penalties, stop sequences, and `max_output_tokens`, sent as `max_completion_tokens` or `max_tokens`.
- - **Reasoning** (`chunk.reasoning`): effort, `thinking_token_budget` and `chat_template_kwargs`.
- - **Passthrough** (`chunk.passthrough`): engine-specific body keys. It may not set runtime or output keys, and it may not override a key another chunk sets.
+- **Instructions** (`chunk.instructions`) is plain text sent as the first message, with the role `system` or `developer`. Its cross-component effect is passive: the output chunk's guidance is appended to it, separated by a blank line, and becomes the whole message if there are no instructions.
+- **FewShot** (`chunk.few_shot`) is a list of plain-text user/assistant example messages, placed after the instructions and before the prompt.
+- **Prompt** (`chunk.prompt`) is the user message: a list of segments, each a literal string or a slot, with a purpose of `generation` or `judge`. A generation prompt must contain the `case` slot and may contain `appendices`. A judge prompt must contain `completion` and may contain `case`, `appendices` and `expectation`. No slot may appear twice, and the prompt's purpose must match the recipe's.
+- **Output** (`chunk.output`) declares where the answer goes, through one of three contracts. `native` sends a JSON schema as `response_format` (named `output`, strict). `tool` forces a single function call whose parameters are the schema. `text` constrains nothing and may carry a schema that only scoring uses. Its optional guidance is the chunk's cross-component effect: it is appended to the instructions. There is no coercion: parsing belongs to the scorer.
+- **Sampling** (`chunk.sampling`) holds temperature, top-p, top-k, min-p, the presence, frequency and repetition penalties, stop sequences and `max_output_tokens`, which is sent under `max_completion_tokens` (default) or `max_tokens`. Its cross-component effect is canonicalization: with temperature 0 it drops top-p, top-k and min-p, so equivalent greedy chunks share a digest, and at send time no seed is added.
+- **Reasoning** (`chunk.reasoning`) holds the reasoning effort (`none` to `high`), `thinking_token_budget` and `chat_template_kwargs`.
+- **Passthrough** (`chunk.passthrough`) holds engine-specific body keys. It may not set runtime keys or output keys, and compilation fails if it sets a key another chunk also produces.
 
 #### Recipe and compilation
-The chunks a skeleton was compiled from form a `Recipe`:
- - an optional reference each to instructions, few-shot, reasoning and passthrough;
- - required references to prompt, output and sampling;
- - a purpose;
- - an appendix layout.
-
-A recipe is not a component. It is stored in the `Compilation` record together with the compiler version (`request.py: Recipe`, `ledger.py: Compilation`). A trial references only the skeleton, so compiler code is not a factor.
+A recipe (`request.py: Recipe`) is not a component. It holds a purpose, an appendix layout, required references to a prompt, an output and a sampling chunk, and optional references to instructions, few-shot, reasoning and passthrough chunks. `compile_request` turns a recipe into a skeleton and fails on missing or wrongly typed chunks. The recipe is kept only in the `Compilation` record, next to the compiler version (see "Records"). Because a trial references the skeleton rather than the recipe, the compiler's code is not a factor.
 
 #### Skeleton
-Skeleton is the only derived component i.e. the only component the code produces itself (through `compile_request`).
-Is the result of compiling a recipe, and trials and judges reference it.
-- Requests are fully pre-rendered. The complete chat-completions body with runtime slots for the case. Slots are segment lists rather than templates, so clinical text is never accidentally modified.
+A skeleton (kind `skeleton`) is the frozen request, and the only component produced by code rather than people: `compile_request` builds it from a recipe, and trials and judges reference it. It is fully pre-rendered: the complete chat-completions body except for what is filled in at send time. It holds a purpose, the API (`chat.completions`), the messages as segment lists (so few-shot examples are already baked in as plain text), every other body key, the output contract and the appendix layout. Its validation repeats the chunks' rules: slots must suit the purpose, greedy sampling is canonicalized, a `native` contract needs `response_format` and no tools, a `tool` contract needs exactly one tool of the declared name plus `tool_choice`, and a `text` contract may set no output keys. For `native` and `tool`, the output schema is read from the body rather than stored twice.
 
- - A skeleton contains the messages as segment lists, every other body key, the output contract and the appendix layout.
- - At send time, `render` fills the slots and adds `model` (the engine digest for local engines), `seed` (unless greedy) and `return_token_ids`.
- - No chunk or skeleton may set `model`, `messages`, `seed`, `stream`, `n` or `return_token_ids` (`request.py: RUNTIME_KEYS`).
- - "Accidentally modified" → "never interpreted".
-
-#### Rendering
-## Runtime Keys
-To fill in: What `render` adds at send time, the keys no factor may set, greedy seed handling, and the appendix layout. Code: `request.py: render`, `RUNTIME_KEYS`.
-
-### Expectation
-Expectation schemas (from scorer developers) and expectations (from the portal), keyed by case including appendices; not sensitive; at most one per case in a scoring. Code: `scoring.py: ExpectationSchema`, `Expectation`.
-
-### Judge
-Judge-purpose skeletons and their slots (`completion`, `expectation`, `case`, `appendices`), engine, seeds, how views point at them, and the clearance hard block. Code: `scoring.py: Judge`, `request.py: SLOTS_BY_PURPOSE`.
-
-### Scoring
-A scoring (`scoring.py: Scoring`) is a scorer plus the list of expectations it scores against: at most one per case, all in the scorer's schema. Put that here; the bullets above belong to "Scorer".
-
- - a JSON pointer into the output;
- - a JSON pointer into the expectation;
- - a metric name, interpreted by the scorer's code;
- - optional judge and parameters.
-
-### Scorer
-- pinned code (`Code`: distribution, version, revision);
-- the expectation schema it consumes;
-- an ordered list of views;
-- ordered resource digests (synonym tables, ontology releases), referred to by position;
-- free parameters.
-Scorers are pinned code and resources (synonym tables, ontology releases).
-
-- Each scorer declares the expectation schema it consumes.
-- **Views** reach into the output and expectation schemas and score parts of them.
-- **Outputs that fail validation are scored best-effort.** parsing is the scorer's job, not the manifest's.
-- **Judges** are sent as judge-purpose skeletons through our own runner. Their scores are best-effort reproducible.
-
-#### Judges
- - A judge (`scoring.py: Judge`) is a judge-purpose skeleton, an engine and its own seeds. A view points at the judge it uses.
- - Judge calls are recorded per score item (`ledger.py: JudgeCall`), with the index of the seed used.
- - Judge engines are covered by the clearance hard block.
+#### Rendering and runtime keys
+`render(skeleton, model, seed, fills)` produces the wire body. It concatenates each message's segments, replacing each slot with its fill, then adds `model` (the engine digest for local engines, the requested model for remote ones), the messages and the skeleton's body. It adds `seed` only when the skeleton is not greedy, and adds `return_token_ids: true` so the response carries the prompt's token ids (see "Runs"). The appendix fill is produced beforehand by the layout, which puts text before, between and after the appendices (by default a blank line before and between, nothing after) and yields an empty string when there are none. The keys `render` owns (`model`, `messages`, `seed`, `stream`, `n` and `return_token_ids`, listed in `request.py: RUNTIME_KEYS`) may not be set by any chunk, skeleton or canary.
 
 ### Engine
-Chat template
-- Local engines must declare a hash of their chat-template file.
-- Templates that read the current date are flagged.
+An engine is where requests are sent. Ops author engines; researchers pick them for trials and judges.
 
-Model artifacts... Repo, revision (a commit, or it's linted) and per-file sha256; reused across engines.
+A **model artifact** (kind `model`) pins a model by its repo, a revision (linted unless it is a commit) and the sha256 of every file, collected by an import script. It is its own component, so several engines can share it.
 
-#### Remote engines
-Declare the endpoint and the requested model. Attest the returned identifiers. Run canary probes at the start and end of each run.
-`base_url`, the requested `model` and `api` (`openai.chat`). Its chat template is not pinned. "Attest the returned identifiers": only the returned `model` is checked today. "Canary probes at the start and end": canaries apply to any engine and are planned per run, so this is a runner rule, not a remote-engine property.
+A **local engine** (kind `engine.local`) is a vLLM server we run. It declares its hardware (GPU, compute capability, VRAM, driver) and runtime (`vllm`, its version, the Nix closure path), references a model artifact, and requires the digest of its chat-template file. Its raw `argv` and `env` are passed to vLLM, except the flags the start-up script owns (`--model`, `--served-model-name`, `--chat-template`, `--tokenizer`, `--revision`), which they may not set. Knowledge that changes between vLLM versions lives in lints rather than in these fields, and batch invariance is declared through `env` (for example `VLLM_BATCH_INVARIANT=1`). The served model name is the engine's digest, so every response names the cage it came from. `check_chat_template` warns when the template file doesn't match the declared digest or reads the current date. Hardware and runtime are part of the engine rather than components of their own. They can therefore not be listed, picked or reused as standalone rows, for example in the portal or as Postgres foreign keys; the same GPU or closure is repeated in every engine that uses it, and asking which engines share a closure means scanning engines instead of following a reference.
 
-Note: `Hardware` and `Runtime` are properties of `LocalEngine`, so they can't be listed, picked or reused as standalone rows, for example in the UI or as Postgres foreign keys. The same GPU or closure is repeated in every engine that uses it. Asking "which engines share this closure" means scanning engines instead of following a reference.
+A **remote engine** (kind `engine.remote`) is an API we don't control. It declares only the API (`openai.chat`), the `base_url` and the requested model; its chat template is not pinned. Of the identifiers it returns, only the model name is checked today (see `check_run`). Canary probes at the start and end of a run apply to any engine and are planned per run (see "Runs"), so they are not a property of remote engines.
 
-A local engine consists of:
-- **Hardware:** GPU, compute capability, VRAM, driver.
-- **Runtime:** `vllm`, its version, the Nix closure path.
-- **A reference to a `ModelArtifact`:** repo, revision and the sha256 of every file. This is its own component, reusable across engines; it may deserve its own subsection.
-- **A required chat-template file digest.** Templates that read the current date are flagged (`check_chat_template`).
-- **Raw `argv` and `env`,** with the start-up-script-owned flags forbidden. Version-specific knowledge lives in lints, not in the data layer.
-- **The served model name,** which is the engine's digest.
+### Trial
+A trial (kind `trial`) is a scientific intent, authored by researchers in the portal: a generation skeleton, an engine, the cases, the text-cleanup steps and the seeds. Cases and seeds are listed without duplicates. The seeds are explicit and user-defined; the portal can propose random 31-bit ones (`suggest_seeds`), which users are free to override. Each seed defines one replicate, identified by its index. Text cleanup is an ordered list of operations from a closed set in which each name pins one behavior (`newlines.lf@1`, `unicode.nfc@1`, `strip@1`, `blank_lines.collapse@1`; a changed behavior gets a new name), and it applies to the vignette only. Execution settings (order, concurrency, timeout, retries) are not part of the trial, so re-running a trial means a new run of the same digest. With greedy sampling no seed is sent, but the seeds still count toward the trial's digest (see "Possible design issues").
 
-Batch invariance is declared through `env` (e.g. `VLLM_BATCH_INVARIANT=1`).
+### Expectation
+An expectation schema (kind `expectation_schema`) is a JSON Schema published by scorer developers. It describes the reference data a scorer consumes. An expectation (kind `expectation`) is that reference data for one case, authored in the portal: the case's digest, the schema's digest and the data. Because the key is the case digest, appendices included, the same source case can have different expectations under different appendices. Expectations are not sensitive. The manifest does not validate the data against its schema; the scorer does.
 
-### Trials
-A trial is a scientific intent: skeleton × engine × cases × normalization × seeds.
-- **Seeds are explicit and user-defined.** The UI suggests random ones that users are free to override. The helper `trial.py: suggest_seeds` proposes 31-bit random seeds.
+### Scorer
+A scorer (kind `scorer`) is pinned scoring code, authored by developers. It declares its code (`Code`: distribution, version, revision), the expectation schema it consumes, an ordered list of views, ordered resource digests (such as synonym tables or ontology releases) and free parameters. Views and resources are referred to by position; their labels belong to bookkeeping. A view scores one part of an output against one part of an expectation: it holds a JSON pointer into each, a metric name that only the scorer's code interprets, optional parameters, and optionally the judge it uses. Parsing is the scorer's job, not the manifest's: outputs that fail validation are scored best-effort.
 
- - The skeleton must be a generation skeleton.
- - Seeds are explicit and duplicate-free. A replicate is identified by its seed's index. The portal suggests random seeds (`suggest_seeds`).
- - Normalization is an ordered list of pinned operations (see "Case").
- - Execution settings are not part of the trial.
- - "Re-running a trial" means a new run of the same trial digest.
+### Judge
+A judge (kind `judge`) is an LLM used as a metric, authored by researchers: a judge-purpose skeleton, an engine and its own seeds. A judge skeleton must contain the `completion` slot and may use `expectation`, `case` and `appendices`. Judge requests go through the same rendering as generation requests, once per seed, and are recorded per score item (`JudgeCall`). Their scores are best-effort reproducible. Because a judge prompt can contain case text, judge engines fall under the same clearance hard block as generation engines.
 
-With greedy sampling the seed isn't sent, but they still count toward the trial's digest (see "Possible design issues").
+### Scoring
+A scoring (kind `scoring`) is what a score applies, authored by researchers: a scorer plus the expectations it scores against. The expectations must all be in the scorer's schema, and a case may have at most one. The judges a scoring uses are those named by its scorer's views.
+
+### Canary set
+A canary set (kind `canary_set`) is a list of fixed, non-sensitive probe requests, authored by ops or developers. Each canary holds literal messages, body keys (no runtime keys) and an optional seed. A run names the canary set it uses (see "Runs"). Canary sets are components because canary drift is found by comparing the same set across runs.
 
 ## Records
-### Verification
-- Requests ask for token IDs, and each item stores a fingerprint of the prompt tokens so runs can be compared.
-  - CanarySet: A set of canary probe requests to detect changes in the model.
-- Records (runs, scores and compilations) are a separate ledger outside of the component graph that reference components by digests. It is written as a row as it happens:
-  - a `RunStarted` row;
-  - item rows and canary-call rows;
-  - a `RunFinished` row carrying the end time, the run's warnings and a seal (a hash over the started row and all item rows and all canary-call rows).
-  - **No repeated keys:** item rows are keyed by (case, replicate index) and never repeat the engine or the seed. Checks against the trial reject items the trial does not contain.
-  - **Rows changed after sealing** produce a warning, in keeping with "warnings, not crashes".
-
-Chat template and prompt-token checks:
-- Local engines must declare a hash of their chat-template file.
-- Templates that read the current date are flagged.
-- Requests ask for token IDs, and each item stores a fingerprint of the prompt tokens so runs can be compared.
-- Requests are fully pre-rendered. The complete chat-completions body with runtime slots for the case. Slots are segment lists rather than templates, so clinical text is never accidentally modified.
-
-A verification plan is declared in the run's first log row (`RunStarted`, next to the trial, execution settings and the canary set) and when canaries run. It is declared before the run and never changes afterwards, but it is not part of trial identity. "Run it exactly like run X" means copying X's first row. Canary sets stay components, because canary drift is found by comparing the same set across runs.
-- canary calls must be planned: their phase is in `verify_at`, and their probe index exists in the canary set;
-- a run without a canary set may not contain canary calls (`ledger.py: check_run`).
-- the canary set, a component: literal, non-sensitive probe requests, each with an optional seed;
-- the plan in `RunStarted`;
-- the calls.
-Canary sets, the per-run plan, canary calls, and the drift checks still to be built.
+Records are the ledger: what was observed while compiling, running and scoring. They are not components and not part of the component graph; they reference components by digest and each other by id. Every record table is append-only. A run or a score is a stage log (a started row, item rows and a finished row), and a new stage is a new row type, not a new table. Records that hold completions are case-derived (`Record.case_derived`), which is what the sensitivity policy acts on.
 
 ### Runs
-**Execution is declared per run in `RunStarted`**: order (case-major, replicate-major, or shuffled with a seed), concurrency, timeout and retries. If batch invariance is declared in the engine's environment, re-runs may be bitwise identical. Without it the run falls in the best-effort tier. Canaries, prompt-token fingerprints and comparing completions between runs of the same trial show which case applies. Timeouts and retries never change a successful output. The attempt count is recorded per call.
+A run is written by the runner, one row at a time as it happens. **`RunStarted`** opens it with the run id, the time, the rig's code version, the trial, the execution settings, the canary set and when canaries run (`verify_at`, by default at start and end). This row is the run's verification plan. It is declared before the first request and never changes, but it is not part of the trial's identity, so running exactly like run X means copying X's first row. The execution settings (`Execution`) are the order (case-major, replicate-major, or shuffled with a seed), concurrency, timeout and retries. Order and concurrency affect outputs only on engines that are not batch invariant: with batch invariance declared in the engine's `env`, re-runs may be bitwise identical, and otherwise the run falls in the best-effort tier. Timeouts and retries never change a successful output. Neither case drift (comparing the observed vignette fingerprint with the case's) nor canary drift (comparing canary outputs between phases or runs) is checked yet; see "Possible design issues".
 
-- `RunStarted` carries the run id, time, rig code version, trial, execution settings, canary set and `verify_at`.
-- Each `RunItem` carries the item key, the *observed* vignette fingerprint (for drift) and a `Call`.
-- `RunFinished` carries the time, findings and seal.
-- Stages must follow the order `started` → `finished`, and every row must belong to the same run.
-- A new stage is a new row type, not a new table.
-**A Call** is shared by run items, canary calls and judge calls:
-- the fingerprint of the wire body;
-- start and end times, HTTP status;
-- the raw response with `prompt_token_ids` removed, plus the prompt tokens' fingerprint;
-  - attempts;
-  - error.
+Each **`RunItem`** is keyed by (case, replicate index), never repeating the engine or seed, and holds the vignette fingerprint observed at fetch time, for drift detection, and a `Call`. Each **`CanaryCall`** holds the phase (`start` or `end`), the canary's position in the set, and a `Call`. **`RunFinished`** closes the log with the time, the run's findings and the seal: the sha256 over the started row, all item rows and all canary-call rows.
+
+A **`Call`** records one exchange and is shared by run items, canary calls and judge calls. It holds the fingerprint of the wire body, the start and end times, the HTTP status, the number of attempts, any error, and the raw response. The response is stored without its `prompt_token_ids`: those are the token ids the engine actually read after applying its chat template, and since they encode the case text, only their fingerprint is kept (`fingerprint_prompt_tokens`). Comparing these fingerprints between runs of the same trial (`compare_prompt_tokens`) shows whether the engine read the same tokens, without storing case text.
+
+`Run` reassembles the log and rejects stages out of order (`started` → `finished`) or rows from another run; `Run.finish()` produces the finished row. `check_run` compares the run with its trial. It raises for items the trial does not contain, duplicate items, and canary calls outside the plan (a phase not in `verify_at`, a position not in the set, or any canary call when no set is named). It warns when a finished run is missing items, when the engine returned a different model name than declared, when items have no prompt-token fingerprint, and when rows changed after sealing.
 
 ### Scores
-- `ScoreStarted`: score id, run id, time, rig code, observed scorer code, scoring.
-- `ScoreItem`: item key, view index, value, detail, judge calls.
-- `ScoreFinished`: time, findings, seal.
-- Score items must refer to items in the run and to views that exist; judge calls must use a judge from the scorer's views and a seed index in range (`ledger.py: check_score`).
+A score is written by the scorer in the same way. **`ScoreStarted`** holds the score id, the run it scores, the time, the rig's code version, the scorer code actually running and the scoring. Each **`ScoreItem`** holds a run item's key, a view's position, the value (a number, or empty if the item couldn't be scored), optional detail and the judge calls made for it. A **`JudgeCall`** names the judge, the index of the seed used and the `Call`. **`ScoreFinished`** closes the log with the time, the findings and the seal over the started row and all item rows. `check_score` raises when the score belongs to another run, a view position doesn't exist, an item isn't in the run, or a judge call uses a judge the scorer's views don't name or a seed index out of range. It warns when rows changed after sealing.
 
 ### Compilation
-
-A compilation (`ledger.py: Compilation`) is one row: a recipe, the skeleton it produced, the compiler's code version and the time. It is the lineage from portal chunks to the frozen request. Recompiling with a newer compiler adds a new row, not a new factor. It is not case-derived.
-
-Run and score records are case-derived, because they hold completions. Compilations are not (`ledger.py: Record.case_derived`).
+A compilation (`ledger.py: Compilation`) is a single row written by the compiler: a recipe, the skeleton it produced, the compiler's code version and the time. It is the lineage from portal chunks to the frozen request; recompiling with a newer compiler adds a new row, not a new factor. It holds no case text and is not case-derived.
 
 ## Linting
 Fill in: a model revision that isn't a commit, a closure that isn't a Nix store path, scorer code without a revision, and the vLLM 0.24 temperature clamp. Lint rules are keyed by the declared runtime version and kept out of the data layer. Code: `lint.py`.
@@ -475,12 +342,17 @@ A fake vLLM based on 0.24.0 should pin both (AGENTS.md asks for one; none exists
 - **Records aren't in bundles.** How the ledger is delivered together with the cage isn't specified.
 - **Metric names are free strings.** `View.metric` is only meaningful to the scorer code that `Scorer.code` pins; nothing checks that the code knows the name.
 - **Vignette fingerprint: raw or normalized?** See "Case".
-- No helper prepares a case, i.e. steps 8–11 (fetch, drift check, cleanup, joining appendices). The old code had one (prepare_case), and it's worth adding back.
+- No helper prepares a case, i.e. per-item steps 2–5 (fetch, drift check, cleanup, joining appendices). The old code had one (prepare_case), and it's worth adding back.
 - Whether text cleanup should apply to appendices too hasn't been decided.
 - The request fingerprint (Call.request) is never defined as "the fingerprint of the rendered body's canonical bytes". A helper would pin that down.
-- Where the model name comes from (step 12) is repeated in check_run, so it belongs on the engine as one method.
+- Where the model name comes from (per-item step 6) is repeated in check_run, so it belongs on the engine as one method.
 - Nothing compares declared and observed scorer code. ScoreStarted.scorer_code is never checked against Scorer.code, so a mismatch goes unnoticed.
 - Missing expectations aren't flagged. Neither the scoring nor check_score warns when a run's case has no expectation, or when a scored item has no expectation behind it.
 - Judge calls aren't attested. Their returned model and prompt-token fingerprint aren't checked the way run items are.
 - Greedy judges make extra seeds pointless. The test's judge skeleton is greedy, so no seed is sent. Several judge seeds would then send identical requests.
 - Case-slot judges need the vignette again. A judge skeleton that uses the case slot makes the scorer fetch the sensitive vignette and redo the trial's cleanup steps. No helper exists for either.
+- No helper turns a canary into a request body (model name, seed, `return_token_ids`).
+- `Scorer.resources` are called digests but typed as plain strings, so nothing checks their form.
+- The closed set of text-cleanup operations has four members. The old code also had non-breaking spaces to spaces, zero-width character removal, Unicode line breaks to newlines and trailing-whitespace stripping; vignettes may need some of them.
+- `Hardware` has no GPU count, so tensor-parallel engines can't be told apart by hardware (the old code had `gpu_count`).
+- The engine's `system_fingerprint` is kept in each call's raw response (`Call.system_fingerprint`) but never compared between calls or runs.
