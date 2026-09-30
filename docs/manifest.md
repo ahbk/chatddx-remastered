@@ -511,6 +511,18 @@ Structurally malformed input raises instead. Constructing a component, canary or
 
 The one hard block is clearance: sending case-derived content to an engine that isn't cleared, judge engines included, must be refused. Clearance is bookkeeping data and the manifest does not enforce it; the runner must.
 
+## vLLM 0.24 assumptions (for the fake vLLM)
+1. ChatCompletionResponse.prompt_token_ids is a top-level list[int] | None, set only when request.return_token_ids is true:
+  - https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/chat_completion/protocol.py#L129
+  - https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/chat_completion/serving.py#L1070-L1072
+
+2. 0 < temperature < 1e-2 is logged and raised to 1e-2 (_MAX_TEMP):
+  - https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/sampling_params.py#L428-L438
+
+3. Extra fact: greedy is temperature < 1e-5, checked after the clamp, so only an exact 0 is greedy; that matches Skeleton.greedy.
+
+Fake vLLM based on 0.24.0 should pin both
+
 ---
 
 ## Possible design issues
@@ -526,11 +538,6 @@ A policy for such case-derived content has not settled:
 ### Greedy sampling and seeds:
 the seed isn't sent, but the trial's seeds still count toward its hash, so two otherwise identical greedy trials differ only in digest.
 
-### Unverified vLLM 0.24 assumptions:
-- with `return_token_ids: true`, the response carries a top-level `prompt_token_ids` list;
-- temperatures in (0, 0.01) are raised to 0.01.
-A fake vLLM based on 0.24.0 should pin both (AGENTS.md asks for one; none exists yet).
-
 ### Misc
 - **Case drift is not checked.** The observed vignette fingerprint is recorded per item but never compared with the case's.
 - **Canary drift is not checked.** No function compares canary outputs between phases or between runs. The old code had `compare_canaries`.
@@ -539,9 +546,7 @@ A fake vLLM based on 0.24.0 should pin both (AGENTS.md asks for one; none exists
 - **Re-binding after vignette drift.** A changed vignette orphans its appendices and expectations; who re-binds them?
 - **Records aren't in bundles.** How the ledger is delivered together with the cage isn't specified.
 - **Metric names are free strings.** `View.metric` is only meaningful to the scorer code that `Scorer.code` pins; nothing checks that the code knows the name.
-- **Vignette fingerprint: raw or normalized?** See "Case".
 - No helper prepares a case, i.e. per-item steps 2–5 (fetch, drift check, cleanup, joining appendices). The old code had one (prepare_case), and it's worth adding back.
-- Whether text cleanup should apply to appendices too hasn't been decided.
 - The request fingerprint (Call.request) is never defined as "the fingerprint of the rendered body's canonical bytes". A helper would pin that down.
 - Where the model name comes from (per-item step 6) is repeated in check_run, so it belongs on the engine as one method.
 - Nothing compares declared and observed scorer code. ScoreStarted.scorer_code is never checked against Scorer.code, so a mismatch goes unnoticed.
@@ -556,13 +561,3 @@ A fake vLLM based on 0.24.0 should pin both (AGENTS.md asks for one; none exists
 - The engine's `system_fingerprint` is kept in each call's raw response (`Call.system_fingerprint`) but never compared between calls or runs.
 
 ## Proposed amendments
-
-### Triage of "Possible design issues" before Postgres
-- name: Claude (agent)
-- datetime: 2026-09-30
-- reason: the list was triaged against the code at 034193f. Three new issues block Postgres: run and score seals depend on item order, on non-canonical dumps (defaults included) and on timezone offsets, so rows read back from Postgres can fail `ledger.seal`. The two vLLM 0.24 assumptions are confirmed at tag v0.24.0, so that section can be closed. Full triage, with recommendations per item: `agents/manifest-triage.md`.
-- permalinks:
-  - https://github.com/ahbk/chatddx-remastered/blob/034193f742e0fe0eac9da5b02494923b1920ef22/src/chatddx/core/manifest/ledger.py#L135-L144
-  - https://github.com/ahbk/chatddx-remastered/blob/034193f742e0fe0eac9da5b02494923b1920ef22/src/chatddx/core/manifest/ledger.py#L210-L217
-  - https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/chat_completion/protocol.py#L129
-  - https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/sampling_params.py#L428-L438
