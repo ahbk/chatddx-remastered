@@ -24,6 +24,14 @@ def migrations() -> list[Migration]:
     return found
 
 
+def pending(conn: psycopg.Connection, tier: int = TOP_TIER) -> list[Migration]:
+    applied: set[str] = set()
+    row = conn.execute("SELECT to_regclass('public.migration')").fetchone()
+    if row is not None and row[0] is not None:
+        applied = {n for (n,) in conn.execute("SELECT name FROM public.migration")}
+    return [m for m in migrations() if m.tier <= tier and m.name not in applied]
+
+
 def migrate(conn: psycopg.Connection, tier: int = TOP_TIER) -> list[str]:
     with conn.transaction():
         _ = conn.execute(
@@ -35,13 +43,9 @@ def migrate(conn: psycopg.Connection, tier: int = TOP_TIER) -> list[str]:
             )
             """
         )
-        applied = {
-            name for (name,) in conn.execute("SELECT name FROM public.migration")
-        }
+        todo = pending(conn, tier)
     done: list[str] = []
-    for m in migrations():
-        if m.tier > tier or m.name in applied:
-            continue
+    for m in todo:
         with conn.transaction():
             _ = conn.execute(cast(LiteralString, m.path.read_text()))
             _ = conn.execute(

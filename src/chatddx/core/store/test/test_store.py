@@ -2,6 +2,7 @@ from uuid import uuid4
 
 import pytest
 from psycopg import errors
+from psycopg.pq import TransactionStatus
 
 from chatddx.core.manifest.bundle import Registry
 from chatddx.core.manifest.engine import LocalEngine
@@ -49,6 +50,7 @@ def stored_world(conn: Connection) -> tuple[Store, Registry, dict[str, str]]:
 
 def test_migrations_apply_up_to_a_tier(empty: Connection) -> None:
     assert migrate(empty, tier=0) == ["0001-t0-tables"]
+    assert empty.info.transaction_status == TransactionStatus.IDLE
     assert migrate(empty, tier=0) == []
     with empty.transaction():
         _ = empty.execute(
@@ -75,15 +77,15 @@ def test_components_roundtrip(conn: Connection) -> None:
         _ = store.load([missing])
 
 
-def test_database_guards_components(conn: Connection) -> None:
+def test_database_guards_components(conn: Connection, owner: Connection) -> None:
     _, reg, ids = stored_world(conn)
     trial = ids["trial"]
     with pytest.raises(errors.RaiseException, match="insert-only"):
-        _ = conn.execute("UPDATE factor.component SET v = 2")
-    conn.rollback()
+        _ = owner.execute("UPDATE factor.component SET v = 2")
+    owner.rollback()
     with pytest.raises(errors.RaiseException, match="insert-only"):
-        _ = conn.execute("TRUNCATE factor.component CASCADE")
-    conn.rollback()
+        _ = owner.execute("TRUNCATE factor.component CASCADE")
+    owner.rollback()
     with pytest.raises(errors.CheckViolation):
         _ = conn.execute(
             "INSERT INTO factor.component VALUES (%s, 'trial', 1, %s, %s::jsonb)",
@@ -219,13 +221,16 @@ def test_compilations_are_idempotent(conn: Connection) -> None:
 
 def test_grants(conn: Connection) -> None:
     store, _, ids = stored_world(conn)
-    with conn.transaction():
-        _ = conn.execute("SET LOCAL ROLE chatddx_writer")
-        store.append(RunStarted(run=uuid4(), at=NOW, rig=RIG, trial=ids["trial"]))
-        with pytest.raises(errors.InsufficientPrivilege), conn.transaction():
-            _ = conn.execute("UPDATE ledger.run_stage SET stage = stage")
-    with conn.transaction():
-        _ = conn.execute("SET LOCAL ROLE chatddx_reader")
-        assert conn.execute("SELECT count(*) FROM factor.component").fetchone()
-        with pytest.raises(errors.InsufficientPrivilege), conn.transaction():
-            _ = conn.execute("SELECT * FROM ledger.run_stage")
+    store.append(RunStarted(run=uuid4(), at=NOW, rig=RIG, trial=ids["trial"]))
+    with pytest.raises(errors.InsufficientPrivilege), conn.transaction():
+        _ = conn.execute("UPDATE ledger.run_stage SET stage = stage")
+    with pytest.raises(errors.InsufficientPrivilege), conn.transaction():
+        _ = conn.execute("DELETE FROM factor.component")
+    privileges = conn.execute(
+        """
+        SELECT
+            has_table_privilege('chatddx_reader', 'factor.component', 'SELECT'),
+            has_table_privilege('chatddx_reader', 'ledger.run_stage', 'SELECT')
+        """
+    ).fetchone()
+    assert privileges == (True, False)

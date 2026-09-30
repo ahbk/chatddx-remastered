@@ -98,8 +98,3 @@ Also decide before the first rows:
 Each of these is a defaulted field, a new `Literal` member or new code, so canonical form keeps old digests:
 `Hardware.gpu_count` (default 1), the extra cleanup ops (`nbsp`, zero-width, Unicode line breaks, trailing
 whitespace), checking metric names against scorer code, comparing `system_fingerprint`, records in bundles.
-
-## Postgres (chatddx.core.store)
-Decisions by the user: psycopg 3 + plain SQL migrations, one component table + ref edges, three integrity tiers as
-separate migrations (`NNNN-tK-name.sql`, `migrate(conn, tier)` applies up to tier K), DB tests fail without Postgres.
-Open: the portal/bookkeeping layer, async access, per-kind read-only views for a future ORM.

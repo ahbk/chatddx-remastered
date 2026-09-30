@@ -10,7 +10,7 @@ dependencies = [
 ]
 
 [project.scripts]
-chatddx = "chatddx:hello"
+chatddx = "chatddx.cli:main"
 
 [dependency-groups]
 dev = [

@@ -18,3 +18,8 @@ GRANT SELECT, INSERT ON ALL TABLES IN SCHEMA factor, ledger TO chatddx_writer;
 
 GRANT USAGE ON SCHEMA factor TO chatddx_reader;
 GRANT SELECT ON ALL TABLES IN SCHEMA factor TO chatddx_reader;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA factor, ledger
+    GRANT SELECT, INSERT ON TABLES TO chatddx_writer;
+ALTER DEFAULT PRIVILEGES IN SCHEMA factor
+    GRANT SELECT ON TABLES TO chatddx_reader;

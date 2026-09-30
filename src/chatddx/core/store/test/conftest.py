@@ -15,27 +15,27 @@ def create_database(template: str | None = None) -> str:
     create = sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name))
     if template is not None:
         create += sql.SQL(" TEMPLATE {}").format(sql.Identifier(template))
-    with psycopg.connect(settings.database(), autocommit=True) as admin:
+    with psycopg.connect(settings.database(owner=True), autocommit=True) as admin:
         _ = admin.execute(create)
     return name
 
 
 def drop_database(name: str) -> None:
-    with psycopg.connect(settings.database(), autocommit=True) as admin:
+    with psycopg.connect(settings.database(owner=True), autocommit=True) as admin:
         _ = admin.execute(
             sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(name))
         )
 
 
-def connect(name: str) -> Connection:
-    return psycopg.connect(settings.database(), dbname=name)
+def connect(name: str, owner: bool = False) -> Connection:
+    return psycopg.connect(settings.database(owner), dbname=name)
 
 
 @pytest.fixture(scope="session")
 def migrated() -> Iterator[str]:
     name = create_database()
     try:
-        with connect(name) as conn:
+        with connect(name, owner=True) as conn:
             _ = migrate(conn)
         yield name
     finally:
@@ -43,20 +43,36 @@ def migrated() -> Iterator[str]:
 
 
 @pytest.fixture
-def conn(migrated: str) -> Iterator[Connection]:
+def db(migrated: str) -> Iterator[str]:
     name = create_database(template=migrated)
     try:
-        with connect(name) as c:
-            yield c
+        yield name
     finally:
         drop_database(name)
 
 
 @pytest.fixture
-def empty() -> Iterator[Connection]:
+def conn(db: str) -> Iterator[Connection]:
+    with connect(db) as c:
+        yield c
+
+
+@pytest.fixture
+def owner(db: str) -> Iterator[Connection]:
+    with connect(db, owner=True) as c:
+        yield c
+
+
+@pytest.fixture
+def empty_db() -> Iterator[str]:
     name = create_database()
     try:
-        with connect(name) as c:
-            yield c
+        yield name
     finally:
         drop_database(name)
+
+
+@pytest.fixture
+def empty(empty_db: str) -> Iterator[Connection]:
+    with connect(empty_db, owner=True) as c:
+        yield c
