@@ -1,6 +1,6 @@
 import hashlib
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Literal
 from uuid import uuid4
 
@@ -44,6 +44,7 @@ from chatddx.core.manifest.ledger import (
     check_score,
     compare_prompt_tokens,
     fingerprint_prompt_tokens,
+    fingerprint_request,
 )
 from chatddx.core.manifest.lint import lint
 from chatddx.core.manifest.request import (
@@ -533,6 +534,46 @@ def test_run_and_score_checks(reg: Registry) -> None:
         )
     with pytest.raises(StructuralError, match="view 2 is out of range"):
         _ = check_score(score(ok.model_copy(update={"view": 2})), run, reg)
+
+
+def test_seal_survives_a_storage_roundtrip() -> None:
+    run_id = uuid4()
+    local = datetime(2026, 9, 29, 2, tzinfo=timezone(timedelta(hours=2)))
+    c = Call(request=fp("body"), started_at=local, finished_at=local)
+    started = RunStarted(run=run_id, at=local, rig=RIG, trial="sha256:" + "0" * 64)
+    items = tuple(
+        RunItem(
+            run=run_id,
+            key=ItemKey(case="sha256:" + d * 64, replicate=r),
+            vignette=fp("v"),
+            call=c,
+        )
+        for d in "12"
+        for r in range(2)
+    )
+    canaries = tuple(
+        CanaryCall(run=run_id, phase=p, probe=0, call=c) for p in ("start", "end")
+    )
+    run = Run(stages=(started,), items=items, canaries=canaries)
+    assert started.at == NOW and started.at.utcoffset() == timedelta(0)
+
+    stored = Run(
+        stages=(RunStarted.model_validate_json(started.model_dump_json()),),
+        items=tuple(
+            RunItem.model_validate_json(i.model_dump_json()) for i in reversed(items)
+        ),
+        canaries=canaries[::-1],
+    )
+    assert stored.seal() == run.seal()
+    assert "attempts" not in json.dumps(
+        items[0].model_dump(mode="json", context={"canonical": True})
+    )
+
+
+def test_request_fingerprint_is_over_canonical_bytes() -> None:
+    a = fingerprint_request({"model": "m", "messages": [], "temperature": 0})
+    b = fingerprint_request({"temperature": 0, "messages": [], "model": "m"})
+    assert a == b == Fingerprint.of(b'{"messages":[],"model":"m","temperature":0}')
 
 
 def test_remote_engine_identity() -> None:
