@@ -561,3 +561,7 @@ the seed isn't sent, but the trial's seeds still count toward its hash, so two o
 - The engine's `system_fingerprint` is kept in each call's raw response (`Call.system_fingerprint`) but never compared between calls or runs.
 
 ## Proposed amendments
+
+- CHANGE: in "Records", state that a record is stored in its canonical form (defaults omitted, `stage` kept, plus the record type's schema version `v`, bumped under the same rule as components), and that `Record.parse` refuses a row whose `v` differs. Replace "the serialized record in a `payload` column" with "the record's canonical bytes (`Record.canonical`) in a `payload` column". Source: src/chatddx/core/manifest/ledger.py:38-66
+- CHANGE: in "RunFinished" and "ScoreFinished", define the seal as the sha256 over the canonical started row and the canonical item rows sorted by their bytes, so it doesn't depend on the order rows are read back in. Record timestamps are normalized to UTC. Source: src/chatddx/core/manifest/ledger.py:156-164, src/chatddx/core/manifest/ledger.py:30-35
+- REMOVE: from "Possible design issues", the item "The request fingerprint (Call.request) is never defined": `fingerprint_request` defines it over the body's canonical bytes. Source: src/chatddx/core/manifest/ledger.py (`fingerprint_request`)

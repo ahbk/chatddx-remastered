@@ -558,16 +558,23 @@ def test_seal_survives_a_storage_roundtrip() -> None:
     assert started.at == NOW and started.at.utcoffset() == timedelta(0)
 
     stored = Run(
-        stages=(RunStarted.model_validate_json(started.model_dump_json()),),
-        items=tuple(
-            RunItem.model_validate_json(i.model_dump_json()) for i in reversed(items)
-        ),
-        canaries=canaries[::-1],
+        stages=(RunStarted.parse(started.canonical),),
+        items=tuple(RunItem.parse(i.canonical) for i in reversed(items)),
+        canaries=tuple(CanaryCall.parse(c.canonical) for c in reversed(canaries)),
     )
     assert stored.seal() == run.seal()
-    assert "attempts" not in json.dumps(
-        items[0].model_dump(mode="json", context={"canonical": True})
-    )
+    assert "attempts" not in json.loads(items[0].canonical)["call"]
+
+
+def test_records_carry_their_schema_version() -> None:
+    started = RunStarted(run=uuid4(), at=NOW, rig=RIG, trial="sha256:" + "0" * 64)
+    doc = json.loads(started.canonical)
+    assert doc["v"] == 1 and doc["stage"] == "started"
+    doc["v"] = 2
+    with pytest.raises(StructuralError, match="RunStarted v2 is not readable by v1"):
+        _ = RunStarted.parse(json.dumps(doc))
+    with pytest.raises(StructuralError, match="not a JSON object"):
+        _ = RunStarted.parse("[]")
 
 
 def test_request_fingerprint_is_over_canonical_bytes() -> None:

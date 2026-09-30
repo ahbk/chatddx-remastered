@@ -1,6 +1,7 @@
+import json
 from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
-from typing import Annotated, ClassVar, Literal, override
+from typing import Annotated, ClassVar, Literal, Self, cast, override
 from uuid import UUID
 
 from pydantic import AfterValidator, AwareDatetime, Field, JsonValue, model_validator
@@ -36,6 +37,33 @@ UtcDatetime = Annotated[AwareDatetime, AfterValidator(_utc)]
 
 class Record(Frozen):
     case_derived: ClassVar[bool] = True
+    # Bump when an existing field's meaning or default changes; additive fields don't.
+    schema_version: ClassVar[int] = 1
+
+    def canonical_doc(self) -> dict[str, JsonValue]:
+        doc = cast(
+            dict[str, JsonValue],
+            self.model_dump(mode="json", context={"canonical": True}),
+        )
+        doc["v"] = type(self).schema_version
+        return doc
+
+    @property
+    def canonical(self) -> bytes:
+        return canonical_bytes(self.canonical_doc())
+
+    @classmethod
+    def parse(cls, data: bytes | str) -> Self:
+        loaded: object = json.loads(data)
+        if not isinstance(loaded, dict):
+            raise StructuralError(f"{cls.__name__} is not a JSON object")
+        doc = cast(dict[str, object], loaded)
+        v = doc.pop("v", None)
+        if v != cls.schema_version:
+            raise StructuralError(
+                f"{cls.__name__} v{v} is not readable by v{cls.schema_version}"
+            )
+        return cls.model_validate(doc)
 
 
 class Call(Frozen):
@@ -125,18 +153,14 @@ class CanaryCall(Record):
     call: Call
 
 
-def _canonical(row: Frozen) -> JsonValue:
-    return row.model_dump(mode="json", context={"canonical": True})
-
-
 # Canonical rows keep old seals valid when a defaulted field is added, and sorting
 # makes the seal independent of the order storage returns rows in.
 def _seal(started: Record, **rows: Iterable[Record]) -> str:
     doc: dict[str, JsonValue] = {
-        name: sorted((_canonical(r) for r in group), key=canonical_bytes)
+        name: sorted((r.canonical_doc() for r in group), key=canonical_bytes)
         for name, group in rows.items()
     }
-    doc["started"] = _canonical(started)
+    doc["started"] = started.canonical_doc()
     return sha256_digest(canonical_bytes(doc))
 
 

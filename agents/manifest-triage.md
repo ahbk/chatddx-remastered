@@ -9,7 +9,7 @@ Permalink base: https://github.com/ahbk/chatddx-remastered/blob/034193f742e0fe0e
 ## A. Blocks Postgres: fix first
 
 A1–A4 are done: seals hash sorted canonical rows, record datetimes are normalized to UTC, and `fingerprint_request`
-is defined. Record schema versions (end of A2) are still open.
+is defined. Record schema versions (end of A2) are done too: `Record.canonical` carries `v`, `Record.parse` checks it.
 
 These are new; they are not in the doc's list. All three were reproduced with a scratch script.
 
