@@ -1,0 +1,94 @@
+import hashlib
+import secrets
+from collections.abc import Sequence
+from typing import Annotated, Literal, override
+
+from pydantic import Field, JsonValue, field_validator, model_validator
+
+from .cases import CaseInputRef, NormalizeOp
+from .engine import EngineRef
+from .identity import Component, Digest, Frozen, RefTo, Resolver
+from .request import RUNTIME_KEYS, Skeleton, SkeletonRef
+
+Order = Literal["case_major@1", "replicate_major@1", "shuffled@1"]
+
+
+class Trial(Component):
+    kind: Literal["trial"] = "trial"
+    skeleton: SkeletonRef
+    engine: EngineRef
+    cases: tuple[CaseInputRef, ...] = Field(min_length=1)
+    normalization: tuple[NormalizeOp, ...] = ()
+    seeds: tuple[int, ...] = Field(min_length=1)
+
+    @field_validator("cases", "seeds")
+    @classmethod
+    def _unique[T](cls, values: tuple[T, ...]) -> tuple[T, ...]:
+        if len(set(values)) != len(values):
+            raise ValueError("duplicates are not allowed")
+        return values
+
+    @override
+    def cross_check(self, get: Resolver) -> list[str]:
+        skeleton = get(self.skeleton)
+        assert isinstance(skeleton, Skeleton)
+        if skeleton.purpose != "generation":
+            return [f"trial uses a {skeleton.purpose} skeleton"]
+        return []
+
+
+def suggest_seeds(n: int) -> tuple[int, ...]:
+    # 31 bits keeps seeds within a signed 32-bit int, which some servers require.
+    return tuple(secrets.randbits(31) for _ in range(n))
+
+
+TrialRef = Annotated[Digest, RefTo("trial")]
+
+
+class Canary(Frozen):
+    messages: tuple[dict[str, JsonValue], ...] = Field(min_length=1)
+    body: dict[str, JsonValue] = Field(default_factory=dict)
+    seed: int | None = None
+
+    @field_validator("body")
+    @classmethod
+    def _no_runtime_keys(cls, body: dict[str, JsonValue]) -> dict[str, JsonValue]:
+        if owned := body.keys() & RUNTIME_KEYS:
+            raise ValueError(f"canary body may not set {sorted(owned)}")
+        return body
+
+
+class CanarySet(Component):
+    kind: Literal["canary_set"] = "canary_set"
+    probes: tuple[Canary, ...] = Field(min_length=1)
+
+
+CanarySetRef = Annotated[Digest, RefTo("canary_set")]
+
+
+# Execution changes outputs only on engines that aren't batch invariant, so it is
+# declared per run rather than as part of the trial.
+class Execution(Frozen):
+    order: Order = "case_major@1"
+    shuffle_seed: int | None = None
+    concurrency: int = Field(default=1, ge=1)
+    timeout_s: float | None = Field(default=None, gt=0)
+    retries: int = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def _shuffle_seed(self) -> "Execution":
+        if (self.order == "shuffled@1") != (self.shuffle_seed is not None):
+            raise ValueError("shuffle_seed goes with shuffled order, and only with it")
+        return self
+
+    def schedule(self, cases: Sequence[str], replicates: int) -> list[tuple[str, int]]:
+        if self.order == "replicate_major@1":
+            return [(c, r) for r in range(replicates) for c in cases]
+        items = [(c, r) for c in cases for r in range(replicates)]
+        if self.order == "shuffled@1":
+            items.sort(
+                key=lambda cr: hashlib.sha256(
+                    f"{self.shuffle_seed}:{cr[0]}:{cr[1]}".encode()
+                ).digest()
+            )
+        return items
