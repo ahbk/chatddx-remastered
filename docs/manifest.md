@@ -112,7 +112,7 @@ No comparison between the 3070 and the 5090; each hardware class is its own cage
 
 Returns model identifiers: the run check compares the returned `model` with the declared one (`ledger.py: check_run`). `system_fingerprint` is kept in the raw response but not checked.
 
-- **Orchestrator.** Runs in Kubernetes, owns the manifest and hosts the portal. A postgres database store user-managed data: factor tables are insert-only and keyed by digest; records are append-only; nothing is updated.
+- **Orchestrator.** Runs in Kubernetes, owns the manifest and hosts the portal. A postgres database store user-managed data: factors and records are append-only; nothing is updated.
 
 ## Compromises
 The code declares no tier (the old tier assessment was dropped). The tier is *observed*:
@@ -408,42 +408,46 @@ A run is written one row at a time as it happens.
 #### RunStarted
 - principal author: none; written by the runner
 - defined in: `ledger.py:RunStarted`
-- suggested storage field: `run_stage.payload` (stage `started`)
+- suggested storage field: `ledger.run_stage` (stage `started`)
 
 `RunStarted` opens a run with the run id, the time, the rig's code version, the trial, the execution settings, the canary set and when canaries run (`verify_at`, by default at start and end). This row is the run's verification plan. It is declared before the first request and never changes, but it is not part of the trial's identity, so running exactly like run X means copying X's first row. The execution settings (`Execution`) are the order (case-major, replicate-major, or shuffled with a seed), concurrency, timeout and retries. Order and concurrency affect outputs only on engines that are not batch invariant: with batch invariance declared in the engine's `env`, re-runs may be bitwise identical, and otherwise the run falls in the best-effort tier. Timeouts and retries never change a successful output. Neither case drift (comparing the observed vignette fingerprint with the case's) nor canary drift (comparing canary outputs between phases or runs) is checked yet; see "Possible design issues".
 
 #### RunItem
 - principal author: none; written by the runner
 - defined in: `ledger.py:RunItem`
-- suggested storage field: `run_item.payload`
+- suggested storage field: `ledger.run_item`
 
 A run item is keyed by (case, replicate index), never repeating the engine or seed, and holds the vignette fingerprint observed at fetch time, for drift detection, and a `Call`.
 
 #### CanaryCall
 - principal author: none; written by the runner
 - defined in: `ledger.py:CanaryCall`
-- suggested storage field: `canary_call.payload`
+- suggested storage field: `ledger.canary_call`
 
 A canary call holds the phase (`start` or `end`), the canary's position in the set, and a `Call`.
 
 #### RunFinished
 - principal author: none; written by the runner
 - defined in: `ledger.py:RunFinished`
-- suggested storage field: `run_stage.payload` (stage `finished`)
+- suggested storage field: `ledger.run_stage` (stage `finished`)
 
-`RunFinished` closes the log with the time, the run's findings and the seal: the sha256 over the started row, all item rows and all canary-call rows.
+`RunFinished` closes the log with the time, the run's findings and the seal. [what about the item rows and all canary-call rows? are they in this?]
+
+The seal is the sha256 over the canonical started row and the canonical item rows sorted by their bytes, so it doesn't depend on the order rows are read back in. Record timestamps are normalized to UTC. [This statement should be generalized universally to all timestamps, no?]
 
 #### Call
 - principal author: none; written by the runner or scorer as part of another row
 - defined in: `ledger.py:Call`
-- suggested storage field: inside `run_item.payload`, `canary_call.payload` and `score_item.payload`
+- suggested storage field: inside `legder.run_item`, `ledger.canary_call` and `ledger.score_item`
 
 A call records one exchange and is shared by run items, canary calls and judge calls. It holds the fingerprint of the wire body, the start and end times, the HTTP status, the number of attempts, any error, and the raw response. The response is stored without its `prompt_token_ids`: those are the token ids the engine actually read after applying its chat template, and since they encode the case text, only their fingerprint is kept (`fingerprint_prompt_tokens`). Comparing these fingerprints between runs of the same trial (`compare_prompt_tokens`) shows whether the engine read the same tokens, without storing case text.
+
+The request fingerprint (Call.request) is `fingerprint_request` taken over the body's canonical bytes.
 
 #### Run
 - principal author: none; assembled from stored rows
 - defined in: `ledger.py:Run`
-- suggested storage field: transient
+- suggested storage field: none
 
 `Run` reassembles a run's log from its rows and rejects stages out of order (`started` → `finished`) or rows from another run; `Run.finish()` produces the finished row. `check_run` compares the run with its trial. It raises for items the trial does not contain, duplicate items, and canary calls outside the plan (a phase not in `verify_at`, a position not in the set, or any canary call when no set is named). It warns when a finished run is missing items, when the engine returned a different model name than declared, when items have no prompt-token fingerprint, and when rows changed after sealing.
 
@@ -476,12 +480,14 @@ A judge call names the judge, the index of the seed used and the `Call`.
 - defined in: `ledger.py:ScoreFinished`
 - suggested storage field: `score_stage.payload` (stage `finished`)
 
-`ScoreFinished` closes the log with the time, the findings and the seal over the started row and all item rows.
+`ScoreFinished` closes the log with the time, the findings and the seal over the started row and all item rows. [no canary calls here?]
+
+Just as with `RunFinished`, the seal is the sha256 over the canonical started row and the canonical item rows sorted by their bytes, so it doesn't depend on the order rows are read back in. Record timestamps are normalized to UTC.
 
 #### Score
 - principal author: none; assembled from stored rows
 - defined in: `ledger.py:Score`
-- suggested storage field: transient
+- suggested storage field: none
 
 `Score` reassembles a score's log the way `Run` does, and `Score.finish()` produces the finished row. `check_score` raises when the score belongs to another run, a view position doesn't exist, an item isn't in the run, or a judge call uses a judge the scorer's views don't name or a seed index out of range. It warns when rows changed after sealing.
 
@@ -547,7 +553,6 @@ the seed isn't sent, but the trial's seeds still count toward its hash, so two o
 - **Records aren't in bundles.** How the ledger is delivered together with the cage isn't specified.
 - **Metric names are free strings.** `View.metric` is only meaningful to the scorer code that `Scorer.code` pins; nothing checks that the code knows the name.
 - No helper prepares a case, i.e. per-item steps 2–5 (fetch, drift check, cleanup, joining appendices). The old code had one (prepare_case), and it's worth adding back.
-- The request fingerprint (Call.request) is never defined as "the fingerprint of the rendered body's canonical bytes". A helper would pin that down.
 - Where the model name comes from (per-item step 6) is repeated in check_run, so it belongs on the engine as one method.
 - Nothing compares declared and observed scorer code. ScoreStarted.scorer_code is never checked against Scorer.code, so a mismatch goes unnoticed.
 - Missing expectations aren't flagged. Neither the scoring nor check_score warns when a run's case has no expectation, or when a scored item has no expectation behind it.
@@ -561,10 +566,3 @@ the seed isn't sent, but the trial's seeds still count toward its hash, so two o
 - The engine's `system_fingerprint` is kept in each call's raw response (`Call.system_fingerprint`) but never compared between calls or runs.
 
 ## Proposed amendments
-
-- CHANGE: in "Records", state that a record is stored in its canonical form (defaults omitted, `stage` kept, plus the record type's schema version `v`, bumped under the same rule as components), and that `Record.parse` refuses a row whose `v` differs. Replace "the serialized record in a `payload` column" with "the record's canonical bytes (`Record.canonical`) in a `payload` column". Source: src/chatddx/core/manifest/ledger.py:38-66
-- CHANGE: in "RunFinished" and "ScoreFinished", define the seal as the sha256 over the canonical started row and the canonical item rows sorted by their bytes, so it doesn't depend on the order rows are read back in. Record timestamps are normalized to UTC. Source: src/chatddx/core/manifest/ledger.py:156-164, src/chatddx/core/manifest/ledger.py:30-35
-- REMOVE: from "Possible design issues", the item "The request fingerprint (Call.request) is never defined": `fingerprint_request` defines it over the body's canonical bytes. Source: src/chatddx/core/manifest/ledger.py (`fingerprint_request`)
-- CHANGE: in "Factors (Components)", replace "one insert-only table per kind" with one table for all kinds, `factor.component` (digest, kind, v, canonical, doc), plus `factor.component_ref` (src, path, dst, kinds), which holds one row per typed reference so that every reference gets a foreign key, including references inside lists and references that allow several kinds. Update every "suggested storage field: `<kind>.canonical`" to `factor.component.canonical`. Source: src/chatddx/core/store/migrations/0001-t0-tables.sql
-- CHANGE: in "Records", the storage is `ledger.run_stage`, `ledger.run_item`, `ledger.canary_call`, `ledger.score_stage` and `ledger.score_item` (case-derived, schema `ledger`), and `factor.compilation` (not case-derived, keyed by the digest of its canonical bytes). Source: src/chatddx/core/store/migrations/0001-t0-tables.sql
-- ADD: under "Scope rule → Excluded → Storage", storage integrity comes in tiers, each a migration that can be applied or left out per deployment. Tier 0: tables, keys, foreign keys. Tier 1: roles `chatddx_writer` (SELECT, INSERT) and `chatddx_reader` (SELECT on `factor` only); UPDATE and DELETE are not granted. Tier 2: the database checks digests against canonical text, checks that `doc` and key columns match the payload, checks that every reference row matches its component and an allowed kind, and refuses UPDATE, DELETE and TRUNCATE. Tier 1 does not bind a table owner or a superuser, so the app has to connect as a member of `chatddx_writer`; tier 2 binds everyone except a superuser who disables triggers. Source: src/chatddx/core/store/migrate.py, src/chatddx/core/store/migrations/0002-t1-grants.sql, src/chatddx/core/store/migrations/0003-t2-integrity.sql
