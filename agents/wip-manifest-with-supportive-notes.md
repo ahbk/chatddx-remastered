@@ -41,6 +41,14 @@ It must be possible to deliver the cage together with the results, for scientifi
 - **Finding:** a warning or info produced when something declared doesn't match what was observed.
 - **Canary:** a fixed, non-sensitive probe request.
 - **Case-derived:** content produced from a vignette.
+- **Wire-body:** the exact request sent, is sensitive if it contains a vignette.
+
+### Roles mentioned
+These roles are distinct and not overlapping, a person may inhabit more than one role.
+- **Clinicians:** Owners of vignettes and authors of Appendices and Expectations
+- **Researchers:** Authors of Sampling, Scorers and Trials
+- **Developers:** Authors of schemas, canary sets, scoring and normalizations functions
+- **Ops**: Owners of engines and authors of the engine's components
 
 ### Terms not directly related to the manifest
 - **Vetted:** a bookkeeping fact (clearance), not a manifest fact.
