@@ -20,7 +20,7 @@ It must be possible to deliver the cage together with the results, for scientifi
 - **Cage:** the constrained environment a bundle enforces
 - **Digest:** the factor's identity and how it's referenced, an `sha256:<hex>` over the component's canonical bytes.
 - **Kind:** the discriminator of a component, e.g. `engine.local`, `chunk.prompt`.
-- **Canonical form:** sorted-key JSON with fields left out when equal to their default, plus the kind's schema version.
+- **Canonical form:** sorted-key JSON with fields left out when equal to their default, plus the type's schema version.
 - **Chunk:** a factor authored in the portal that fills one part of a recipe (not to be confused with a slot).
 - **Recipe:** the chunks a skeleton was compiled from.
 - **Skeleton:** the frozen request.
@@ -68,9 +68,8 @@ The manifest details:
 - bookkeeping layer owns names, owners, tags, collaborators, version history, clearance, who started a run, and labels for views and resources. It references digests and record ids, but the manifest does not reach reference bookkeeping.
 - How scores are aggregated and exported together with the bundle (and eventually the ledger) for publication. This is a requirement but the manifest should only provide the building blocks, not the procedures.
 - How sensitivity is enforced: manifest provide the means but not the enforcment itself.
-- Storage: How components and records map to Postgres, this is known, but not details the manifest should be aware off:
-    - factor tables are insert-only and keyed by digest, with the canonical text as the source of truth (`jsonb` only as a searchable copy);
-    - records are append-only stage logs and item rows;
+- Storage: How components and records map to Postgres, table structures are suggested for clarity but not prescribed. In general:
+    - factor and tables are insert-only
     - nothing is updated;
     - version chains between digests belong to bookkeeping.
 
@@ -233,11 +232,15 @@ The "scored results" are just those ScoreItem rows. What aggregates them isn't n
 ## Factors (Components)
 A factor is an immutable component identified by its digest: the sha256 of its canonical form. The canonical form is sorted-key JSON that leaves out fields equal to their default and carries the kind's own schema version. A new field must therefore default to the old behavior, and changing a default requires bumping that kind's schema version. Bundles store these canonical bytes, so a bundle verifies against its bytes rather than against whatever the current code would produce.
 
-Factors reference each other by digest, forming a graph. Each reference is typed (`Annotated[Digest, RefTo(kind, …)]`). From these types, `Registry.check` derives the graph and checks that every reference exists and has an allowed kind, and the JSON Schema gains `x-ref` entries from which the portal and the Postgres foreign keys can be derived. Rules that span components, such as "a trial must use a generation skeleton", are `cross_check` hooks run by the same check.
+Factors reference each other by digest, forming a graph. Each reference is typed (`Annotated[Digest, RefTo(kind, …)]`). From these types, `Registry.check` derives the graph and checks that every reference exists and has an allowed kind. Rules that span components, such as "a trial must use a generation skeleton", are `cross_check` hooks run by the same check.
 
 The kinds are `model`, `engine.local`, `engine.remote`, the seven `chunk.*` kinds, `skeleton`, `appendix`, `case`, `trial`, `expectation_schema`, `expectation`, `scorer`, `judge`, `scoring` and `canary_set`.
 
 The suggested storage is one table for all kinds, `factor.component` (`digest`, `kind`, `v`, `canonical`, `doc`), plus `factor.component_ref` (`src`, `path`, `dst`, `kinds`), which holds one row per typed reference so that every reference gets a foreign key, including references inside lists and references that allow several kinds.
+
+Note on foreign keys: `Store.add` writes one `factor.component_ref` row per `Component.refs()` site, and the foreign key sits on that table. The allowed kinds are stored in the row's kinds column and checked by a tier-2 trigger (see `docs/store.md` for postgres' integrity tiers).
+
+Note on `ref-x`: `RefTo` puts `x-ref`: [allowed kinds] on each reference field when Pydantic generates a JSON Schema for a component. Nothing is consuming it right now and it may be dead weight if the portal doesn't need it.
 
 ### Case
 - principal author: Clinicians
@@ -383,9 +386,9 @@ A canary set (kind `canary_set`) is a list of fixed, non-sensitive probe request
 ## Records
 Records are the ledger: what was observed while compiling, running and scoring. They are not components and not part of the component graph; they reference components by digest and each other by id. Every record table is append-only. A run or a score is a stage log (a started row, item rows and a finished row), and a new stage is a new row type, not a new table. Every run and score row is marked case-derived (`Record.case_derived`), because those logs hold completions; compilations are not. This marking is what the sensitivity policy acts on.
 
-The suggested storage is one stage table per log type (`run_stage`, `score_stage`) keyed by id and stage, item tables (`run_item`, `canary_call`, `score_item`) and a `compilation` table, each holding the record's canonical bytes (Record.canonical) in a payload column.
+The suggested storage is one stage table per log type (`ledger.run_stage`, `ledger.score_stage`) keyed by id and stage, item tables (`ledger.run_item`, `ledger.canary_call`, `ledger.score_item`) and a `factor.compilation` table, each holding the record's canonical bytes (Record.canonical) in a payload column. `factor.compilation` is keyed by the digest of the record's canonical bytes, so writing the same compilation twice is a no-op.
 
-A record is stored in its canonical form (defaults omitted, stage kept, plus the record type's schema version v, bumped under the same rule as components). Record.parse refuses a row whose v differs.
+A record is stored in its canonical form (defaults omitted, stage kept, plus the record type's schema version `v`, bumped under the same rule as components). `Record.parse` refuses a row whose `v` differs. Every record table has a `doc` jsonb copy and key columns (`run`, `case`, `replicate`, `phase`, `probe`, `view`, …) next to `payload`.
 
 Record timestamps are normalized to UTC.
 
@@ -418,9 +421,9 @@ A canary call holds the phase (`start` or `end`), the canary's position in the s
 - defined in: `ledger.py:RunFinished`
 - suggested storage table: `ledger.run_stage` (stage `finished`)
 
-`RunFinished` closes the log with the time, the run's findings, the seal and all canary-call rows.
+`RunFinished` closes the log with the time, the run's findings and the seal.
 
-The seal is the sha256 over the canonical started row and the canonical item rows sorted by their bytes, so it doesn't depend on the order rows are read back in.
+The seal is the sha256 over the canonical started row and the canonical item rows sorted by their bytes, so it doesn't depend on the order rows are read back in. It covers the started row, the item rows and the canary-call rows. Item rows and canary rows are each sorted by their bytes, separately.
 
 #### Call
 - principal author: none; written by the runner or scorer as part of another row
@@ -469,7 +472,7 @@ A judge call names the judge, the index of the seed used and the `Call`.
 
 `ScoreFinished` closes the log with the time, the findings and the seal over the started row and all item rows. Scores have no canary calls. Judge calls live inside score items, so they are sealed with them.
 
-Just as with `RunFinished`, the seal is the sha256 over the canonical started row and the canonical item rows sorted by their bytes, so it doesn't depend on the order rows are read back in. Record timestamps are normalized to UTC.
+Just as with `RunFinished`, the seal is the sha256 over the canonical started row and the canonical item rows sorted by their bytes, so it doesn't depend on the order rows are read back in.
 
 #### Score
 - principal author: none; assembled from stored rows
@@ -527,6 +530,8 @@ Completions are in the raw responses of `RunItem.call`, `CanaryCall.call` (non-s
 A policy for such case-derived content has not settled:
  - database-level read restriction on case-derived record tables;
  - a destination check when records are exported.
+
+Note: Part of it exists now: the case-derived tables are in their own ledger schema, and at tier 1 chatddx_reader can read factor but not ledger. Who gets that role is still open.
 
 ### Greedy sampling and seeds:
 the seed isn't sent, but the trial's seeds still count toward its hash, so two otherwise identical greedy trials differ only in digest.
