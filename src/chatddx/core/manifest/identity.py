@@ -54,8 +54,8 @@ class Frozen(BaseModel):
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True, extra="forbid")
 
     # Canonical form omits fields equal to their default, so adding a field whose default
-    # preserves old behavior leaves every stored digest intact. `kind` is always kept
-    # because it discriminates unions.
+    # preserves old behavior leaves every stored digest intact. `kind` and `stage` are
+    # always kept because they discriminate unions.
     @model_serializer(mode="wrap")
     def _serialize(
         self, handler: SerializerFunctionWrapHandler, info: SerializationInfo
@@ -66,7 +66,7 @@ class Frozen(BaseModel):
             return data
         fields = cast(dict[str, object], data)
         for name, field in type(self).model_fields.items():
-            if name == "kind" or field.is_required():
+            if name in ("kind", "stage") or field.is_required():
                 continue
             if getattr(self, name) == field.get_default(call_default_factory=True):
                 _ = fields.pop(name, None)

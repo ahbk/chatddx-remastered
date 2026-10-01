@@ -1,6 +1,6 @@
 import hashlib
 import json
-from datetime import UTC, datetime
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 from uuid import uuid4
 
@@ -16,15 +16,11 @@ from chatddx.core.manifest.cases import (
 )
 from chatddx.core.manifest.engine import (
     FileDigest,
-    Hardware,
     LocalEngine,
-    ModelArtifact,
     RemoteEngine,
-    Runtime,
     check_chat_template,
 )
 from chatddx.core.manifest.identity import (
-    Code,
     Component,
     Fingerprint,
     StructuralError,
@@ -44,6 +40,7 @@ from chatddx.core.manifest.ledger import (
     check_score,
     compare_prompt_tokens,
     fingerprint_prompt_tokens,
+    fingerprint_request,
 )
 from chatddx.core.manifest.lint import lint
 from chatddx.core.manifest.request import (
@@ -65,155 +62,28 @@ from chatddx.core.manifest.request import (
     render,
 )
 from chatddx.core.manifest.scoring import (
-    Expectation,
-    ExpectationSchema,
     Judge,
-    Scorer,
-    Scoring,
-    View,
+)
+from chatddx.core.manifest.test.sample import (
+    KEY,
+    NOW,
+    RIG,
+    SHA,
+    fp,
+    generation_skeleton,
+    local_engine,
+    world,
 )
 from chatddx.core.manifest.trial import (
-    Canary,
-    CanarySet,
     Execution,
     Trial,
     suggest_seeds,
 )
 
-KEY = b"test-key"
-RIG = Code(distribution="chatddx", version="0.0.0+dev", revision="abc123")
-NOW = datetime(2026, 9, 29, tzinfo=UTC)
-SHA = "0" * 64
-
-
-def fp(text: str) -> Fingerprint:
-    return Fingerprint.of(text.encode())
-
 
 @pytest.fixture
 def reg() -> Registry:
     return Registry()
-
-
-def local_engine(reg: Registry) -> LocalEngine:
-    model = reg.add(
-        ModelArtifact(
-            repo="google/gemma-3-12b-it",
-            revision="deadbeef",
-            files=(FileDigest(path="model.safetensors", sha256=SHA),),
-        )
-    )
-    return LocalEngine(
-        hardware=Hardware(
-            gpu="RTX 5090", compute_capability=(12, 0), vram_mib=32607, driver="575.64"
-        ),
-        runtime=Runtime(version="0.24.0", closure="/nix/store/xxx-vllm-container"),
-        model=model,
-        chat_template=FileDigest(path="chat_template.jinja", sha256=SHA),
-        argv=("--max-model-len", "8192"),
-        env={"VLLM_BATCH_INVARIANT": "1"},
-    )
-
-
-def generation_skeleton(reg: Registry) -> Skeleton:
-    spec = Recipe(
-        instructions=reg.add(Instructions(text="You are an emergency physician.")),
-        prompt=reg.add(
-            Prompt(
-                segments=(
-                    "Case:\n",
-                    Slot(slot="case"),
-                    Slot(slot="appendices"),
-                    "\n\nDifferential?",
-                )
-            )
-        ),
-        output=reg.add(
-            Output(
-                contract=NativeOutput(),
-                json_schema={
-                    "type": "object",
-                    "properties": {"ddx": {"type": "array"}},
-                },
-                guidance="Answer in JSON.",
-            )
-        ),
-        sampling=reg.add(
-            Sampling(
-                temperature=0.7, top_p=0.9, max_output_tokens=1024, stop=("</ddx>",)
-            )
-        ),
-        reasoning=reg.add(Reasoning(chat_template_kwargs={"enable_thinking": False})),
-    )
-    return compile_request(spec, reg.get)
-
-
-def world(reg: Registry) -> dict[str, str]:
-    case = SourceCase(source="registry", id="c1")
-    vignette = fp("A 54-year-old with chest pain.")
-    appendix = reg.add(Appendix(case=case, vignette=vignette, text="Troponin 80 ng/L."))
-    case_input = reg.add(
-        CaseInput(case=case, vignette=vignette, appendices=(appendix,))
-    )
-    engine = reg.add(local_engine(reg))
-    skeleton = reg.add(generation_skeleton(reg))
-    trial = reg.add(
-        Trial(
-            skeleton=skeleton,
-            engine=engine,
-            cases=(case_input,),
-            normalization=("newlines.lf@1", "strip@1"),
-            seeds=(1, 2),
-        )
-    )
-    canaries = reg.add(
-        CanarySet(
-            probes=(Canary(messages=({"role": "user", "content": "2+2?"},), seed=0),)
-        )
-    )
-    schema = reg.add(ExpectationSchema(json_schema={"type": "object"}))
-    expectation = reg.add(
-        Expectation(case=case_input, json_schema=schema, data={"ddx": ["ACS"]})
-    )
-    judge_skeleton = reg.add(
-        Skeleton(
-            purpose="judge",
-            messages=(
-                Message(role="user", content=("Grade: ", Slot(slot="completion"))),
-            ),
-            body={"temperature": 0},
-            contract=TextOutput(),
-        )
-    )
-    judge = reg.add(Judge(skeleton=judge_skeleton, engine=engine, seeds=(7,)))
-    scoring = reg.add(
-        Scoring(
-            scorer=reg.add(
-                Scorer(
-                    code=RIG,
-                    consumes=schema,
-                    views=(
-                        View(
-                            output="/ddx/0",
-                            expectation="/ddx",
-                            metric="match",
-                        ),
-                        View(metric="judge", judge=judge),
-                    ),
-                    resources=("sha256:" + SHA,),
-                )
-            ),
-            expectations=(expectation,),
-        )
-    )
-    return {
-        "trial": trial,
-        "canaries": canaries,
-        "case": case_input,
-        "scoring": scoring,
-        "judge": judge,
-        "engine": engine,
-    }
 
 
 def test_digest_is_stable_and_order_independent(reg: Registry) -> None:
@@ -533,6 +403,53 @@ def test_run_and_score_checks(reg: Registry) -> None:
         )
     with pytest.raises(StructuralError, match="view 2 is out of range"):
         _ = check_score(score(ok.model_copy(update={"view": 2})), run, reg)
+
+
+def test_seal_survives_a_storage_roundtrip() -> None:
+    run_id = uuid4()
+    local = datetime(2026, 9, 29, 2, tzinfo=timezone(timedelta(hours=2)))
+    c = Call(request=fp("body"), started_at=local, finished_at=local)
+    started = RunStarted(run=run_id, at=local, rig=RIG, trial="sha256:" + "0" * 64)
+    items = tuple(
+        RunItem(
+            run=run_id,
+            key=ItemKey(case="sha256:" + d * 64, replicate=r),
+            vignette=fp("v"),
+            call=c,
+        )
+        for d in "12"
+        for r in range(2)
+    )
+    canaries = tuple(
+        CanaryCall(run=run_id, phase=p, probe=0, call=c) for p in ("start", "end")
+    )
+    run = Run(stages=(started,), items=items, canaries=canaries)
+    assert started.at == NOW and started.at.utcoffset() == timedelta(0)
+
+    stored = Run(
+        stages=(RunStarted.parse(started.canonical),),
+        items=tuple(RunItem.parse(i.canonical) for i in reversed(items)),
+        canaries=tuple(CanaryCall.parse(c.canonical) for c in reversed(canaries)),
+    )
+    assert stored.seal() == run.seal()
+    assert "attempts" not in json.loads(items[0].canonical)["call"]
+
+
+def test_records_carry_their_schema_version() -> None:
+    started = RunStarted(run=uuid4(), at=NOW, rig=RIG, trial="sha256:" + "0" * 64)
+    doc = json.loads(started.canonical)
+    assert doc["v"] == 1 and doc["stage"] == "started"
+    doc["v"] = 2
+    with pytest.raises(StructuralError, match="RunStarted v2 is not readable by v1"):
+        _ = RunStarted.parse(json.dumps(doc))
+    with pytest.raises(StructuralError, match="not a JSON object"):
+        _ = RunStarted.parse("[]")
+
+
+def test_request_fingerprint_is_over_canonical_bytes() -> None:
+    a = fingerprint_request({"model": "m", "messages": [], "temperature": 0})
+    b = fingerprint_request({"temperature": 0, "messages": [], "model": "m"})
+    assert a == b == Fingerprint.of(b'{"messages":[],"model":"m","temperature":0}')
 
 
 def test_remote_engine_identity() -> None:

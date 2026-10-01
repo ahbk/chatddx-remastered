@@ -1,8 +1,10 @@
-from collections.abc import Sequence
-from typing import Annotated, ClassVar, Literal, override
+import json
+from collections.abc import Iterable, Sequence
+from datetime import UTC, datetime
+from typing import Annotated, ClassVar, Literal, Self, cast, override
 from uuid import UUID
 
-from pydantic import AwareDatetime, Field, JsonValue, model_validator
+from pydantic import AfterValidator, AwareDatetime, Field, JsonValue, model_validator
 
 from .bundle import Registry
 from .cases import CaseInputRef
@@ -25,14 +27,49 @@ from .trial import CanarySet, CanarySetRef, Execution, Trial, TrialRef
 Phase = Literal["start", "end"]
 
 
+def _utc(at: datetime) -> datetime:
+    return at.astimezone(UTC)
+
+
+# timestamptz reads back in UTC, and the offset is part of the sealed bytes.
+UtcDatetime = Annotated[AwareDatetime, AfterValidator(_utc)]
+
+
 class Record(Frozen):
     case_derived: ClassVar[bool] = True
+    # Bump when an existing field's meaning or default changes; additive fields don't.
+    schema_version: ClassVar[int] = 1
+
+    def canonical_doc(self) -> dict[str, JsonValue]:
+        doc = cast(
+            dict[str, JsonValue],
+            self.model_dump(mode="json", context={"canonical": True}),
+        )
+        doc["v"] = type(self).schema_version
+        return doc
+
+    @property
+    def canonical(self) -> bytes:
+        return canonical_bytes(self.canonical_doc())
+
+    @classmethod
+    def parse(cls, data: bytes | str) -> Self:
+        loaded: object = json.loads(data)
+        if not isinstance(loaded, dict):
+            raise StructuralError(f"{cls.__name__} is not a JSON object")
+        doc = cast(dict[str, object], loaded)
+        v = doc.pop("v", None)
+        if v != cls.schema_version:
+            raise StructuralError(
+                f"{cls.__name__} v{v} is not readable by v{cls.schema_version}"
+            )
+        return cls.model_validate(doc)
 
 
 class Call(Frozen):
     request: Fingerprint
-    started_at: AwareDatetime
-    finished_at: AwareDatetime
+    started_at: UtcDatetime
+    finished_at: UtcDatetime
     status: int | None = None
     response: dict[str, JsonValue] | None = None
     prompt_tokens: Fingerprint | None = None
@@ -61,6 +98,12 @@ def fingerprint_prompt_tokens(
     return kept, Fingerprint.of(canonical_bytes(ids), key)
 
 
+def fingerprint_request(
+    body: dict[str, JsonValue], key: tuple[str, bytes] | None = None
+) -> Fingerprint:
+    return Fingerprint.of(canonical_bytes(body), key)
+
+
 class ItemKey(Frozen):
     case: CaseInputRef
     replicate: int = Field(ge=0)
@@ -76,7 +119,7 @@ class ItemKey(Frozen):
 class RunStarted(Record):
     stage: Literal["started"] = "started"
     run: UUID
-    at: AwareDatetime
+    at: UtcDatetime
     rig: Code
     trial: TrialRef
     execution: Execution = Execution()
@@ -87,7 +130,7 @@ class RunStarted(Record):
 class RunFinished(Record):
     stage: Literal["finished"] = "finished"
     run: UUID
-    at: AwareDatetime
+    at: UtcDatetime
     findings: tuple[Finding, ...] = ()
     seal: Digest
 
@@ -108,6 +151,17 @@ class CanaryCall(Record):
     phase: Phase
     probe: int = Field(ge=0)
     call: Call
+
+
+# Canonical rows keep old seals valid when a defaulted field is added, and sorting
+# makes the seal independent of the order storage returns rows in.
+def _seal(started: Record, **rows: Iterable[Record]) -> str:
+    doc: dict[str, JsonValue] = {
+        name: sorted((r.canonical_doc() for r in group), key=canonical_bytes)
+        for name, group in rows.items()
+    }
+    doc["started"] = started.canonical_doc()
+    return sha256_digest(canonical_bytes(doc))
 
 
 class Run(Frozen):
@@ -133,15 +187,7 @@ class Run(Frozen):
         return next((s for s in self.stages if isinstance(s, RunFinished)), None)
 
     def seal(self) -> str:
-        return sha256_digest(
-            canonical_bytes(
-                {
-                    "started": self.started.model_dump(mode="json"),
-                    "items": [i.model_dump(mode="json") for i in self.items],
-                    "canaries": [c.model_dump(mode="json") for c in self.canaries],
-                }
-            )
-        )
+        return _seal(self.started, items=self.items, canaries=self.canaries)
 
     def finish(
         self, at: AwareDatetime, findings: Sequence[Finding] = ()
@@ -161,7 +207,7 @@ class ScoreStarted(Record):
     stage: Literal["started"] = "started"
     score: UUID
     run: UUID
-    at: AwareDatetime
+    at: UtcDatetime
     rig: Code
     scorer_code: Code
     scoring: ScoringRef
@@ -170,7 +216,7 @@ class ScoreStarted(Record):
 class ScoreFinished(Record):
     stage: Literal["finished"] = "finished"
     score: UUID
-    at: AwareDatetime
+    at: UtcDatetime
     findings: tuple[Finding, ...] = ()
     seal: Digest
 
@@ -208,14 +254,7 @@ class Score(Frozen):
         return next((s for s in self.stages if isinstance(s, ScoreFinished)), None)
 
     def seal(self) -> str:
-        return sha256_digest(
-            canonical_bytes(
-                {
-                    "started": self.started.model_dump(mode="json"),
-                    "items": [i.model_dump(mode="json") for i in self.items],
-                }
-            )
-        )
+        return _seal(self.started, items=self.items)
 
     def finish(
         self, at: AwareDatetime, findings: Sequence[Finding] = ()
@@ -262,7 +301,7 @@ class Compilation(Record):
     recipe: Recipe
     skeleton: SkeletonRef
     compiler: Code
-    at: AwareDatetime
+    at: UtcDatetime
 
 
 def _sealed(log: Run | Score, subject: str) -> list[Finding]:

@@ -20,7 +20,7 @@ It must be possible to deliver the cage together with the results, for scientifi
 - **Cage:** the constrained environment a bundle enforces
 - **Digest:** the factor's identity and how it's referenced, an `sha256:<hex>` over the component's canonical bytes.
 - **Kind:** the discriminator of a component, e.g. `engine.local`, `chunk.prompt`.
-- **Canonical form:** sorted-key JSON with fields left out when equal to their default, plus the kind's schema version.
+- **Canonical form:** sorted-key JSON with fields left out when equal to their default, plus the type's schema version.
 - **Chunk:** a factor authored in the portal that fills one part of a recipe (not to be confused with a slot).
 - **Recipe:** the chunks a skeleton was compiled from.
 - **Skeleton:** the frozen request.
@@ -68,9 +68,8 @@ The manifest details:
 - bookkeeping layer owns names, owners, tags, collaborators, version history, clearance, who started a run, and labels for views and resources. It references digests and record ids, but the manifest does not reach reference bookkeeping.
 - How scores are aggregated and exported together with the bundle (and eventually the ledger) for publication. This is a requirement but the manifest should only provide the building blocks, not the procedures.
 - How sensitivity is enforced: manifest provide the means but not the enforcment itself.
-- Storage: How components and records map to Postgres, this is known, but not details the manifest should be aware off:
-    - factor tables are insert-only and keyed by digest, with the canonical text as the source of truth (`jsonb` only as a searchable copy);
-    - records are append-only stage logs and item rows;
+- Storage: How components and records map to Postgres, table structures are suggested for clarity but not prescribed. In general:
+    - factor and records are insert-only
     - nothing is updated;
     - version chains between digests belong to bookkeeping.
 
@@ -112,7 +111,7 @@ No comparison between the 3070 and the 5090; each hardware class is its own cage
 
 Returns model identifiers: the run check compares the returned `model` with the declared one (`ledger.py: check_run`). `system_fingerprint` is kept in the raw response but not checked.
 
-- **Orchestrator.** Runs in Kubernetes, owns the manifest and hosts the portal. A postgres database store user-managed data: factor tables are insert-only and keyed by digest; records are append-only; nothing is updated.
+- **Orchestrator.** Runs in Kubernetes, owns the manifest and hosts the portal. A postgres database store user-managed data: factors and records are append-only; nothing is updated.
 
 ## Compromises
 The code declares no tier (the old tier assessment was dropped). The tier is *observed*:
@@ -233,14 +232,19 @@ The "scored results" are just those ScoreItem rows. What aggregates them isn't n
 ## Factors (Components)
 A factor is an immutable component identified by its digest: the sha256 of its canonical form. The canonical form is sorted-key JSON that leaves out fields equal to their default and carries the kind's own schema version. A new field must therefore default to the old behavior, and changing a default requires bumping that kind's schema version. Bundles store these canonical bytes, so a bundle verifies against its bytes rather than against whatever the current code would produce.
 
-Factors reference each other by digest, forming a graph. Each reference is typed (`Annotated[Digest, RefTo(kind, …)]`). From these types, `Registry.check` derives the graph and checks that every reference exists and has an allowed kind, and the JSON Schema gains `x-ref` entries from which the portal and the Postgres foreign keys can be derived. Rules that span components, such as "a trial must use a generation skeleton", are `cross_check` hooks run by the same check.
+Factors reference each other by digest, forming a graph. Each reference is typed (`Annotated[Digest, RefTo(kind, …)]`). From these types, `Registry.check` derives the graph and checks that every reference exists and has an allowed kind. Rules that span components, such as "a trial must use a generation skeleton", are `cross_check` hooks run by the same check.
 
-The kinds are `model`, `engine.local`, `engine.remote`, the seven `chunk.*` kinds, `skeleton`, `appendix`, `case`, `trial`, `expectation_schema`, `expectation`, `scorer`, `judge`, `scoring` and `canary_set`. The suggested storage is one insert-only table per kind, keyed by digest, with the canonical text in a `canonical` column as the source of truth.
+The kinds are `model`, `engine.local`, `engine.remote`, the seven `chunk.*` kinds, `skeleton`, `appendix`, `case`, `trial`, `expectation_schema`, `expectation`, `scorer`, `judge`, `scoring` and `canary_set`.
+
+The suggested storage is one table for all kinds, `factor.component` (`digest`, `kind`, `v`, `canonical`, `doc`), plus `factor.component_ref` (`src`, `path`, `dst`, `kinds`), which holds one row per typed reference so that every reference gets a foreign key, including references inside lists and references that allow several kinds.
+
+Note on foreign keys: `Store.add` writes one `factor.component_ref` row per `Component.refs()` site, and the foreign key sits on that table. The allowed kinds are stored in the row's kinds column and checked by a tier-2 trigger (see `docs/store.md` for postgres' integrity tiers).
+
+Note on `x-ref`: `RefTo` puts `x-ref`: [allowed kinds] on each reference field when Pydantic generates a JSON Schema for a component. Nothing is consuming it right now and it may be dead weight if the portal doesn't need it.
 
 ### Case
 - principal author: Clinicians
 - defined in: `cases.py:CaseInput`
-- suggested storage field: `case_input.canonical`
 
 A case (kind `case`) names a vignette in the predefined source by source name and id (`SourceCase`), records the fingerprint of that vignette, and lists the appendices to append, in order. An import script supplies the vignette fingerprint, taken over the raw vignette as fetched. The vignette itself is sensitive, unstructured and never edited, and it is never stored: only its fingerprint is. The case's digest covers all three parts (source reference, fingerprint and appendix list), so the vignette is not its sole contributor, and the same source case with different appendices is a different case. Expectations are keyed by this digest, which lets appendices change the correct answer.
 
@@ -249,7 +253,6 @@ A changed vignette at the source has a new fingerprint. It therefore needs a new
 ### Appendix
 - principal author: Clinicians
 - defined in: `cases.py:Appendix`
-- suggested storage field: `appendix.canonical`
 
 An appendix (kind `appendix`) is a block of plain text, written in the portal and attached to one source case and one vignette fingerprint. It is the only way to add information to a vignette; anchored edits to the vignette were considered and ruled out as too complex. Appendices are not sensitive. They are stored and sent exactly as entered, and text cleanup does not apply to them.
 
@@ -263,63 +266,54 @@ Each chunk is a component that fills one part of a recipe. None of them is a tem
 #### Instructions
 - principal author: Researchers
 - defined in: `request.py:Instructions`
-- suggested storage field: `chunk_instructions.canonical`
 
 Instructions (kind `chunk.instructions`) are plain text sent as the first message, with the role `system` or `developer`. Their cross-component effect is passive: the output chunk's guidance is appended to them, separated by a blank line, and becomes the whole message if there are no instructions.
 
 #### FewShot
 - principal author: Researchers
 - defined in: `request.py:FewShot`
-- suggested storage field: `chunk_few_shot.canonical`
 
 A few-shot chunk (kind `chunk.few_shot`) is a list of plain-text user/assistant example messages, placed after the instructions and before the prompt.
 
 #### Prompt
 - principal author: Researchers
 - defined in: `request.py:Prompt`
-- suggested storage field: `chunk_prompt.canonical`
 
 A prompt (kind `chunk.prompt`) is the user message: a list of segments, each a literal string or a slot, with a purpose of `generation` or `judge`. A generation prompt must contain the `case` slot and may contain `appendices`. A judge prompt must contain `completion` and may contain `case`, `appendices` and `expectation`. No slot may appear twice, and the prompt's purpose must match the recipe's.
 
 #### Output
 - principal author: Researchers
 - defined in: `request.py:Output`
-- suggested storage field: `chunk_output.canonical`
 
 An output chunk (kind `chunk.output`) declares where the answer goes, through one of three contracts. `native` sends a JSON schema as `response_format` (named `output`, strict). `tool` forces a single function call whose parameters are the schema. `text` constrains nothing and may carry a schema that only scoring uses. Its optional guidance is the chunk's cross-component effect: it is appended to the instructions. There is no coercion: parsing belongs to the scorer.
 
 #### Sampling
 - principal author: Researchers
 - defined in: `request.py:Sampling`
-- suggested storage field: `chunk_sampling.canonical`
 
 A sampling chunk (kind `chunk.sampling`) holds temperature, top-p, top-k, min-p, the presence, frequency and repetition penalties, stop sequences and `max_output_tokens`, which is sent under `max_completion_tokens` (default) or `max_tokens`. Its cross-component effect is canonicalization: with temperature 0 it drops top-p, top-k and min-p, so equivalent greedy chunks share a digest, and at send time no seed is added.
 
 #### Reasoning
 - principal author: Researchers
 - defined in: `request.py:Reasoning`
-- suggested storage field: `chunk_reasoning.canonical`
 
 A reasoning chunk (kind `chunk.reasoning`) holds the reasoning effort (`none` to `high`), `thinking_token_budget` and `chat_template_kwargs`.
 
 #### Passthrough
 - principal author: Researchers
 - defined in: `request.py:Passthrough`
-- suggested storage field: `chunk_passthrough.canonical`
 
 A passthrough chunk (kind `chunk.passthrough`) holds engine-specific body keys. It may not set runtime keys or output keys, and compilation fails if it sets a key another chunk also produces.
 
 #### Recipe
 - principal author: Researchers
 - defined in: `request.py:Recipe`
-- suggested storage field: `compilation.payload` (its `recipe` field)
 
 A recipe is not a component. It holds a purpose, an appendix layout, required references to a prompt, an output and a sampling chunk, and optional references to instructions, few-shot, reasoning and passthrough chunks. `compile_request` turns a recipe into a skeleton and fails on missing or wrongly typed chunks. The recipe is kept only in the `Compilation` record, next to the compiler version (see "Compilation"). Because a trial references the skeleton rather than the recipe, the compiler's code is not a factor.
 
 #### Skeleton
 - principal author: none; normally produced by the compiler (`compile_request`)
 - defined in: `request.py:Skeleton`
-- suggested storage field: `skeleton.canonical`
 
 A skeleton (kind `skeleton`) is the frozen request, and the only component normally produced by code rather than people; trials and judges reference it. Nothing prevents hand-written skeletons (see "Possible design issues"). It is fully pre-rendered: the complete chat-completions body except for what is filled in at send time. It holds a purpose, the API (`chat.completions`), the messages as segment lists (so few-shot examples are already baked in as plain text), every other body key, the output contract and the appendix layout. Its validation repeats the chunks' rules: slots must suit the purpose, greedy sampling is canonicalized, a `native` contract needs `response_format` and no tools, a `tool` contract needs exactly one tool of the declared name plus `tool_choice`, and a `text` contract may set no output keys. For `native` and `tool`, the output schema is read from the body rather than stored twice.
 
@@ -332,75 +326,71 @@ An engine is where requests are sent. Researchers pick engines for trials and ju
 #### Model artifact
 - principal author: Ops
 - defined in: `engine.py:ModelArtifact`
-- suggested storage field: `model.canonical`
 
 A model artifact (kind `model`) pins a model by its repo, a revision (linted unless it is a commit) and the sha256 of every file, collected by an import script. It is its own component, so several engines can share it.
 
 #### Local engine
 - principal author: Ops
 - defined in: `engine.py:LocalEngine`
-- suggested storage field: `engine_local.canonical`
 
 A local engine (kind `engine.local`) is a vLLM server we run. It declares its hardware (GPU, compute capability, VRAM, driver) and runtime (`vllm`, its version, the Nix closure path), references a model artifact, and requires the digest of its chat-template file. Its raw `argv` and `env` are passed to vLLM, except the flags the start-up script owns (`--model`, `--served-model-name`, `--chat-template`, `--tokenizer`, `--revision`), which they may not set. Knowledge that changes between vLLM versions lives in lints rather than in these fields, and batch invariance is declared through `env` (for example `VLLM_BATCH_INVARIANT=1`). The served model name is the engine's digest, so every response names the cage it came from. `check_chat_template` warns when the template file doesn't match the declared digest or reads the current date. Hardware and runtime are part of the engine rather than components of their own. They can therefore not be listed, picked or reused as standalone rows, for example in the portal or as Postgres foreign keys; the same GPU or closure is repeated in every engine that uses it, and asking which engines share a closure means scanning engines instead of following a reference.
 
 #### Remote engine
 - principal author: Ops
 - defined in: `engine.py:RemoteEngine`
-- suggested storage field: `engine_remote.canonical`
 
 A remote engine (kind `engine.remote`) is an API we don't control. It declares only the API (`openai.chat`), the `base_url` and the requested model; its chat template is not pinned. Of the identifiers it returns, only the model name is checked today (see "Run"). Canary probes at the start and end of a run apply to any engine and are planned per run (see "RunStarted"), so they are not a property of remote engines.
 
 ### Trial
 - principal author: Researchers
 - defined in: `trial.py:Trial`
-- suggested storage field: `trial.canonical`
 
 A trial (kind `trial`) is a scientific intent: a generation skeleton, an engine, the cases, the text-cleanup steps and the seeds. Cases and seeds are listed without duplicates. The seeds are explicit and user-defined; the portal can propose random 31-bit ones (`suggest_seeds`), which users are free to override. Each seed defines one replicate, identified by its index. Text cleanup is an ordered list of operations from a closed set in which each name pins one behavior (`newlines.lf@1`, `unicode.nfc@1`, `strip@1`, `blank_lines.collapse@1`; a changed behavior gets a new name), and it applies to the vignette only. Execution settings (order, concurrency, timeout, retries) are not part of the trial, so re-running a trial means a new run of the same digest. With greedy sampling no seed is sent, but the seeds still count toward the trial's digest (see "Possible design issues").
 
 ### Expectation schema
 - principal author: Developers
 - defined in: `scoring.py:ExpectationSchema`
-- suggested storage field: `expectation_schema.canonical`
 
 An expectation schema (kind `expectation_schema`) is a JSON Schema describing the reference data a scorer consumes.
 
 ### Expectation
 - principal author: Clinicians
 - defined in: `scoring.py:Expectation`
-- suggested storage field: `expectation.canonical`
 
 An expectation (kind `expectation`) is the reference data for one case, authored in the portal: the case's digest, the expectation schema's digest and the data. Because the key is the case digest, appendices included, the same source case can have different expectations under different appendices. Expectations are not sensitive. The manifest does not validate the data against its schema; the scorer does.
 
 ### Scorer
 - principal author: Researchers
 - defined in: `scoring.py:Scorer`
-- suggested storage field: `scorer.canonical`
 
 A scorer (kind `scorer`) pins scoring code, written by developers. It declares that code (`Code`: distribution, version, revision), the expectation schema it consumes, an ordered list of views, ordered resource digests (such as synonym tables or ontology releases) and free parameters. Views and resources are referred to by position; their labels belong to bookkeeping. A view scores one part of an output against one part of an expectation: it holds a JSON pointer into each, a metric name that only the scorer's code interprets, optional parameters, and optionally the judge it uses. Parsing is the scorer's job, not the manifest's: outputs that fail validation are scored best-effort.
 
 ### Judge
 - principal author: Researchers
 - defined in: `scoring.py:Judge`
-- suggested storage field: `judge.canonical`
 
 A judge (kind `judge`) is an LLM used as a metric: a judge-purpose skeleton, an engine and its own seeds. A judge skeleton must contain the `completion` slot and may use `expectation`, `case` and `appendices`. Judge requests go through the same rendering as generation requests, once per seed, and are recorded per score item (see "JudgeCall"). Their scores are best-effort reproducible. Because a judge prompt can contain case text, judge engines fall under the same clearance hard block as generation engines.
 
 ### Scoring
 - principal author: Researchers
 - defined in: `scoring.py:Scoring`
-- suggested storage field: `scoring.canonical`
 
 A scoring (kind `scoring`) is what a score applies: a scorer plus the expectations it scores against. The expectations must all be in the scorer's schema, and a case may have at most one. The judges a scoring uses are those named by its scorer's views.
 
 ### Canary set
 - principal author: Developers
 - defined in: `trial.py:CanarySet`
-- suggested storage field: `canary_set.canonical`
 
 A canary set (kind `canary_set`) is a list of fixed, non-sensitive probe requests. Each canary holds literal messages, body keys (no runtime keys) and an optional seed. A run names the canary set it uses (see "RunStarted"). Canary sets are components because canary drift is detected by comparing the same set across runs (not implemented yet).
 
 ## Records
-Records are the ledger: what was observed while compiling, running and scoring. They are not components and not part of the component graph; they reference components by digest and each other by id. Every record table is append-only. A run or a score is a stage log (a started row, item rows and a finished row), and a new stage is a new row type, not a new table. Every run and score row is marked case-derived (`Record.case_derived`), because those logs hold completions; compilations are not. This marking is what the sensitivity policy acts on. The suggested storage is one stage table per log type (`run_stage`, `score_stage`) keyed by id and stage, item tables (`run_item`, `canary_call`, `score_item`) and a `compilation` table, each holding the serialized record in a `payload` column.
+Records are the ledger: what was observed while compiling, running and scoring. They are not components and not part of the component graph; they reference components by digest and each other by id. Every record table is append-only. A run or a score is a stage log (a started row, item rows and a finished row), and a new stage is a new row type, not a new table. Every run and score row is marked case-derived (`Record.case_derived`), because those logs hold completions; compilations are not. This marking is what the sensitivity policy acts on.
+
+The suggested storage is one stage table per log type (`ledger.run_stage`, `ledger.score_stage`) keyed by id and stage, item tables (`ledger.run_item`, `ledger.canary_call`, `ledger.score_item`) and a `factor.compilation` table, each holding the record's canonical bytes (Record.canonical) in a payload column. `factor.compilation` is keyed by the digest of the record's canonical bytes, so writing the same compilation twice is a no-op.
+
+A record is stored in its canonical form (defaults omitted, stage kept, plus the record type's schema version `v`, bumped under the same rule as components). `Record.parse` refuses a row whose `v` differs. Every record table has a `doc` jsonb copy and key columns (`run`, `case`, `replicate`, `phase`, `probe`, `view`, …) next to `payload`.
+
+Record timestamps are normalized to UTC.
 
 ### Runs
 A run is written one row at a time as it happens.
@@ -408,42 +398,46 @@ A run is written one row at a time as it happens.
 #### RunStarted
 - principal author: none; written by the runner
 - defined in: `ledger.py:RunStarted`
-- suggested storage field: `run_stage.payload` (stage `started`)
+- suggested storage table: `ledger.run_stage` (stage `started`)
 
 `RunStarted` opens a run with the run id, the time, the rig's code version, the trial, the execution settings, the canary set and when canaries run (`verify_at`, by default at start and end). This row is the run's verification plan. It is declared before the first request and never changes, but it is not part of the trial's identity, so running exactly like run X means copying X's first row. The execution settings (`Execution`) are the order (case-major, replicate-major, or shuffled with a seed), concurrency, timeout and retries. Order and concurrency affect outputs only on engines that are not batch invariant: with batch invariance declared in the engine's `env`, re-runs may be bitwise identical, and otherwise the run falls in the best-effort tier. Timeouts and retries never change a successful output. Neither case drift (comparing the observed vignette fingerprint with the case's) nor canary drift (comparing canary outputs between phases or runs) is checked yet; see "Possible design issues".
 
 #### RunItem
 - principal author: none; written by the runner
 - defined in: `ledger.py:RunItem`
-- suggested storage field: `run_item.payload`
+- suggested storage table: `ledger.run_item`
 
 A run item is keyed by (case, replicate index), never repeating the engine or seed, and holds the vignette fingerprint observed at fetch time, for drift detection, and a `Call`.
 
 #### CanaryCall
 - principal author: none; written by the runner
 - defined in: `ledger.py:CanaryCall`
-- suggested storage field: `canary_call.payload`
+- suggested storage table: `ledger.canary_call`
 
 A canary call holds the phase (`start` or `end`), the canary's position in the set, and a `Call`.
 
 #### RunFinished
 - principal author: none; written by the runner
 - defined in: `ledger.py:RunFinished`
-- suggested storage field: `run_stage.payload` (stage `finished`)
+- suggested storage table: `ledger.run_stage` (stage `finished`)
 
-`RunFinished` closes the log with the time, the run's findings and the seal: the sha256 over the started row, all item rows and all canary-call rows.
+`RunFinished` closes the log with the time, the run's findings and the seal.
+
+The seal is the sha256 over the canonical started row and the canonical item rows sorted by their bytes, so it doesn't depend on the order rows are read back in. It covers the started row, the item rows and the canary-call rows, each sorted by their bytes, separately.
 
 #### Call
 - principal author: none; written by the runner or scorer as part of another row
 - defined in: `ledger.py:Call`
-- suggested storage field: inside `run_item.payload`, `canary_call.payload` and `score_item.payload`
+- suggested storage table: inside `ledger.run_item`, `ledger.canary_call` and `ledger.score_item`
 
 A call records one exchange and is shared by run items, canary calls and judge calls. It holds the fingerprint of the wire body, the start and end times, the HTTP status, the number of attempts, any error, and the raw response. The response is stored without its `prompt_token_ids`: those are the token ids the engine actually read after applying its chat template, and since they encode the case text, only their fingerprint is kept (`fingerprint_prompt_tokens`). Comparing these fingerprints between runs of the same trial (`compare_prompt_tokens`) shows whether the engine read the same tokens, without storing case text.
+
+The request fingerprint (Call.request) is `fingerprint_request` taken over the body's canonical bytes.
 
 #### Run
 - principal author: none; assembled from stored rows
 - defined in: `ledger.py:Run`
-- suggested storage field: transient
+- suggested storage table: none
 
 `Run` reassembles a run's log from its rows and rejects stages out of order (`started` → `finished`) or rows from another run; `Run.finish()` produces the finished row. `check_run` compares the run with its trial. It raises for items the trial does not contain, duplicate items, and canary calls outside the plan (a phase not in `verify_at`, a position not in the set, or any canary call when no set is named). It warns when a finished run is missing items, when the engine returned a different model name than declared, when items have no prompt-token fingerprint, and when rows changed after sealing.
 
@@ -453,42 +447,44 @@ A score is written the same way as a run.
 #### ScoreStarted
 - principal author: none; written by the scorer
 - defined in: `ledger.py:ScoreStarted`
-- suggested storage field: `score_stage.payload` (stage `started`)
+- suggested storage table: `ledger.score_stage` (stage `started`)
 
 `ScoreStarted` holds the score id, the run it scores, the time, the rig's code version, the scorer code actually running and the scoring.
 
 #### ScoreItem
 - principal author: none; written by the scorer
 - defined in: `ledger.py:ScoreItem`
-- suggested storage field: `score_item.payload`
+- suggested storage table: `ledger.score_item`
 
 A score item holds a run item's key, a view's position, the value (a number, or empty if the item couldn't be scored), optional detail and the judge calls made for it.
 
 #### JudgeCall
 - principal author: none; written by the scorer as part of a score item
 - defined in: `ledger.py:JudgeCall`
-- suggested storage field: inside `score_item.payload`
+- suggested storage table: inside `ledger.score_item`
 
 A judge call names the judge, the index of the seed used and the `Call`.
 
 #### ScoreFinished
 - principal author: none; written by the scorer
 - defined in: `ledger.py:ScoreFinished`
-- suggested storage field: `score_stage.payload` (stage `finished`)
+- suggested storage table: `ledger.score_stage` (stage `finished`)
 
-`ScoreFinished` closes the log with the time, the findings and the seal over the started row and all item rows.
+`ScoreFinished` closes the log with the time, the findings and the seal over the started row and all item rows. Scores have no canary calls. Judge calls live inside score items, so they are sealed with them.
+
+Just as with `RunFinished`, the seal is the sha256 over the canonical started row and the canonical item rows sorted by their bytes, so it doesn't depend on the order rows are read back in.
 
 #### Score
 - principal author: none; assembled from stored rows
 - defined in: `ledger.py:Score`
-- suggested storage field: transient
+- suggested storage table: none
 
 `Score` reassembles a score's log the way `Run` does, and `Score.finish()` produces the finished row. `check_score` raises when the score belongs to another run, a view position doesn't exist, an item isn't in the run, or a judge call uses a judge the scorer's views don't name or a seed index out of range. It warns when rows changed after sealing.
 
 ### Compilation
 - principal author: none; written by the compiler
 - defined in: `ledger.py:Compilation`
-- suggested storage field: `compilation.payload`
+- suggested storage table: `factor.compilation`
 
 A compilation is a single row: a recipe, the skeleton it produced, the compiler's code version and the time. It is the lineage from portal chunks to the frozen request; recompiling with a newer compiler adds a new row, not a new factor. It holds no case text and is not case-derived.
 
@@ -511,6 +507,18 @@ Structurally malformed input raises instead. Constructing a component, canary or
 
 The one hard block is clearance: sending case-derived content to an engine that isn't cleared, judge engines included, must be refused. Clearance is bookkeeping data and the manifest does not enforce it; the runner must.
 
+## vLLM 0.24 assumptions (for the fake vLLM)
+1. ChatCompletionResponse.prompt_token_ids is a top-level list[int] | None, set only when request.return_token_ids is true:
+  - https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/chat_completion/protocol.py#L129
+  - https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/chat_completion/serving.py#L1070-L1072
+
+2. 0 < temperature < 1e-2 is logged and raised to 1e-2 (_MAX_TEMP):
+  - https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/sampling_params.py#L428-L438
+
+3. Extra fact: greedy is temperature < 1e-5, checked after the clamp, so only an exact 0 is greedy; that matches Skeleton.greedy.
+
+Fake vLLM based on 0.24.0 should pin both
+
 ---
 
 ## Possible design issues
@@ -523,13 +531,10 @@ A policy for such case-derived content has not settled:
  - database-level read restriction on case-derived record tables;
  - a destination check when records are exported.
 
+Note: Part of it exists now: the case-derived tables are in their own ledger schema, and at tier 1 chatddx_reader can read factor but not ledger. Who gets that role is still open.
+
 ### Greedy sampling and seeds:
 the seed isn't sent, but the trial's seeds still count toward its hash, so two otherwise identical greedy trials differ only in digest.
-
-### Unverified vLLM 0.24 assumptions:
-- with `return_token_ids: true`, the response carries a top-level `prompt_token_ids` list;
-- temperatures in (0, 0.01) are raised to 0.01.
-A fake vLLM based on 0.24.0 should pin both (AGENTS.md asks for one; none exists yet).
 
 ### Misc
 - **Case drift is not checked.** The observed vignette fingerprint is recorded per item but never compared with the case's.
@@ -539,10 +544,7 @@ A fake vLLM based on 0.24.0 should pin both (AGENTS.md asks for one; none exists
 - **Re-binding after vignette drift.** A changed vignette orphans its appendices and expectations; who re-binds them?
 - **Records aren't in bundles.** How the ledger is delivered together with the cage isn't specified.
 - **Metric names are free strings.** `View.metric` is only meaningful to the scorer code that `Scorer.code` pins; nothing checks that the code knows the name.
-- **Vignette fingerprint: raw or normalized?** See "Case".
 - No helper prepares a case, i.e. per-item steps 2–5 (fetch, drift check, cleanup, joining appendices). The old code had one (prepare_case), and it's worth adding back.
-- Whether text cleanup should apply to appendices too hasn't been decided.
-- The request fingerprint (Call.request) is never defined as "the fingerprint of the rendered body's canonical bytes". A helper would pin that down.
 - Where the model name comes from (per-item step 6) is repeated in check_run, so it belongs on the engine as one method.
 - Nothing compares declared and observed scorer code. ScoreStarted.scorer_code is never checked against Scorer.code, so a mismatch goes unnoticed.
 - Missing expectations aren't flagged. Neither the scoring nor check_score warns when a run's case has no expectation, or when a scored item has no expectation behind it.
@@ -554,3 +556,5 @@ A fake vLLM based on 0.24.0 should pin both (AGENTS.md asks for one; none exists
 - The closed set of text-cleanup operations has four members. The old code also had non-breaking spaces to spaces, zero-width character removal, Unicode line breaks to newlines and trailing-whitespace stripping; vignettes may need some of them.
 - `Hardware` has no GPU count, so tensor-parallel engines can't be told apart by hardware (the old code had `gpu_count`).
 - The engine's `system_fingerprint` is kept in each call's raw response (`Call.system_fingerprint`) but never compared between calls or runs.
+
+## Proposed amendments
