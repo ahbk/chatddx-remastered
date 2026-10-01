@@ -1,6 +1,4 @@
-A store.md will be needed, I'll begin by moving out the proposed amendments from manifest.md that belongs in store.md
-
-# chatddx.core.store: work in progress
+# Rig store description: work in progress
 
 Material for a future `docs/store.md`. Everything here describes the code as it is; nothing is a proposal.
 
@@ -82,7 +80,3 @@ tier-2 triggers).
 - No async API yet; the runner may want one (psycopg 3 has both).
 - No bookkeeping tables yet (names, owners, tags, `deleted`); they reference `factor.component.digest`.
 - Per-kind read-only views, for a future ORM, aren't written.
-
-## Belongs in manifest.md, not here
-Record schema versions are a ledger fact, not storage: records serialize to canonical form with `v` and `stage`, and
-`Record.parse` refuses a row whose `v` differs (`src/chatddx/core/manifest/ledger.py:38-66`).
