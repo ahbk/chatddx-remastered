@@ -69,7 +69,7 @@ The manifest details:
 - How scores are aggregated and exported together with the bundle (and eventually the ledger) for publication. This is a requirement but the manifest should only provide the building blocks, not the procedures.
 - How sensitivity is enforced: manifest provide the means but not the enforcment itself.
 - Storage: How components and records map to Postgres, table structures are suggested for clarity but not prescribed. In general:
-    - factor and tables are insert-only
+    - factor and records are insert-only
     - nothing is updated;
     - version chains between digests belong to bookkeeping.
 
@@ -240,7 +240,7 @@ The suggested storage is one table for all kinds, `factor.component` (`digest`, 
 
 Note on foreign keys: `Store.add` writes one `factor.component_ref` row per `Component.refs()` site, and the foreign key sits on that table. The allowed kinds are stored in the row's kinds column and checked by a tier-2 trigger (see `docs/store.md` for postgres' integrity tiers).
 
-Note on `ref-x`: `RefTo` puts `x-ref`: [allowed kinds] on each reference field when Pydantic generates a JSON Schema for a component. Nothing is consuming it right now and it may be dead weight if the portal doesn't need it.
+Note on `x-ref`: `RefTo` puts `x-ref`: [allowed kinds] on each reference field when Pydantic generates a JSON Schema for a component. Nothing is consuming it right now and it may be dead weight if the portal doesn't need it.
 
 ### Case
 - principal author: Clinicians
@@ -423,7 +423,7 @@ A canary call holds the phase (`start` or `end`), the canary's position in the s
 
 `RunFinished` closes the log with the time, the run's findings and the seal.
 
-The seal is the sha256 over the canonical started row and the canonical item rows sorted by their bytes, so it doesn't depend on the order rows are read back in. It covers the started row, the item rows and the canary-call rows. Item rows and canary rows are each sorted by their bytes, separately.
+The seal is the sha256 over the canonical started row and the canonical item rows sorted by their bytes, so it doesn't depend on the order rows are read back in. It covers the started row, the item rows and the canary-call rows, each sorted by their bytes, separately.
 
 #### Call
 - principal author: none; written by the runner or scorer as part of another row
