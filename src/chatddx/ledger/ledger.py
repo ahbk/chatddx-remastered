@@ -281,7 +281,7 @@ type _Row = (
 )
 
 
-def _owner(row: _Row) -> UUID:
+def _log_id(row: _Row) -> UUID:
     match row:
         case ScoreStarted() | ScoreFinished() | ScoreItem():
             return row.score
@@ -292,13 +292,13 @@ def _owner(row: _Row) -> UUID:
 def _check_log(
     stages: Sequence[RunStarted | RunFinished | ScoreStarted | ScoreFinished],
     order: tuple[str, ...],
-    owner: UUID,
+    log: UUID,
     rows: Sequence[_Row],
 ) -> None:
     names = [s.stage for s in stages]
     if names != list(order[: len(names)]):
         raise StructuralError(f"stages {names} do not follow {order}")
-    if any(_owner(r) != owner for r in [*stages, *rows]):
+    if any(_log_id(r) != log for r in [*stages, *rows]):
         raise StructuralError("rows belong to different logs")
 
 

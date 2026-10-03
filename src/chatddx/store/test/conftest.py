@@ -15,27 +15,27 @@ def create_database(template: str | None = None) -> str:
     create = sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name))
     if template is not None:
         create += sql.SQL(" TEMPLATE {}").format(sql.Identifier(template))
-    with psycopg.connect(settings.database(owner=True), autocommit=True) as admin:
+    with psycopg.connect(settings.database(admin=True), autocommit=True) as admin:
         _ = admin.execute(create)
     return name
 
 
 def drop_database(name: str) -> None:
-    with psycopg.connect(settings.database(owner=True), autocommit=True) as admin:
+    with psycopg.connect(settings.database(admin=True), autocommit=True) as admin:
         _ = admin.execute(
             sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(name))
         )
 
 
-def connect(name: str, owner: bool = False) -> Connection:
-    return psycopg.connect(settings.database(owner), dbname=name)
+def connect(name: str, admin: bool = False) -> Connection:
+    return psycopg.connect(settings.database(admin), dbname=name)
 
 
 @pytest.fixture(scope="session")
 def migrated() -> Iterator[str]:
     name = create_database()
     try:
-        with connect(name, owner=True) as conn:
+        with connect(name, admin=True) as conn:
             _ = migrate(conn)
         yield name
     finally:
@@ -58,8 +58,8 @@ def conn(db: str) -> Iterator[Connection]:
 
 
 @pytest.fixture
-def owner(db: str) -> Iterator[Connection]:
-    with connect(db, owner=True) as c:
+def admin(db: str) -> Iterator[Connection]:
+    with connect(db, admin=True) as c:
         yield c
 
 
@@ -74,5 +74,5 @@ def empty_db() -> Iterator[str]:
 
 @pytest.fixture
 def empty(empty_db: str) -> Iterator[Connection]:
-    with connect(empty_db, owner=True) as c:
+    with connect(empty_db, admin=True) as c:
         yield c

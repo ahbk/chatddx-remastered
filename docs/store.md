@@ -116,3 +116,8 @@ tier-2 triggers).
 - Per-kind read-only views, for a future ORM, aren't written.
 
 ## Proposed amendments
+- CHANGE: "owner" as the name of the database role that owns the schemas and runs migrations becomes "admin":
+  `DB_OWNER` → `DB_ADMIN` (`.env-example`), `database(owner=…)` → `database(admin=…)`
+  (`src/chatddx/core/settings.py:9`), the `owner` test fixture → `admin` (`src/chatddx/store/test/conftest.py:61`).
+  Affects "Roles and connections", "Command" and "Tests". Postgres' own `OWNER` (as in `CREATE DATABASE … OWNER`) is
+  unchanged. "Owner" is freed for the catalog.

@@ -9,7 +9,7 @@ referenced by the catalog (owners, collaborators, who started a run) and possibl
 
 ## Done
 - Migrations `src/chatddx/store/migrations/0004-t0-identity.sql` (schema and `person`) and `0005-t1-identity-grants.sql`
-  (writer SELECT, INSERT, UPDATE; reader SELECT; no DELETE for anyone but the owner), tested in
+  (writer SELECT, INSERT, UPDATE; reader SELECT; no DELETE for anyone but the admin role), tested in
   `src/chatddx/store/test/test_identity.py`. No t2 migration: nothing in `identity` is insert-only.
 - Not done: `core/identity.py` (no Python model or `Store` API yet), `active` column.
 
@@ -41,6 +41,4 @@ Decided: only vignettes and data derived from them are sensitive. Names are not,
   orchestrator runs in Kubernetes), and whether `person` stores that provider's subject id, is unspecified.
 - **Authorization** beyond roles: per-thread owner and collaborators live in the catalog (`agents/wip-catalog.md`); who
   may edit a thread is then a rule over identity and catalog together. Where that rule lives is open.
-- **Naming clash with the database owner.** `DB_OWNER`, `settings.database(owner=True)`
-  (`src/chatddx/core/settings.py:9`) and the `owner` parameter in `src/chatddx/store/test/conftest.py:30` mean the
-  database owner role. If the catalog keeps "owner" for a person, the database side is cheaper to rename (`DB_ADMIN`).
+- **Naming clash with the database owner**: resolved, the database side is now `DB_ADMIN` / `database(admin=…)`.

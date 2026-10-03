@@ -84,5 +84,5 @@ lives outside `ledger` and `chatddx_reader` may read it.
 2. **Cases** are not configurations, but clinicians will want to name them: a thread with a single edit, or a plain
    naming table keyed by digest. Naming a digest directly is harmless here, because a case is replaced, never edited.
    Developer-authored kinds may want names and tags without threads too.
-3. **The "owner" field name** clashes with the database owner (`agents/wip-identity.md`, "Open").
+3. **The "owner" field name**: free to use; the database role is now "admin".
 4. **What deleting a thread hides:** everywhere, or only pickers, while runs that used it stay visible.

@@ -81,15 +81,15 @@ def test_components_roundtrip(conn: Connection) -> None:
         _ = store.load([missing])
 
 
-def test_database_guards_components(conn: Connection, owner: Connection) -> None:
+def test_database_guards_components(conn: Connection, admin: Connection) -> None:
     _, reg, ids = stored_world(conn)
     trial = ids["trial"]
     with pytest.raises(errors.RaiseException, match="insert-only"):
-        _ = owner.execute("UPDATE factor.component SET v = 2")
-    owner.rollback()
+        _ = admin.execute("UPDATE factor.component SET v = 2")
+    admin.rollback()
     with pytest.raises(errors.RaiseException, match="insert-only"):
-        _ = owner.execute("TRUNCATE factor.component CASCADE")
-    owner.rollback()
+        _ = admin.execute("TRUNCATE factor.component CASCADE")
+    admin.rollback()
     with pytest.raises(errors.CheckViolation):
         _ = conn.execute(
             "INSERT INTO factor.component VALUES (%s, 'trial', 1, %s, %s::jsonb)",

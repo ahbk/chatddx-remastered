@@ -9,7 +9,7 @@ from chatddx.store.migrate import TOP_TIER, migrate, pending
 
 def _migrate(args: argparse.Namespace) -> None:
     tier = int(args.tier)
-    with psycopg.connect(settings.database(owner=True)) as conn:
+    with psycopg.connect(settings.database(admin=True)) as conn:
         if args.dry_run:
             names = [m.name for m in pending(conn, tier)]
         else:
@@ -25,7 +25,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="chatddx")
     commands = parser.add_subparsers(required=True)
 
-    m = commands.add_parser("migrate", help="apply database migrations as DB_OWNER")
+    m = commands.add_parser("migrate", help="apply database migrations as DB_ADMIN")
     _ = m.add_argument(
         "--tier",
         type=int,
