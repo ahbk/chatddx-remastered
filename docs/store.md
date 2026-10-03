@@ -23,18 +23,51 @@ It includes roles and owner setup, migrations and tests.
   `canary_call (run, phase, probe)`, `score_stage (score, stage)`, `score_item (score, case, replicate, view)`.
   Item rows reference their log's started row through a constant `stage` column. `payload` holds
   `Record.canonical`; `doc` is its `jsonb` copy.
+- Schema `identity`, not case-derived and mutable: `person (id, name)`, `id` generated as identity
+  (`src/chatddx/store/migrations/0004-t0-identity.sql`).
 
 ## Tiers
-- Tier 0 (`0001-t0-tables.sql`): tables, keys, foreign keys.
-- Tier 1 (`0002-t1-grants.sql`): roles `chatddx_writer` (SELECT, INSERT on both schemas) and `chatddx_reader`
-  (SELECT on `factor` only). PUBLIC loses all access. Default privileges cover tables the owner creates later.
-- Tier 2 (`0003-t2-integrity.sql`): CHECKs that digests match canonical text, that `doc` and every key column match
+Migrations apply in file-name order, not tier order, so a later schema's tier-0 file (`0004-t0-…`)
+runs after earlier tier-1 and tier-2 files (`src/chatddx/store/migrate.py`, `pending`).
+
+### Tier 0
+
+migrations:
+- `0001-t0-tables.sql`
+- `0004-t0-identity.sql`
+
+Endowes:
+- tables, keys, foreign keys.
+
+### Tier 1
+
+migration:
+- `0002-t1-grants.sql`
+- `0005-t1-identity-grants.sql`
+
+Endowes:
+- roles `chatddx_writer` (SELECT, INSERT on both schemas) and `chatddx_reader`
+- (SELECT on `factor` only).
+- PUBLIC loses all access.
+- Default privileges cover tables the owner creates later.
+
+- `chatddx_writer` gets SELECT, INSERT, UPDATE on `identity.person` and no DELETE, so people
+  are never removed; `chatddx_reader` gets SELECT. Each identity table is granted explicitly, without default
+  privileges, because tables there may be mutable.
+
+### Tier 2
+
+migrations:
+- `0003-t2-integrity.sql`
+
+Endowes:
+- CHECKs that digests match canonical text, that `doc` and every key column match
   the payload, a deferred constraint trigger that each reference row points at an allowed kind and matches the value
   at its path, and triggers that refuse UPDATE, DELETE and TRUNCATE.
-- Tier 2 uses CHECKs over app-written columns rather than generated columns, so the Python code is the same at every
-  tier.
+- CHECKs over app-written columns rather than generated columns, so the Python code is the same at every tier.
 - `migrate(conn, tier)` records applied migrations in `public.migration`. Raising the tier later applies what was
   skipped; lowering it undoes nothing.
+- `identity` gets no insert-only triggers; it is the one mutable schema.
 
 ## Roles and connections
 Settings: `chatddx.core.settings.database(owner=False)`, from `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_OWNER`
@@ -83,11 +116,3 @@ tier-2 triggers).
 - Per-kind read-only views, for a future ORM, aren't written.
 
 ## Proposed amendments
-- ADD to "Layout": schema `identity`, not case-derived and mutable: `person (id, name)`, `id` generated as identity
-  (`src/chatddx/store/migrations/0004-t0-identity.sql`).
-- ADD to "Tiers", tier 1: `chatddx_writer` gets SELECT, INSERT, UPDATE on `identity.person` and no DELETE, so people
-  are never removed; `chatddx_reader` gets SELECT. Each identity table is granted explicitly, without default
-  privileges, because tables there may be mutable (`src/chatddx/store/migrations/0005-t1-identity-grants.sql`).
-- ADD to "Tiers", tier 2: `identity` gets no insert-only triggers; it is the one mutable schema.
-- ADD to "Tiers": migrations apply in file-name order, not tier order, so a later schema's tier-0 file (`0004-t0-…`)
-  runs after earlier tier-1 and tier-2 files (`src/chatddx/store/migrate.py`, `pending`).
