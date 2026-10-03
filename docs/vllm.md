@@ -36,3 +36,17 @@ vLLM is used for running local models within our control. A fake vLLM is under p
 Fake vLLM based on 0.24.0 should pin all four
 
 ## Proposed amendments
+- ADD to "vLLM 0.24 assumptions", after 5, and CHANGE "should pin all four" to "should pin all of them":
+
+  6. Structured output waits for the end of reasoning only when the server runs with `--reasoning-parser`. Without
+     a reasoner the grammar's bitmask applies from the first token
+     (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/v1/structured_output/__init__.py#L305-L323), and the
+     reasoner comes only from `--reasoning-parser`
+     (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/engine/arg_utils.py#L2257-L2259).
+  7. A request with `thinking_token_budget` is refused unless reasoning is configured (`--reasoning-parser` and/or
+     `--reasoning-config`)
+     (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/v1/engine/input_processor.py#L102-L111).
+  8. Flag names accept `_` for `-`, up to their first `.`, so `--tool_call_parser` is `--tool-call-parser`
+     (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/utils/argparse_utils.py#L301-L320). `--config FILE`
+     pulls arguments from a YAML file
+     (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/utils/argparse_utils.py#L298-L299).

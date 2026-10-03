@@ -221,6 +221,31 @@ tags = ["ddx"]
     - OpenAI's API is reported to reject function parameters whose root isn't `type: object` (not verified here),
       and other OpenAI-compatible remotes may too. vLLM 0.24 accepts any root. That's a candidate lint for tool
       contracts on `engine.remote`, once the remote's behavior is known.
+  - **Partly fixed**: the checks that need only the engine's declared runtime and argv, not model facts.
+    - Trials and judges both pair a skeleton with an engine, so `lint.py:_pair` applies to both. Judges were
+      unlinted before, so they now also get `vllm.temperature_clamped`.
+    - On vLLM 0.24:
+      - `vllm.tool_unconstrained`: a `tool` contract without `--enable-auto-tool-choice` and `--tool-call-parser`.
+      - `vllm.thinking_budget_refused`: `thinking_token_budget` without `--reasoning-parser` or
+        `--reasoning-config`; the request gets a 400.
+      - `vllm.grammar_before_reasoning`: a grammar (`native`, or `tool` with parsers) without `--reasoning-parser`.
+        It's a warning if the skeleton asks to reason, `info` if it leaves that to the model, and nothing if it
+        turns reasoning off. The old pelle comment described exactly this.
+    - Elsewhere (remote engines and other vLLM versions), `schema.ref_unverified` fires when a `native` or `tool`
+      schema has `$ref`, and suggests `inline_refs@1` (G16).
+    - Flags are read as vLLM reads them, `_` and `-` alike (`engine.py:flag_names`). This also fixed a bypass:
+      `LocalEngine` rejected `--served-model-name` but let `--served_model_name` and `--chat_template` through.
+    - Evidence: `docs/vllm.md` proposed assumptions 6–8.
+    - Waits for G1: the model-level refusals (gpt-oss can't turn reasoning off, harmony doesn't render
+      `response_format`, gpt-oss and `tool_choice = required`) and whether a model reasons by default. That default
+      is what would turn the `info` into a warning or silence it. Also waiting: the object-root rule for remotes,
+      until verified.
+    - Open, not fixed: vLLM's `--config FILE` pulls arguments from a YAML file the digest doesn't cover, including
+      owned flags. Options: forbid `--config` in argv, or lint it.
+    - Proposed amendments: `docs/factors.md` (Linting, Local engine), `docs/chatddx.md` (Findings), `docs/vllm.md`
+      (6–8).
+    - Tests: `test_skeleton_and_engine_compatibility`, and the underscore case in
+      `test_engine_argv_cannot_override_manifest`.
 - **G15. Sent schemas are not prepared.** [maybe fix remastered] (found while doing G4)
   - The old code sent an inlined copy of the schema, with `$ref` resolved and `$defs` dropped
     (`src/chatddx/runtime/resolution.py:inlined`). It refused a schema whose top level isn't an object. Only the

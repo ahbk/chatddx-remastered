@@ -12,6 +12,16 @@ OWNED_FLAGS = frozenset(
 )
 
 
+# vLLM reads "_" as "-" in a flag's name, up to its first "." (FlexibleArgumentParser).
+def flag_names(argv: tuple[str, ...]) -> frozenset[str]:
+    names: set[str] = set()
+    for arg in argv:
+        if arg.startswith("--"):
+            name, dot, rest = arg.split("=", 1)[0].partition(".")
+            names.add(name.replace("_", "-") + dot + rest)
+    return frozenset(names)
+
+
 class FileDigest(Frozen):
     path: str
     sha256: Sha256Hex
@@ -62,7 +72,7 @@ class LocalEngine(Component):
     @field_validator("argv")
     @classmethod
     def _no_owned_flags(cls, argv: tuple[str, ...]) -> tuple[str, ...]:
-        owned = {a.split("=", 1)[0] for a in argv} & OWNED_FLAGS
+        owned = flag_names(argv) & OWNED_FLAGS
         if owned:
             raise ValueError(f"argv may not set {sorted(owned)}")
         return argv

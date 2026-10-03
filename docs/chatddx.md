@@ -255,3 +255,8 @@ The one hard block is clearance: sending case-derived content to an engine that 
 **Case drift and canary drift are not implemented.** `RunItem.vignette` records the observed fingerprint, but nothing compares it with `CaseInput.vignette`, and nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
+- CHANGE in "Findings and errors": "`model.revision`, `engine.closure`, `scorer.revision` and
+  `vllm.temperature_clamped`: the lints in `docs/factors.md`." to "`model.revision`, `engine.closure`,
+  `scorer.revision`, and the pair rules for trials and judges (`vllm.temperature_clamped`, `vllm.tool_unconstrained`,
+  `vllm.thinking_budget_refused`, `vllm.grammar_before_reasoning`, `schema.ref_unverified`): the lints in
+  `docs/factors.md`." (`src/chatddx/factors/lint.py`)

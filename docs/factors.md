@@ -247,3 +247,23 @@ the seed isn't sent, but the trial's seeds still count toward its hash, so two o
 - `Hardware` has no GPU count, so tensor-parallel engines can't be told apart by hardware (the old code had `gpu_count`).
 
 ## Proposed amendments
+- CHANGE in "Linting", from "A trial on a local vLLM 0.24 engine …" to the end of the paragraph, to: "A trial or a
+  judge pairs a skeleton with an engine, and both get the same pair rules. Five are keyed by the declared runtime,
+  vLLM 0.24 (`docs/vllm.md`):
+  - `vllm.temperature_clamped`: the skeleton sets a temperature between 0 and 0.01, which vLLM 0.24 raises to 0.01.
+  - `vllm.tool_unconstrained`: a `tool` contract without `--enable-auto-tool-choice` and `--tool-call-parser` in
+    the engine's argv goes out unconstrained.
+  - `vllm.thinking_budget_refused`: `thinking_token_budget` without `--reasoning-parser` or `--reasoning-config` is
+    refused.
+  - `vllm.grammar_before_reasoning`: a `native` contract, or a constrained `tool` one, without `--reasoning-parser`
+    is constrained from the first token, so the model can't reason first. It's a warning when the skeleton asks
+    for reasoning (`reasoning_effort`, `thinking_token_budget`, `enable_thinking: true`), and `info` when it leaves
+    reasoning to the model. Nothing is reported when it turns reasoning off.
+
+  Engines that aren't vLLM 0.24 (remote engines and other versions) get `schema.ref_unverified` when a `native` or
+  `tool` schema has `$ref`: the engine isn't known to resolve it, and `inline_refs@1` removes it. Flags are read as
+  vLLM reads them, with `_` and `-` alike in their names." (`src/chatddx/factors/lint.py:67`, `:128`,
+  `src/chatddx/factors/engine.py:16`). This also drops "(an unverified assumption, …)": `docs/vllm.md` assumption 2
+  verifies it.
+- CHANGE in "Local engine": "which they may not set" to "which they may not set, whether spelled with dashes or
+  underscores, since vLLM reads both" (`src/chatddx/factors/engine.py:16`).

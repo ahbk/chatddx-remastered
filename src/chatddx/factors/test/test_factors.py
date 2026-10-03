@@ -33,6 +33,7 @@ from chatddx.factors.request import (
     Message,
     NativeOutput,
     Output,
+    OutputContract,
     Prompt,
     Reasoning,
     Recipe,
@@ -552,10 +553,9 @@ def test_tool_contracts_carry_a_description(reg: Registry) -> None:
 
 def test_engine_argv_cannot_override_manifest(reg: Registry) -> None:
     engine = local_engine(reg)
-    with pytest.raises(ValidationError, match="served-model-name"):
-        _ = LocalEngine.model_validate(
-            {**engine.model_dump(), "argv": ["--served-model-name=x"]}
-        )
+    for argv in (["--served-model-name=x"], ["--chat_template", "t.jinja"]):
+        with pytest.raises(ValidationError, match="may not set"):
+            _ = LocalEngine.model_validate({**engine.model_dump(), "argv": argv})
     assert engine.served_model_name == engine.digest
 
 
@@ -654,6 +654,87 @@ def test_lint(reg: Registry) -> None:
         Trial(skeleton=skeleton, engine=ids["engine"], cases=(ids["case"],), seeds=(1,))
     )
     assert [f.code for f in lint(reg, [trial])] == ["vllm.temperature_clamped"]
+
+
+def test_skeleton_and_engine_compatibility(reg: Registry) -> None:
+    ids = world(reg)
+    engine = local_engine(reg)
+
+    def local(*argv: str) -> str:
+        return reg.add(
+            LocalEngine.model_validate({**engine.model_dump(), "argv": argv})
+        )
+
+    bare = local()
+    parsers = local(
+        "--enable-auto-tool-choice",
+        "--tool_call_parser=hermes",
+        "--reasoning-parser",
+        "qwen3",
+    )
+    remote = reg.add(
+        RemoteEngine(base_url=HttpUrl("https://example.org/v1"), model="gemma")
+    )
+    user = Message(role="user", content=(Slot(slot="case"),))
+    schema: dict[str, JsonValue] = {
+        "type": "object",
+        "properties": {"a": {"$ref": "#/$defs/A"}},
+        "$defs": {"A": {"type": "string"}},
+    }
+    response_format: dict[str, JsonValue] = {
+        "type": "json_schema",
+        "json_schema": {"name": "output", "schema": schema},
+    }
+
+    def skeleton(contract: OutputContract, **body: JsonValue) -> str:
+        return reg.add(Skeleton(messages=(user,), body=body, contract=contract))
+
+    native = skeleton(NativeOutput(), response_format=response_format)
+    thinking = skeleton(
+        NativeOutput(),
+        response_format=response_format,
+        chat_template_kwargs={"enable_thinking": True},
+    )
+    silent = skeleton(
+        NativeOutput(),
+        response_format=response_format,
+        chat_template_kwargs={"enable_thinking": False},
+    )
+    tool = skeleton(
+        ToolOutput(name="f"),
+        tools=[{"type": "function", "function": {"name": "f", "parameters": schema}}],
+        tool_choice={"type": "function", "function": {"name": "f"}},
+    )
+    budget = skeleton(TextOutput(), thinking_token_budget=512)
+
+    def findings(skeleton: str, engine: str) -> dict[str, str]:
+        trial = reg.add(
+            Trial(skeleton=skeleton, engine=engine, cases=(ids["case"],), seeds=(1,))
+        )
+        return {f.code: f.level for f in lint(reg, [trial])}
+
+    assert findings(native, bare) == {"vllm.grammar_before_reasoning": "info"}
+    assert findings(thinking, bare) == {"vllm.grammar_before_reasoning": "warning"}
+    assert findings(silent, bare) == {}
+    assert findings(native, parsers) == {}
+    assert findings(tool, bare) == {"vllm.tool_unconstrained": "warning"}
+    assert findings(tool, parsers) == {}
+    assert findings(budget, bare) == {"vllm.thinking_budget_refused": "warning"}
+    assert findings(budget, local("--reasoning-config", "{}")) == {}
+    assert findings(native, remote) == {"schema.ref_unverified": "warning"}
+    assert findings(tool, remote) == {"schema.ref_unverified": "warning"}
+    assert findings(budget, remote) == {}
+
+    judged = reg.add(
+        Skeleton(
+            purpose="judge",
+            messages=(Message(role="user", content=(Slot(slot="completion"),)),),
+            body={"response_format": response_format},
+            contract=NativeOutput(),
+        )
+    )
+    judge = reg.add(Judge(skeleton=judged, engine=remote, seeds=(1,)))
+    assert [f.code for f in lint(reg, [judge])] == ["schema.ref_unverified"]
 
 
 def test_execution_schedule() -> None:
