@@ -5,9 +5,9 @@ from typing import Annotated, Literal, override
 
 from pydantic import Field, JsonValue, field_validator, model_validator
 
+from .base import Component, Digest, Frozen, RefTo, Resolver
 from .cases import CaseInputRef, NormalizeOp
 from .engine import EngineRef
-from .identity import Component, Digest, Frozen, RefTo, Resolver
 from .request import RUNTIME_KEYS, Skeleton, SkeletonRef
 
 Order = Literal["case_major@1", "replicate_major@1", "shuffled@1"]

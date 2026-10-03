@@ -6,10 +6,7 @@ from uuid import UUID
 
 from pydantic import AfterValidator, AwareDatetime, Field, JsonValue, model_validator
 
-from chatddx.factors.bundle import Registry
-from chatddx.factors.cases import CaseInputRef
-from chatddx.factors.engine import LocalEngine, RemoteEngine
-from chatddx.factors.identity import (
+from chatddx.factors.base import (
     Code,
     Digest,
     Finding,
@@ -20,6 +17,9 @@ from chatddx.factors.identity import (
     resolve,
     sha256_digest,
 )
+from chatddx.factors.bundle import Registry
+from chatddx.factors.cases import CaseInputRef
+from chatddx.factors.engine import LocalEngine, RemoteEngine
 from chatddx.factors.request import Recipe, SkeletonRef
 from chatddx.factors.scoring import Judge, JudgeRef, Scorer, Scoring, ScoringRef
 from chatddx.factors.trial import (

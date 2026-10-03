@@ -1,9 +1,9 @@
 import re
 from collections.abc import Iterable
 
+from .base import Finding
 from .bundle import Registry
 from .engine import LocalEngine, ModelArtifact
-from .identity import Finding
 from .request import Skeleton
 from .scoring import Scorer
 from .trial import Trial

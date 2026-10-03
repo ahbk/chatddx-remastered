@@ -3,7 +3,7 @@ from typing import Annotated, Literal, cast
 
 from pydantic import Field, JsonValue, model_validator
 
-from .identity import (
+from .base import (
     Component,
     Digest,
     Frozen,

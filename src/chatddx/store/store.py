@@ -6,8 +6,8 @@ from uuid import UUID
 import psycopg
 from psycopg.rows import TupleRow
 
+from chatddx.factors.base import Component, StructuralError, sha256_digest
 from chatddx.factors.bundle import Registry
-from chatddx.factors.identity import Component, StructuralError, sha256_digest
 from chatddx.ledger.ledger import (
     CanaryCall,
     Compilation,

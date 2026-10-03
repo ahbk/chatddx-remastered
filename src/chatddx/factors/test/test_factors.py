@@ -5,6 +5,11 @@ from typing import Literal
 import pytest
 from pydantic import HttpUrl, ValidationError
 
+from chatddx.factors.base import (
+    Component,
+    Fingerprint,
+    StructuralError,
+)
 from chatddx.factors.bundle import Bundle, Registry
 from chatddx.factors.cases import (
     Appendix,
@@ -17,11 +22,6 @@ from chatddx.factors.engine import (
     LocalEngine,
     RemoteEngine,
     check_chat_template,
-)
-from chatddx.factors.identity import (
-    Component,
-    Fingerprint,
-    StructuralError,
 )
 from chatddx.factors.lint import lint
 from chatddx.factors.request import (

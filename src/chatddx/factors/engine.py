@@ -4,7 +4,7 @@ from typing import Annotated, Literal
 
 from pydantic import Field, HttpUrl, field_validator
 
-from .identity import Component, Digest, Finding, Frozen, RefTo, Sha256Hex
+from .base import Component, Digest, Finding, Frozen, RefTo, Sha256Hex
 
 # Flags the start-up script derives from the manifest itself; argv may not set them.
 OWNED_FLAGS = frozenset(

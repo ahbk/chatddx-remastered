@@ -238,3 +238,4 @@ The one hard block is clearance: sending case-derived content to an engine that 
 **Case drift and canary drift are not implemented.** `RunItem.vignette` records the observed fingerprint, but nothing compares it with `CaseInput.vignette`, and nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
+- CHANGE: "`identity.py: Finding`" (Findings and errors) to "`base.py: Finding`"; the module was renamed (`src/chatddx/factors/base.py:236`).

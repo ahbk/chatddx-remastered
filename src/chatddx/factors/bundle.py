@@ -1,7 +1,7 @@
 from collections.abc import Iterable
 from typing import Literal
 
-from .identity import (
+from .base import (
     Code,
     Component,
     Digest,

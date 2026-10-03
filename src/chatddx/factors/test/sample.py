@@ -1,5 +1,9 @@
 from datetime import UTC, datetime
 
+from chatddx.factors.base import (
+    Code,
+    Fingerprint,
+)
 from chatddx.factors.bundle import Registry
 from chatddx.factors.cases import (
     Appendix,
@@ -12,10 +16,6 @@ from chatddx.factors.engine import (
     LocalEngine,
     ModelArtifact,
     Runtime,
-)
-from chatddx.factors.identity import (
-    Code,
-    Fingerprint,
 )
 from chatddx.factors.request import (
     Instructions,

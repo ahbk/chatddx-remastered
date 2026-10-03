@@ -2,9 +2,9 @@ from typing import Annotated, Literal, override
 
 from pydantic import Field, JsonValue
 
+from .base import Code, Component, Digest, Frozen, JsonPointer, RefTo, Resolver
 from .cases import CaseInputRef
 from .engine import EngineRef
-from .identity import Code, Component, Digest, Frozen, JsonPointer, RefTo, Resolver
 from .request import Skeleton, SkeletonRef
 
 

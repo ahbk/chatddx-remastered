@@ -127,7 +127,7 @@ Lumping clearance in with tags under one word hides that difference.
 Take:
 - Use **catalog** for the curation part. It is a catalog of immutable items, and the word doesn't clash with anything
   in the code; `Registry` is taken.
-- Use **identity** for people. This clashes with `chatddx/core/manifest/identity.py`, which holds digests and canonical
+- Use **identity** for people. This clashed with `chatddx/factors/identity.py`, since renamed to `base.py`, which holds digests and canonical
   form, so that module should be renamed (see below).
 - Use **clearance** for the enforcement part.
 - "Bookkeeping" can remain the umbrella word in prose, as the manifest doc uses it, but not as a module or schema
@@ -156,7 +156,7 @@ So the split is clean. Take:
 ```
 src/chatddx/
   manifest/           # one unit, since docs/manifest.md says it may move to its own repo
-    canon.py          # today's identity.py: Frozen, canonical bytes, digests, Fingerprint, Code, Finding
+    base.py           # was identity.py: Frozen, canonical bytes, digests, Fingerprint, Code, Finding
     components/       # cases, engine, request, scoring, trial, plus bundle (Registry, Bundle) and lint
     ledger.py         # records; imports components, never the reverse
   store/              # Postgres: migrations, Store, migrate
@@ -172,7 +172,7 @@ Points to weigh:
   treats the manifest as one importable unit for the orchestrator, runner, scorer and start-up script, and the
   start-up script needs only components. A second-level split lets it import `chatddx.manifest.components` without
   pulling in the ledger. Two root packages would also be fine; it only changes import paths.
-- **Rename `identity.py` to `canon.py`** (or `canonical.py`) whatever else happens, so "identity" means people.
+- **Rename `identity.py`**: done, it is now `chatddx/factors/base.py`, so "identity" means people.
 - **`chatddx.core.settings`** is named as the project's source of truth in AGENTS.md. If `core` shrinks to identity,
   either settings stays in `core` (it's core in every other sense), or AGENTS.md needs a human edit.
 - **The move is mechanical but wide:** imports in every module and test, the `migrations` path inside `store`, and the

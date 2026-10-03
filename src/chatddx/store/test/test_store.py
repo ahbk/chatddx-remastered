@@ -4,9 +4,9 @@ import pytest
 from psycopg import errors
 from psycopg.pq import TransactionStatus
 
+from chatddx.factors.base import StructuralError
 from chatddx.factors.bundle import Registry
 from chatddx.factors.engine import LocalEngine
-from chatddx.factors.identity import StructuralError
 from chatddx.factors.request import Recipe
 from chatddx.factors.test.sample import NOW, RIG, fp, world
 from chatddx.factors.trial import Trial

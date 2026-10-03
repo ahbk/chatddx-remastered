@@ -5,7 +5,7 @@ from typing import Annotated, Literal, override
 
 from pydantic import Field
 
-from .identity import Component, Digest, Fingerprint, Frozen, RefTo, Resolver
+from .base import Component, Digest, Fingerprint, Frozen, RefTo, Resolver
 
 
 class SourceCase(Frozen):
