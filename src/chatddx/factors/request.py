@@ -1,7 +1,8 @@
+import json
 from collections.abc import Mapping
 from typing import Annotated, Literal, cast
 
-from pydantic import Field, JsonValue, model_validator
+from pydantic import Field, JsonValue, field_validator, model_validator
 
 from .base import (
     Component,
@@ -15,6 +16,7 @@ from .base import (
 )
 
 SlotName = Literal["case", "appendices", "completion", "expectation"]
+InsertName = Literal["schema"]
 Purpose = Literal["generation", "judge"]
 
 SLOTS_BY_PURPOSE: dict[Purpose, frozenset[SlotName]] = {
@@ -39,6 +41,13 @@ class Slot(Frozen):
 
 
 Segment = str | Slot
+
+
+class Insert(Frozen):
+    insert: InsertName
+
+
+Guidance = str | tuple[str | Insert, ...]
 
 
 class Message(Frozen):
@@ -108,7 +117,22 @@ class Output(Component):
     kind: Literal["chunk.output"] = "chunk.output"
     contract: OutputContract
     json_schema: dict[str, JsonValue] | None = None
-    guidance: str | None = None
+    guidance: Guidance | None = None
+
+    @field_validator("guidance")
+    @classmethod
+    def _merge_text(cls, guidance: Guidance | None) -> Guidance | None:
+        if guidance is None or isinstance(guidance, str):
+            return guidance
+        merged: list[str | Insert] = []
+        for s in guidance:
+            if isinstance(s, str) and merged and isinstance(merged[-1], str):
+                merged[-1] += s
+            else:
+                merged.append(s)
+        if all(isinstance(s, str) for s in merged):
+            return "".join(cast(list[str], merged))
+        return tuple(s for s in merged if s != "")
 
     @model_validator(mode="after")
     def _schema_placement(self) -> "Output":
@@ -118,6 +142,29 @@ class Output(Component):
         elif self.json_schema is None:
             raise ValueError(f"{self.contract.kind} contracts need json_schema")
         return self
+
+    @model_validator(mode="after")
+    def _inserts(self) -> "Output":
+        if self.guidance is None or isinstance(self.guidance, str):
+            return self
+        inserts = [s.insert for s in self.guidance if isinstance(s, Insert)]
+        if dupes := {i for i in inserts if inserts.count(i) > 1}:
+            raise ValueError(f"inserts used more than once: {sorted(dupes)}")
+        if "schema" in inserts and self.output_schema is None:
+            raise ValueError("only an output with a schema can show it")
+        return self
+
+    @property
+    def output_schema(self) -> dict[str, JsonValue] | None:
+        if isinstance(self.contract, TextOutput):
+            return self.contract.json_schema
+        return self.json_schema
+
+    def guidance_text(self) -> str | None:
+        if self.guidance is None or isinstance(self.guidance, str):
+            return self.guidance
+        schema = json.dumps(self.output_schema, indent=2, ensure_ascii=False)
+        return "".join(s if isinstance(s, str) else schema for s in self.guidance)
 
 
 class Sampling(Component):
@@ -298,8 +345,8 @@ def compile_request(spec: Recipe, get: Resolver) -> Skeleton:
     if spec.instructions is not None:
         instructions = resolve(get, spec.instructions, Instructions)
         system, role = instructions.text, instructions.role
-    if output.guidance:
-        system = f"{system}\n\n{output.guidance}" if system else output.guidance
+    if guidance := output.guidance_text():
+        system = f"{system}\n\n{guidance}" if system else guidance
 
     messages: list[Message] = []
     if system:

@@ -28,6 +28,7 @@ from chatddx.factors.lint import lint
 from chatddx.factors.request import (
     Example,
     FewShot,
+    Insert,
     Instructions,
     Message,
     NativeOutput,
@@ -208,6 +209,64 @@ def test_compile_and_render(reg: Registry) -> None:
             "content": "Case:\n{{not a template}}\n\nTroponin 80 ng/L.\n\nDifferential?",
         },
     ]
+
+
+def test_outputs_show_their_schema(reg: Registry) -> None:
+    schema: dict[str, JsonValue] = {
+        "type": "object",
+        "properties": {
+            "diagnosis": {"type": "string"},
+            "critical": {"type": "boolean"},
+        },
+    }
+    shown = json.dumps(schema, indent=2, ensure_ascii=False)
+    guidance = (
+        "Answer with JSON matching:\n\n",
+        Insert(insert="schema"),
+        "\n\nNo prose.",
+    )
+    prompt = reg.add(Prompt(segments=(Slot(slot="case"),)))
+    sampling = reg.add(Sampling())
+
+    output = Output(contract=NativeOutput(), json_schema=schema, guidance=guidance)
+    assert Registry().add_raw(output.digest, output.canonical) == output
+    native = compile_request(
+        Recipe(prompt=prompt, output=reg.add(output), sampling=sampling), reg.get
+    )
+    assert native.messages[0].content == (
+        f"Answer with JSON matching:\n\n{shown}\n\nNo prose.",
+    )
+    assert native.output_schema == schema
+
+    prompted = compile_request(
+        Recipe(
+            prompt=prompt,
+            output=reg.add(
+                Output(contract=TextOutput(json_schema=schema), guidance=guidance)
+            ),
+            sampling=sampling,
+        ),
+        reg.get,
+    )
+    assert prompted.messages[0].content == native.messages[0].content
+    assert prompted.body == {}
+
+
+def test_schema_inserts_are_checked() -> None:
+    schema: dict[str, JsonValue] = {"type": "object"}
+    with pytest.raises(ValidationError, match="only an output with a schema"):
+        _ = Output(contract=TextOutput(), guidance=(Insert(insert="schema"),))
+    with pytest.raises(ValidationError, match="used more than once"):
+        _ = Output(
+            contract=NativeOutput(),
+            json_schema=schema,
+            guidance=(Insert(insert="schema"), "\n", Insert(insert="schema")),
+        )
+    text = Output(contract=TextOutput(), guidance="Answer in JSON.")
+    split = Output(contract=TextOutput(), guidance=("Answer ", "", "in JSON."))
+    assert split.guidance == "Answer in JSON."
+    assert split.digest == text.digest
+    assert json.loads(text.canonical)["guidance"] == "Answer in JSON."
 
 
 def test_few_shot_developer_role_and_budgets(reg: Registry) -> None:

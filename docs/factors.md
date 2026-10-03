@@ -206,3 +206,16 @@ the seed isn't sent, but the trial's seeds still count toward its hash, so two o
 - `Hardware` has no GPU count, so tensor-parallel engines can't be told apart by hardware (the old code had `gpu_count`).
 
 ## Proposed amendments
+- CHANGE in "Request": "None of them is a template: text is plain text, and the only runtime placeholders are the
+  prompt's slots, filled by concatenation, so clinical text is never interpreted." to "None of them is a template:
+  text is plain text. The only runtime placeholders are the prompt's slots, filled by concatenation, so clinical text
+  is never interpreted; the only compile-time placeholder is the output guidance's `schema` insert."
+  (`src/chatddx/factors/request.py:46`)
+- CHANGE in "Output": "`text` constrains nothing and may carry a schema that only scoring uses. Its optional guidance
+  is the chunk's cross-component effect: it is appended to the instructions." to "`text` constrains nothing and may
+  carry a schema, for scoring and for the guidance to show. Its optional guidance is the chunk's cross-component
+  effect: it is appended to the instructions. Guidance is text, or segments of text and the `schema` insert, which
+  compilation replaces with the output's schema as `json.dumps(indent=2, ensure_ascii=False)`, exactly once and only
+  when there is a schema. A `native` output that shows its schema is the old "native (shown)"; a `text` output that
+  shows it is the old "prompted". Adjacent text is merged, so text-only guidance is always a plain string."
+  (`src/chatddx/factors/request.py:Output`, `compile_request`)

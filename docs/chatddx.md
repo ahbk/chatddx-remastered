@@ -249,3 +249,6 @@ The one hard block is clearance: sending case-derived content to an engine that 
 **Case drift and canary drift are not implemented.** `RunItem.vignette` records the observed fingerprint, but nothing compares it with `CaseInput.vignette`, and nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
+- CHANGE: the glossary's **Segment** to "a literal string, a slot or an insert", and ADD after **Slot**:
+  "**Insert:** a placeholder filled at compile time. Today the only one is `schema`, in an output chunk's guidance,
+  filled with that output's schema." (`src/chatddx/factors/request.py:46`, `:163`)

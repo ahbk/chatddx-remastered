@@ -97,7 +97,29 @@ tags = ["ddx"]
     nothing.
   - Neither can be expressed except by pasting the schema into `guidance` by hand, which drifts from `json_schema`.
     The old code rendered it with `json.dumps(indent=2, ensure_ascii=False)` into `{{schema}}`.
-  - It probably rides on G3.
+  - **Fixed** with option "placeholder in guidance" (user's choice over a `show_schema` flag).
+    - `Output.guidance` is text, or segments of text and `Insert(insert="schema")`. `compile_request` fills the
+      insert with the output's schema as `json.dumps(indent=2, ensure_ascii=False)` (`Output.guidance_text`).
+    - The schema must exist (`Output.output_schema` covers the text contract's own schema) and may be inserted once.
+      Adjacent text is merged, so text-only guidance stays a plain string and keeps its digest.
+    - "native (shown)" is a native output whose guidance inserts the schema. "prompted" is a text output with
+      `json_schema` whose guidance inserts it.
+    - The old composition was checked against pydantic-ai 2.41.0's `TemplateStr`. It doesn't HTML-escape, and the
+      sample's guidance below compiles to the identical system text:
+      ```toml
+      guidance = [
+        """Fill in the management plan for the case.
+
+      Answer with a JSON object that matches this JSON Schema, and nothing else:
+
+      """,
+        { insert = "schema" },
+      ]
+      ```
+    - "Insert" is the new compile-time counterpart of "slot". G3 can extend it to the instructions and prompt (e.g.
+      `output_guidance`, `tool_guidance`).
+    - Proposed amendments: `docs/chatddx.md` (glossary: Segment, Insert) and `docs/factors.md` (Request, Output).
+    - Tests: `test_outputs_show_their_schema`, `test_schema_inserts_are_checked`.
 - **G5. The tool contract has no description.** [maybe fix remastered] (old C5)
   - `ToolOutput` holds only a name, and `compile_request` emits the function without a description. The old
     `coercion.tool` had `tool_description` and the name `final_result`.
@@ -164,6 +186,13 @@ tags = ["ddx"]
     vLLM ignores `tool_choice = required` for gpt-oss, and native/tool modes need parsers in the engine's argv.
   - `lint.py` knows only the temperature clamp, and nothing checks a trial's skeleton against its engine. Depends
     on G1.
+- **G15. Sent schemas are not prepared.** [maybe fix remastered] (found while doing G4)
+  - The old code sent an inlined copy of the schema, with `$ref` resolved and `$defs` dropped
+    (`src/chatddx/runtime/resolution.py:inlined`). It refused a schema whose top level isn't an object. Only the
+    shown schema was the authored one.
+  - Remastered sends and shows the authored schema as is. `management_plan_v1.json` uses `$defs` and `$ref`.
+  - Open: whether vLLM 0.24's structured-output backends and the tool-call path take `$ref`, and whether inlining
+    belongs to the output chunk, to compilation, or to a lint.
 
 ### Cases
 - **G11. Vignette sources.** [maybe fix remastered] (old D1)
