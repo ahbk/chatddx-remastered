@@ -85,6 +85,7 @@ migrations:
 - `0008-t2-identity-checks.sql`
 - `0011-t2-catalog-checks.sql`
 - `0013-t2-catalog-families.sql`
+- `0014-t2-catalog-kinds.sql`
 
 Endowes:
 - CHECKs that digests match canonical text, that `doc` and every key column match
@@ -98,7 +99,8 @@ Endowes:
   names, mirrored by `src/chatddx/core/identity.py:Role` and tested against it) and `identity.session` expiry.
 - thread kinds and entry fields (mirrored by `src/chatddx/core/catalog.py` and tested against it),
   entry shapes, label positions, and insert-only triggers reusing `factor.refuse_change()`.
-- insert-only triggers for `catalog.families`.
+- insert-only triggers for `catalog.family` and `catalog.binding`.
+- `0014-t2-catalog-kinds.sql`: replaces the thread-kind check so that every kind but `case` has threads.
 
 ## Roles and connections
 Settings: `chatddx.core.settings.database(admin=False)`, from `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_ADMIN`
@@ -153,7 +155,3 @@ tier-2 triggers).
 - the database allows a thread without edits; `Catalog.create` writes both in one transaction.
 
 ## Proposed amendments
-- ADD to "Tier 2": `0014-t2-catalog-kinds.sql`: replaces the thread-kind check so that every kind but `case` has
-  threads.
-- CHANGE "Tier 2": "insert-only triggers for `catalog.families`" should read `catalog.family` and `catalog.binding`
-  (`src/chatddx/store/migrations/0013-t2-catalog-families.sql`).

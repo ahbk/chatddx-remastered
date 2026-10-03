@@ -11,6 +11,10 @@ and a sequence of edits, each pointing at one digest of that kind; its head is t
 `Catalog.behind` looks through cases, which have no threads: a trial's or expectation's
 case is behind when one of its appendices has a newer head (`src/chatddx/store/catalog.py:Catalog.behind`).
 
+every kind has threads except `case`, including the ones ops and developers author
+(models, engines, expectation schemas, canary sets), so threads are where names attach for everything but cases
+(`src/chatddx/core/catalog.py:THREAD_KINDS`, `src/chatddx/store/migrations/0014-t2-catalog-kinds.sql`).
+
 ## Recipies
 Recipes are skeleton threads. A skeleton edit names the compilation that produced its skeleton, which holds the
 recipe (`catalog.edit.compilation`); a hand-written skeleton's edits name none.
@@ -25,9 +29,9 @@ Configurations and variations are a portal workflow, not a catalog object. A con
 factors; a variation replaces one or more of them. Any digest can be run without a thread, and a variation worth
 keeping becomes an edit or a fork.
 
-Names, descriptions, tags, the owner, collaborators and the deleted flag are entries on a thread, a run or a score
-(`catalog.entry`). The latest entry wins per field, per tag and per collaborator, so deleting is reversible
-(`src/chatddx/core/catalog.py:Entry`, `About.of`). A run's owner is who started it.
+Names, descriptions, tags, the owner, collaborators and the deleted flag are entries on a thread, a family, a
+run or a score (`catalog.entry`). The latest entry wins per field, per tag and per collaborator, so deleting
+is reversible (`src/chatddx/core/catalog.py:Entry`, `About.of`). A run's owner is who started it.
 
 ## Labels
 Labels for a scorer's views and resources key on (scorer digest, part, position) (`catalog.label`); the portal
@@ -47,8 +51,3 @@ new edits on their threads, and builds the new cases. When both change, the vign
 helpers are not implemented.
 
 ## Proposed amendments
-- ADD to "Threads and edits": every kind has threads except `case`, including the ones ops and developers author
-  (models, engines, expectation schemas, canary sets), so threads are where names attach for everything but cases
-  (`src/chatddx/core/catalog.py:THREAD_KINDS`, `src/chatddx/store/migrations/0014-t2-catalog-kinds.sql`).
-- CHANGE "A note on the "evolution of configurations" workflow": entries are on a thread, a family, a run or a score
-  (`src/chatddx/core/catalog.py:Subject`).
