@@ -47,7 +47,9 @@ A case lists its appendices in a pinned order that is part of the case's digest,
 ### Request
 The request side is built in three layers: chunks are authored in the portal, a recipe selects one chunk per part, and the compiler turns a recipe into a frozen skeleton, which is what trials and judges reference. Chunks affect each other only in two pre-specified ways, both owned by the components: the output chunk's guidance is appended to the instructions, and greedy sampling drops `top_p`, `top_k` and `min_p` (the seed is left out at send time). There are no validation retries: the run stores the raw completion and parsing belongs to scoring. Transport retries are a separate matter, declared per run (`Execution.retries`) and counted per call (`ledger:Call.attempts`).
 
-Each chunk is a component that fills one part of a recipe. None of them is a template: text is plain text, and the only runtime placeholders are the prompt's slots, filled by concatenation, so clinical text is never interpreted.
+Each chunk is a component that fills one part of a recipe. None of them is a template:
+text is plain text. The only runtime placeholders are the prompt's slots, filled by concatenation, so clinical text
+is never interpreted; the only compile-time placeholder is the output guidance's `schema` insert.
 
 #### Instructions
 - principal author: Researchers
@@ -71,7 +73,16 @@ A prompt (kind `chunk.prompt`) is the user message: a list of segments, each a l
 - principal author: Researchers
 - defined in: `request.py:Output`
 
-An output chunk (kind `chunk.output`) declares where the answer goes, through one of three contracts. `native` sends a JSON schema as `response_format` (named `output`, strict). `tool` forces a single function call whose parameters are the schema. `text` constrains nothing and may carry a schema that only scoring uses. Its optional guidance is the chunk's cross-component effect: it is appended to the instructions. There is no coercion: parsing belongs to the scorer.
+An output chunk (kind `chunk.output`) declares where the answer goes, through one of three contracts.
+`native` sends a JSON schema as `response_format` (named `output`, strict). `tool` forces a single
+function call whose parameters are the schema. `text` constrains nothing and may
+carry a schema, for scoring and for the guidance to show.
+
+Its optional guidance is the chunk's cross-component effect: it is appended to the instructions.
+Guidance is text, or segments of text and the `schema` insert, which compilation replaces with the
+output's schema as `json.dumps(indent=2, ensure_ascii=False)`, exactly once and only when there is a schema.
+A `native` output that shows its schema is the old "native (shown)"; a `text` output that
+shows it is the old "prompted". Adjacent text is merged, so text-only guidance is always a plain string.
 
 #### Sampling
 - principal author: Researchers
@@ -206,16 +217,3 @@ the seed isn't sent, but the trial's seeds still count toward its hash, so two o
 - `Hardware` has no GPU count, so tensor-parallel engines can't be told apart by hardware (the old code had `gpu_count`).
 
 ## Proposed amendments
-- CHANGE in "Request": "None of them is a template: text is plain text, and the only runtime placeholders are the
-  prompt's slots, filled by concatenation, so clinical text is never interpreted." to "None of them is a template:
-  text is plain text. The only runtime placeholders are the prompt's slots, filled by concatenation, so clinical text
-  is never interpreted; the only compile-time placeholder is the output guidance's `schema` insert."
-  (`src/chatddx/factors/request.py:46`)
-- CHANGE in "Output": "`text` constrains nothing and may carry a schema that only scoring uses. Its optional guidance
-  is the chunk's cross-component effect: it is appended to the instructions." to "`text` constrains nothing and may
-  carry a schema, for scoring and for the guidance to show. Its optional guidance is the chunk's cross-component
-  effect: it is appended to the instructions. Guidance is text, or segments of text and the `schema` insert, which
-  compilation replaces with the output's schema as `json.dumps(indent=2, ensure_ascii=False)`, exactly once and only
-  when there is a schema. A `native` output that shows its schema is the old "native (shown)"; a `text` output that
-  shows it is the old "prompted". Adjacent text is merged, so text-only guidance is always a plain string."
-  (`src/chatddx/factors/request.py:Output`, `compile_request`)

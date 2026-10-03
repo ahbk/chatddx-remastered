@@ -29,7 +29,9 @@ It must be possible to deliver the cage together with the results, for scientifi
 - **Recipe:** the chunks a skeleton was compiled from.
 - **Skeleton:** the frozen request.
 - **Slot:** a placeholder filled at send time.
-- **Segment:** a literal string or a slot.
+- **Insert:** a placeholder filled at compile time. Today the only one is `schema`, in an output chunk's guidance,
+  filled with that output's schema.
+- **Segment** a literal string, a slot or an insert
 - **Purpose:** whether a prompt or skeleton is for `generation` or for a `judge`; it decides which slots are allowed.
 - **Contract:** how an output chunk constrains the answer: `native`, `tool` or `text`.
 - **Normalization:** the text-cleanup steps a trial applies to vignettes.
@@ -249,6 +251,3 @@ The one hard block is clearance: sending case-derived content to an engine that 
 **Case drift and canary drift are not implemented.** `RunItem.vignette` records the observed fingerprint, but nothing compares it with `CaseInput.vignette`, and nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
-- CHANGE: the glossary's **Segment** to "a literal string, a slot or an insert", and ADD after **Slot**:
-  "**Insert:** a placeholder filled at compile time. Today the only one is `schema`, in an output chunk's guidance,
-  filled with that output's schema." (`src/chatddx/factors/request.py:46`, `:163`)
