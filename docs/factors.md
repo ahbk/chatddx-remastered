@@ -169,10 +169,23 @@ A scoring (kind `scoring`) is what a score applies: a scorer plus the expectatio
 
 A canary set (kind `canary_set`) is a list of fixed, non-sensitive probe requests. Each canary holds literal messages, body keys (no runtime keys) and an optional seed. A run names the canary set it uses (see `docs/ledger.md:RunStarted`). Canary sets are components because canary drift is detected by comparing the same set across runs (not implemented yet).
 
+## Linting
+Lints (`lint.py`) warn about settings that are valid but risky. They are plain functions over a registry, run on demand; nothing in the factor components stores their findings. Keeping them out of the data layer means knowledge that changes between vLLM releases can change without touching any factor. `lint(registry, digests)` applies one rule per kind. A model artifact whose revision is not a 40-character commit gets `model.revision`, because a branch or tag can move. A local engine whose closure is not a Nix store path gets `engine.closure`. A scorer whose code has no revision gets `scorer.revision`. A trial on a local vLLM 0.24 engine whose skeleton sets a temperature between 0 and 0.01 gets `vllm.temperature_clamped`, because vLLM 0.24 raises such temperatures to 0.01 (an unverified assumption, see "Possible design issues"). This last rule is the only one keyed by the declared runtime version.
+
 ## Possible design issues
 
 ### Greedy sampling and seeds:
 the seed isn't sent, but the trial's seeds still count toward its hash, so two otherwise identical greedy trials differ only in digest.
+
+### Local engines have no endpoint, and runs don't record where calls went
+  `LocalEngine` has no URL (`src/chatddx/factors/engine.py:51`), so the runner needs a mapping from engine digest to
+  URL that nothing defines yet. By the glossary it is an inventory fact (a location), not a catalog one. One engine
+  digest may be served by several identical hosts, and one host serves different engines over time, so the mapping
+  can't be part of the factor. The runner can check the binding before sending, because a local engine's
+  `served_model_name` is its digest and `/v1/models` lists it. `RemoteEngine.base_url`, by contrast, is part of the
+  digest (`engine.py:76`), so moving the same API to a new host makes a new engine. In both cases `Call`
+  (`src/chatddx/ledger/ledger.py`) records no URL, so the ledger can't show which endpoint received case-derived
+  content, which the clearance check may need.
 
 ### Misc
 - **Case drift is not checked.** The observed vignette fingerprint is recorded per item but never compared with the case's.
@@ -192,16 +205,4 @@ the seed isn't sent, but the trial's seeds still count toward its hash, so two o
 - The closed set of text-cleanup operations has four members. The old code also had non-breaking spaces to spaces, zero-width character removal, Unicode line breaks to newlines and trailing-whitespace stripping; vignettes may need some of them.
 - `Hardware` has no GPU count, so tensor-parallel engines can't be told apart by hardware (the old code had `gpu_count`).
 
-## Linting
-Lints (`lint.py`) warn about settings that are valid but risky. They are plain functions over a registry, run on demand; nothing in the factor components stores their findings. Keeping them out of the data layer means knowledge that changes between vLLM releases can change without touching any factor. `lint(registry, digests)` applies one rule per kind. A model artifact whose revision is not a 40-character commit gets `model.revision`, because a branch or tag can move. A local engine whose closure is not a Nix store path gets `engine.closure`. A scorer whose code has no revision gets `scorer.revision`. A trial on a local vLLM 0.24 engine whose skeleton sets a temperature between 0 and 0.01 gets `vllm.temperature_clamped`, because vLLM 0.24 raises such temperatures to 0.01 (an unverified assumption, see "Possible design issues"). This last rule is the only one keyed by the declared runtime version.
-
 ## Proposed amendments
-- ADD to "Possible design issues": **Local engines have no endpoint, and runs don't record where calls went.**
-  `LocalEngine` has no URL (`src/chatddx/factors/engine.py:51`), so the runner needs a mapping from engine digest to
-  URL that nothing defines yet. By the glossary it is an inventory fact (a location), not a catalog one. One engine
-  digest may be served by several identical hosts, and one host serves different engines over time, so the mapping
-  can't be part of the factor. The runner can check the binding before sending, because a local engine's
-  `served_model_name` is its digest and `/v1/models` lists it. `RemoteEngine.base_url`, by contrast, is part of the
-  digest (`engine.py:76`), so moving the same API to a new host makes a new engine. In both cases `Call`
-  (`src/chatddx/ledger/ledger.py`) records no URL, so the ledger can't show which endpoint received case-derived
-  content, which the clearance check may need.
