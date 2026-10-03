@@ -81,3 +81,13 @@ tier-2 triggers).
 - `jsonb` rejects `\u0000` in strings, so a component or record containing NUL can't be stored.
 - No async API yet; the runner may want one (psycopg 3 has both).
 - Per-kind read-only views, for a future ORM, aren't written.
+
+## Proposed amendments
+- ADD to "Layout": schema `identity`, not case-derived and mutable: `person (id, name)`, `id` generated as identity
+  (`src/chatddx/store/migrations/0004-t0-identity.sql`).
+- ADD to "Tiers", tier 1: `chatddx_writer` gets SELECT, INSERT, UPDATE on `identity.person` and no DELETE, so people
+  are never removed; `chatddx_reader` gets SELECT. Each identity table is granted explicitly, without default
+  privileges, because tables there may be mutable (`src/chatddx/store/migrations/0005-t1-identity-grants.sql`).
+- ADD to "Tiers", tier 2: `identity` gets no insert-only triggers; it is the one mutable schema.
+- ADD to "Tiers": migrations apply in file-name order, not tier order, so a later schema's tier-0 file (`0004-t0-…`)
+  runs after earlier tier-1 and tier-2 files (`src/chatddx/store/migrate.py`, `pending`).

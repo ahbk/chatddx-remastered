@@ -7,6 +7,12 @@ Material for `docs/identity.md`. Split out of the former `agents/wip-bookkeeping
 `docs/factors.md` ("Not factors") assigns people, roles, authentication and authorization to identity. Identity is
 referenced by the catalog (owners, collaborators, who started a run) and possibly by clearance (who granted it).
 
+## Done
+- Migrations `src/chatddx/store/migrations/0004-t0-identity.sql` (schema and `person`) and `0005-t1-identity-grants.sql`
+  (writer SELECT, INSERT, UPDATE; reader SELECT; no DELETE for anyone but the owner), tested in
+  `src/chatddx/store/test/test_identity.py`. No t2 migration: nothing in `identity` is insert-only.
+- Not done: `core/identity.py` (no Python model or `Store` API yet), `active` column.
+
 ## Decisions
 
 ### 1. People are a small mutable table of their own
