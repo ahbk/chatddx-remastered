@@ -4,10 +4,13 @@ import pytest
 from psycopg import errors
 from psycopg.pq import TransactionStatus
 
-from chatddx.core.manifest.bundle import Registry
-from chatddx.core.manifest.engine import LocalEngine
-from chatddx.core.manifest.identity import StructuralError
-from chatddx.core.manifest.ledger import (
+from chatddx.factors.bundle import Registry
+from chatddx.factors.engine import LocalEngine
+from chatddx.factors.identity import StructuralError
+from chatddx.factors.request import Recipe
+from chatddx.factors.test.sample import NOW, RIG, fp, world
+from chatddx.factors.trial import Trial
+from chatddx.ledger.ledger import (
     Call,
     CanaryCall,
     Compilation,
@@ -22,11 +25,8 @@ from chatddx.core.manifest.ledger import (
     check_run,
     check_score,
 )
-from chatddx.core.manifest.request import Recipe
-from chatddx.core.manifest.test.sample import NOW, RIG, fp, world
-from chatddx.core.manifest.trial import Trial
-from chatddx.core.store import Store, migrate
-from chatddx.core.store.store import Connection
+from chatddx.store import Store, migrate
+from chatddx.store.store import Connection
 
 
 def call(model: str) -> Call:

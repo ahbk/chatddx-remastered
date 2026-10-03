@@ -1,23 +1,23 @@
 from datetime import UTC, datetime
 
-from chatddx.core.manifest.bundle import Registry
-from chatddx.core.manifest.cases import (
+from chatddx.factors.bundle import Registry
+from chatddx.factors.cases import (
     Appendix,
     CaseInput,
     SourceCase,
 )
-from chatddx.core.manifest.engine import (
+from chatddx.factors.engine import (
     FileDigest,
     Hardware,
     LocalEngine,
     ModelArtifact,
     Runtime,
 )
-from chatddx.core.manifest.identity import (
+from chatddx.factors.identity import (
     Code,
     Fingerprint,
 )
-from chatddx.core.manifest.request import (
+from chatddx.factors.request import (
     Instructions,
     Message,
     NativeOutput,
@@ -31,7 +31,7 @@ from chatddx.core.manifest.request import (
     TextOutput,
     compile_request,
 )
-from chatddx.core.manifest.scoring import (
+from chatddx.factors.scoring import (
     Expectation,
     ExpectationSchema,
     Judge,
@@ -39,7 +39,7 @@ from chatddx.core.manifest.scoring import (
     Scoring,
     View,
 )
-from chatddx.core.manifest.trial import (
+from chatddx.factors.trial import (
     Canary,
     CanarySet,
     Trial,

@@ -6,10 +6,10 @@ from uuid import UUID
 
 from pydantic import AfterValidator, AwareDatetime, Field, JsonValue, model_validator
 
-from .bundle import Registry
-from .cases import CaseInputRef
-from .engine import LocalEngine, RemoteEngine
-from .identity import (
+from chatddx.factors.bundle import Registry
+from chatddx.factors.cases import CaseInputRef
+from chatddx.factors.engine import LocalEngine, RemoteEngine
+from chatddx.factors.identity import (
     Code,
     Digest,
     Finding,
@@ -20,9 +20,15 @@ from .identity import (
     resolve,
     sha256_digest,
 )
-from .request import Recipe, SkeletonRef
-from .scoring import Judge, JudgeRef, Scorer, Scoring, ScoringRef
-from .trial import CanarySet, CanarySetRef, Execution, Trial, TrialRef
+from chatddx.factors.request import Recipe, SkeletonRef
+from chatddx.factors.scoring import Judge, JudgeRef, Scorer, Scoring, ScoringRef
+from chatddx.factors.trial import (
+    CanarySet,
+    CanarySetRef,
+    Execution,
+    Trial,
+    TrialRef,
+)
 
 Phase = Literal["start", "end"]
 

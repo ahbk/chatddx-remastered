@@ -1,16 +1,17 @@
-# Rig store description: work in progress
+# Store
 
-Material for a future `docs/store.md`. Everything here describes the code as it is; nothing is a proposal.
+This document describes the postgresql backend for chatddx called store.
+It includes roles and owner setup, migrations and tests.
 
-## Decisions (by the user)
-- psycopg 3 and plain SQL migrations; no ORM. A later ORM maps onto these tables without managing them.
+## Basics
+- psycopg 3 and plain SQL migrations (no ORM).
 - One component table plus reference edges, not one table per kind.
 - Integrity in three tiers. Each tier is its own migration and a deployment applies them up to a chosen tier.
 - DB tests fail, rather than skip, when Postgres is unreachable.
-- Postgres stays out of the devShell. The local server and `.env` are the developer's own and stay out of git.
+- `dev-db` scripts to setup a local postgres instance for development
 
 ## Layout
-`src/chatddx/core/store/migrations/0001-t0-tables.sql`
+`src/chatddx/store/migrations/0001-t0-tables.sql`
 - Schema `factor`, not case-derived:
   - `component (digest, kind, v, canonical, doc)`: every component kind in one table. `canonical` is the source of
     truth; `doc` is its `jsonb` copy.
@@ -47,7 +48,7 @@ Settings: `chatddx.core.settings.database(owner=False)`, from `DB_HOST`, `DB_NAM
 - Tier-2 triggers bind the owner too; only a superuser who disables triggers gets around them.
 - Roles are cluster-wide, so every database in a cluster shares `chatddx_writer` and `chatddx_reader`.
 
-Local setup used in the agent container (Unix socket, peer auth mapped from the OS user):
+Local setup used by in the agent container (Unix socket, peer auth mapped from the OS user):
 ```
 CREATE ROLE chatddx LOGIN CREATEDB CREATEROLE;
 CREATE ROLE chatddx_writer LOGIN;
@@ -61,7 +62,7 @@ then `chatddx migrate`.
 `chatddx migrate [--tier {0,1,2}] [--dry-run]` (`src/chatddx/cli.py`) connects as `DB_OWNER`, applies pending
 migrations up to the tier (default 2) and prints each one; `--dry-run` only lists them.
 
-## Store API (`src/chatddx/core/store/store.py`)
+## Store API (`src/chatddx/store/store.py`)
 - `add(registry, roots)`: checks the closure and inserts components and their reference rows in one transaction.
 - `get(digest)`, `load(roots)`: read back and verify digests. `load` follows `component_ref` with a recursive query and
   returns a `Registry`, so `check`/`bundle` work unchanged.
@@ -69,7 +70,7 @@ migrations up to the tier (default 2) and prints each one; `--dry-run` only list
 - `run(id)`, `score(id)`, `compilations(skeleton)`: reassemble from rows; seals don't depend on row order.
 
 ## Tests
-`src/chatddx/core/store/test/`: a migrated template database per session, a fresh copy per test, dropped afterwards.
+`src/chatddx/store/test/`: a migrated template database per session, a fresh copy per test, dropped afterwards.
 The owner creates and migrates databases; tests use the writer except where they need the owner (tier-0 writes,
 tier-2 triggers).
 
@@ -78,5 +79,4 @@ tier-2 triggers).
   `Store.add` writes them together.
 - `jsonb` rejects `\u0000` in strings, so a component or record containing NUL can't be stored.
 - No async API yet; the runner may want one (psycopg 3 has both).
-- No bookkeeping tables yet (names, owners, tags, `deleted`); they reference `factor.component.digest`.
 - Per-kind read-only views, for a future ORM, aren't written.

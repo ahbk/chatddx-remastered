@@ -1,14 +1,15 @@
 # Agent instructions
-This document contains project-wide instructions written by humans for agents. Agents may append proposed amendments.
+This document contains project-wide instructions written by humans for agents. Agents may append proposed amendments and should always report surprises.
 
 ## Environment
-* `.env-example` is complete and should match your environment as is, report surprises.
+* `.env-example` is complete and should match your environment as is.
 * Human devenv is declared in flake.nix's devShell
-* PostgreSQL 16
+* `store` uses PostgreSQL 16:
+ - pg_ident.conf: chatddx <os-user> chatddx / chatddx <os-user> chatddx_writer
+ - pg_hba.conf:   local all all peer map=chatddx
+ - Setup database and roles with `src/chatddx/store/setup.sql`
 * Base the fake vLLM on 0.24.0, extend/amend continuously as new facts are discovered, questions arise or sample data is needed.
-
-## Settings
-`chatddx.core.settings` id the project-wide source of truth.
+* `chatddx.core.settings` is the project-wide source of truth.
 
 ## Typechecking
 * Errors and warnings that indicate issues beyond the scope of the current task should remain, never hide them.

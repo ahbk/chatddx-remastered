@@ -6,8 +6,8 @@ import pytest
 from psycopg import sql
 
 from chatddx.core import settings
-from chatddx.core.store import migrate
-from chatddx.core.store.store import Connection
+from chatddx.store import migrate
+from chatddx.store.store import Connection
 
 
 def create_database(template: str | None = None) -> str:

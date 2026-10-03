@@ -4,7 +4,7 @@ from collections.abc import Sequence
 import psycopg
 
 from chatddx.core import settings
-from chatddx.core.store.migrate import TOP_TIER, migrate, pending
+from chatddx.store.migrate import TOP_TIER, migrate, pending
 
 
 def _migrate(args: argparse.Namespace) -> None:
