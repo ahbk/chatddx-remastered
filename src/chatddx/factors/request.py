@@ -9,6 +9,7 @@ from .base import (
     Frozen,
     RefTo,
     Resolver,
+    Settings,
     StructuralError,
     resolve,
 )
@@ -155,12 +156,12 @@ class Reasoning(Component):
     kind: Literal["chunk.reasoning"] = "chunk.reasoning"
     effort: Literal["none", "minimal", "low", "medium", "high"] | None = None
     thinking_token_budget: int | None = Field(default=None, ge=0)
-    chat_template_kwargs: dict[str, JsonValue] = Field(default_factory=dict)
+    chat_template_kwargs: Settings = Field(default_factory=dict)
 
 
 class Passthrough(Component):
     kind: Literal["chunk.passthrough"] = "chunk.passthrough"
-    body: dict[str, JsonValue]
+    body: Settings
 
     @model_validator(mode="after")
     def _no_owned_keys(self) -> "Passthrough":
@@ -201,7 +202,7 @@ class Skeleton(Component):
     purpose: Purpose = "generation"
     api: Literal["chat.completions"] = "chat.completions"
     messages: tuple[Message, ...] = Field(min_length=1)
-    body: dict[str, JsonValue] = Field(default_factory=dict)
+    body: Settings = Field(default_factory=dict)
     contract: OutputContract
     appendix_layout: AppendixLayout = AppendixLayout()
 

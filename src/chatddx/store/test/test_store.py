@@ -1,13 +1,14 @@
+import json
 from uuid import uuid4
 
 import pytest
 from psycopg import errors
 from psycopg.pq import TransactionStatus
 
-from chatddx.factors.base import StructuralError
+from chatddx.factors.base import StructuralError, resolve
 from chatddx.factors.bundle import Registry
 from chatddx.factors.engine import LocalEngine
-from chatddx.factors.request import Recipe
+from chatddx.factors.request import Recipe, Skeleton
 from chatddx.factors.test.sample import NOW, RIG, fp, world
 from chatddx.factors.trial import Trial
 from chatddx.ledger.ledger import (
@@ -85,6 +86,10 @@ def test_components_roundtrip(conn: Connection) -> None:
     loaded = store.load(roots)
     assert loaded.bundle(roots, RIG) == reg.bundle(roots, RIG)
     assert store.get(ids["trial"]) == reg.get(ids["trial"])
+    skeleton = resolve(reg.get, ids["trial"], Trial).skeleton
+    stored = resolve(store.get, skeleton, Skeleton)
+    authored = resolve(reg.get, skeleton, Skeleton)
+    assert json.dumps(stored.output_schema) == json.dumps(authored.output_schema)
     assert store.add(reg, [ids["trial"]])
     missing = "sha256:" + "f" * 64
     with pytest.raises(StructuralError, match="not in the store"):

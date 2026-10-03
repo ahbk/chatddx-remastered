@@ -119,6 +119,25 @@ tags = ["ddx"]
     reordered schema got a new identity (`src/chatddx/repo/families/canonical.py:ordered`).
   - Affected: `Output.json_schema`, `TextOutput.json_schema`, `Skeleton.body`, `Passthrough.body`,
     `Canary.body` and `messages`, and tool parameters once G8 exists.
+  - **Fixed.** `canonical_bytes` no longer sorts. Field names are sorted by `Frozen`'s serializer and
+    `canonical_doc`. Settings are sorted by the `Settings` type:
+    - the top level of `Skeleton.body`, `Passthrough.body` and `Canary.body`;
+    - `chat_template_kwargs`, `View.params`, `Scorer.params` and `LocalEngine.env`.
+
+    All other JSON keeps its order. `fingerprint_request` sorts only the body's top level, and the seal doc is
+    sorted.
+    - Bytes written before the fix (all keys sorted) re-serialize unchanged, so stored digests and seals stay valid.
+    - Their order is already lost, though. Compiling the same recipe now gives a new skeleton digest, and its request
+      fingerprints differ from the old ones.
+    - Proposed amendments: `docs/chatddx.md` (glossary), `docs/ledger.md` (request fingerprint), `docs/store.md`
+      (`doc` is jsonb and reorders keys).
+    - Tests: `test_json_data_keeps_its_order`, `test_settings_carry_no_order` and
+      `test_bytes_with_sorted_keys_keep_their_digest` in `src/chatddx/factors/test/test_factors.py`; the schema-order
+      assertions in `test_components_roundtrip` (`src/chatddx/store/test/test_store.py`) and
+      `test_request_fingerprint_is_over_canonical_bytes` (`src/chatddx/ledger/test/test_ledger.py`).
+    - Alternative not taken: sort everything except fields marked ordered, as the old code did. That needs a
+      marker everywhere a schema can sit, including inside free-form bodies (e.g. a passthrough `guided_json`), and
+      a missed marker silently reorders again.
 - **G8. Tools.** [maybe fix remastered] (old C7)
   - The old `tool` and `toolset` entities had a name, a description, a parameter schema, a Python implementation
     and toolset guidance (`plan-web` uses `web_search`).

@@ -2,7 +2,16 @@ from typing import Annotated, Literal, override
 
 from pydantic import Field, JsonValue
 
-from .base import Code, Component, Digest, Frozen, JsonPointer, RefTo, Resolver
+from .base import (
+    Code,
+    Component,
+    Digest,
+    Frozen,
+    JsonPointer,
+    RefTo,
+    Resolver,
+    Settings,
+)
 from .cases import CaseInputRef
 from .engine import EngineRef
 from .request import Skeleton, SkeletonRef
@@ -49,7 +58,7 @@ class View(Frozen):
     expectation: JsonPointer = ""
     metric: str
     judge: JudgeRef | None = None
-    params: dict[str, JsonValue] = Field(default_factory=dict)
+    params: Settings = Field(default_factory=dict)
 
 
 class Scorer(Component):
@@ -58,7 +67,7 @@ class Scorer(Component):
     consumes: ExpectationSchemaRef
     views: tuple[View, ...] = Field(min_length=1)
     resources: tuple[str, ...] = ()
-    params: dict[str, JsonValue] = Field(default_factory=dict)
+    params: Settings = Field(default_factory=dict)
 
     @property
     def judges(self) -> tuple[str, ...]:

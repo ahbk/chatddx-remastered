@@ -2,9 +2,9 @@ import hashlib
 import re
 from typing import Annotated, Literal
 
-from pydantic import Field, HttpUrl, field_validator
+from pydantic import AfterValidator, Field, HttpUrl, field_validator
 
-from .base import Component, Digest, Finding, Frozen, RefTo, Sha256Hex
+from .base import Component, Digest, Finding, Frozen, RefTo, Sha256Hex, sorted_keys
 
 # Flags the start-up script derives from the manifest itself; argv may not set them.
 OWNED_FLAGS = frozenset(
@@ -55,7 +55,9 @@ class LocalEngine(Component):
     model: ModelRef
     chat_template: FileDigest
     argv: tuple[str, ...] = ()
-    env: dict[str, str] = Field(default_factory=dict)
+    env: Annotated[dict[str, str], AfterValidator(sorted_keys)] = Field(
+        default_factory=dict
+    )
 
     @field_validator("argv")
     @classmethod

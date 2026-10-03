@@ -16,6 +16,7 @@ from chatddx.factors.base import (
     canonical_bytes,
     resolve,
     sha256_digest,
+    sorted_keys,
 )
 from chatddx.factors.bundle import Registry
 from chatddx.factors.cases import CaseInputRef
@@ -51,8 +52,7 @@ class Record(Frozen):
             dict[str, JsonValue],
             self.model_dump(mode="json", context={"canonical": True}),
         )
-        doc["v"] = type(self).schema_version
-        return doc
+        return sorted_keys({**doc, "v": type(self).schema_version})
 
     @property
     def canonical(self) -> bytes:
@@ -107,7 +107,7 @@ def fingerprint_prompt_tokens(
 def fingerprint_request(
     body: dict[str, JsonValue], key: tuple[str, bytes] | None = None
 ) -> Fingerprint:
-    return Fingerprint.of(canonical_bytes(body), key)
+    return Fingerprint.of(canonical_bytes(sorted_keys(body)), key)
 
 
 class ItemKey(Frozen):
@@ -167,7 +167,7 @@ def _seal(started: Record, **rows: Iterable[Record]) -> str:
         for name, group in rows.items()
     }
     doc["started"] = started.canonical_doc()
-    return sha256_digest(canonical_bytes(doc))
+    return sha256_digest(canonical_bytes(sorted_keys(doc)))
 
 
 class Run(Frozen):

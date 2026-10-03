@@ -3,12 +3,13 @@ import json
 from typing import Literal
 
 import pytest
-from pydantic import HttpUrl, ValidationError
+from pydantic import HttpUrl, JsonValue, ValidationError
 
 from chatddx.factors.base import (
     Component,
     Fingerprint,
     StructuralError,
+    sha256_digest,
 )
 from chatddx.factors.bundle import Bundle, Registry
 from chatddx.factors.cases import (
@@ -94,6 +95,56 @@ def test_adding_a_defaulted_field_keeps_digests() -> None:
         k: v for k, v in new.items() if k != "kind"
     }
     del Component.registry["test.evolve.old"], Component.registry["test.evolve.new"]
+
+
+def test_json_data_keeps_its_order(reg: Registry) -> None:
+    schema: dict[str, JsonValue] = {
+        "type": "object",
+        "properties": {
+            "diagnosis": {"type": "string"},
+            "critical": {"type": "boolean"},
+        },
+    }
+    recipe = Recipe(
+        prompt=reg.add(Prompt(segments=(Slot(slot="case"),))),
+        output=reg.add(Output(contract=NativeOutput(), json_schema=schema)),
+        sampling=reg.add(Sampling()),
+    )
+    skeleton = compile_request(recipe, reg.get)
+    stored = Registry().add_raw(skeleton.digest, skeleton.canonical)
+    assert isinstance(stored, Skeleton)
+    assert json.dumps(stored.output_schema) == json.dumps(schema)
+    flipped: dict[str, JsonValue] = {
+        "type": "object",
+        "properties": {
+            "critical": {"type": "boolean"},
+            "diagnosis": {"type": "string"},
+        },
+    }
+    assert Output(contract=NativeOutput(), json_schema=flipped).digest != recipe.output
+
+
+def test_settings_carry_no_order(reg: Registry) -> None:
+    skeleton = generation_skeleton(reg)
+    flipped = Skeleton.model_validate(
+        {**skeleton.model_dump(), "body": dict(reversed(skeleton.body.items()))}
+    )
+    assert flipped.digest == skeleton.digest
+    kwargs: dict[str, JsonValue] = {"enable_thinking": False, "budget": 1}
+    assert (
+        Reasoning(chat_template_kwargs=kwargs).digest
+        == Reasoning(chat_template_kwargs=dict(reversed(kwargs.items()))).digest
+    )
+
+
+def test_bytes_with_sorted_keys_keep_their_digest(reg: Registry) -> None:
+    _ = world(reg)
+    for digest in reg:
+        doc = json.loads(reg.raw(digest))
+        raw = json.dumps(
+            doc, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        ).encode()
+        assert Registry().add_raw(sha256_digest(raw), raw).canonical == raw
 
 
 def test_references_come_from_field_types(reg: Registry) -> None:

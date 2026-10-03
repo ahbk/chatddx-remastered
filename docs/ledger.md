@@ -130,3 +130,6 @@ Note: Part of it exists now: the case-derived tables are in their own ledger sch
 - Nothing compares declared and observed scorer code. ScoreStarted.scorer_code is never checked against Scorer.code, so a mismatch goes unnoticed.
 
 ## Proposed amendments
+- CHANGE: "The request fingerprint (Call.request) is `fingerprint_request` taken over the body's canonical bytes" to
+  "… over the body's canonical bytes, with its top-level keys sorted and nested key order kept, so two requests whose
+  schemas list properties in a different order get different fingerprints." (`src/chatddx/ledger/ledger.py:107`)

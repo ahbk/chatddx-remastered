@@ -244,3 +244,7 @@ The one hard block is clearance: sending case-derived content to an engine that 
 **Case drift and canary drift are not implemented.** `RunItem.vignette` records the observed fingerprint, but nothing compares it with `CaseInput.vignette`, and nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
+- CHANGE: the glossary's **Canonical form** to "JSON with field names sorted and fields left out when equal to their
+  default, plus the type's schema version. JSON data keeps its key order, because a schema's property order is part
+  of what a model reads; the keys of settings (`Settings`: bodies, `chat_template_kwargs`, `params`, and `env`) are
+  sorted, so equivalent settings share a digest." (`src/chatddx/factors/base.py:46`, `:58`, `:85`)

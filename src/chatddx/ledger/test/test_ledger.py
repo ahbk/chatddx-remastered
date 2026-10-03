@@ -190,3 +190,8 @@ def test_request_fingerprint_is_over_canonical_bytes() -> None:
     a = fingerprint_request({"model": "m", "messages": [], "temperature": 0})
     b = fingerprint_request({"temperature": 0, "messages": [], "model": "m"})
     assert a == b == Fingerprint.of(b'{"messages":[],"model":"m","temperature":0}')
+    authored = fingerprint_request(
+        {"response_format": {"properties": {"a": 1, "b": 2}}}
+    )
+    flipped = fingerprint_request({"response_format": {"properties": {"b": 2, "a": 1}}})
+    assert authored != flipped

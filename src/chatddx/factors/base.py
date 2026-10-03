@@ -18,6 +18,7 @@ from typing import (
 )
 
 from pydantic import (
+    AfterValidator,
     BaseModel,
     ConfigDict,
     GetJsonSchemaHandler,
@@ -40,10 +41,21 @@ class StructuralError(ValueError):
     pass
 
 
+# JSON data keeps its key order: a schema's property order is part of what a model
+# reads. Field names and settings are sorted where they are built (`sorted_keys`).
 def canonical_bytes(doc: JsonValue) -> bytes:
     return json.dumps(
-        doc, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
+        doc, separators=(",", ":"), ensure_ascii=False, allow_nan=False
     ).encode()
+
+
+def sorted_keys[V](mapping: dict[str, V]) -> dict[str, V]:
+    return dict(sorted(mapping.items()))
+
+
+# A settings mapping's keys name options whose order means nothing, so equivalent
+# settings share a digest; their values are JSON data and keep their order.
+Settings = Annotated[dict[str, JsonValue], AfterValidator(sorted_keys)]
 
 
 def sha256_digest(data: bytes) -> str:
@@ -70,7 +82,7 @@ class Frozen(BaseModel):
                 continue
             if getattr(self, name) == field.get_default(call_default_factory=True):
                 _ = fields.pop(name, None)
-        return fields
+        return sorted_keys(fields)
 
 
 @dataclass(frozen=True, init=False)
@@ -162,8 +174,7 @@ class Component(Frozen):
 
     def canonical_doc(self) -> dict[str, JsonValue]:
         doc = self.model_dump(mode="json", context={"canonical": True})
-        doc["v"] = type(self).schema_version
-        return doc
+        return sorted_keys({**doc, "v": type(self).schema_version})
 
     @cached_property
     def canonical(self) -> bytes:
