@@ -214,6 +214,13 @@ tags = ["ddx"]
     vLLM ignores `tool_choice = required` for gpt-oss, and native/tool modes need parsers in the engine's argv.
   - `lint.py` knows only the temperature clamp, and nothing checks a trial's skeleton against its engine. Depends
     on G1.
+  - Found during G15:
+    - On vLLM 0.24, a `tool` contract is only constrained and parsed when the engine's argv has
+      `--enable-auto-tool-choice` and `--tool-call-parser` (`docs/vllm.md`, proposed assumption 5). A local
+      engine's argv is enough to lint this, without facts.
+    - OpenAI's API is reported to reject function parameters whose root isn't `type: object` (not verified here),
+      and other OpenAI-compatible remotes may too. vLLM 0.24 accepts any root. That's a candidate lint for tool
+      contracts on `engine.remote`, once the remote's behavior is known.
 - **G15. Sent schemas are not prepared.** [maybe fix remastered] (found while doing G4)
   - The old code sent an inlined copy of the schema, with `$ref` resolved and `$defs` dropped
     (`src/chatddx/runtime/resolution.py:inlined`). It refused a schema whose top level isn't an object. Only the
@@ -221,6 +228,15 @@ tags = ["ddx"]
   - Remastered sends and shows the authored schema as is. `management_plan_v1.json` uses `$defs` and `$ref`.
   - Open: whether vLLM 0.24's structured-output backends and the tool-call path take `$ref`, and whether inlining
     belongs to the output chunk, to compilation, or to a lint.
+  - **Closed, no change.** vLLM 0.24 constrains `$defs`/`$ref` schemas as written, on both the `response_format` and
+    the named-tool path.
+    - xgrammar 0.2.1 and 0.2.8, both ends of vLLM 0.24's pinned range, compile `management_plan_v1.json` to the same
+      grammar as the old inlined copy, up to rule names. So the default `auto` backend keeps xgrammar.
+    - The evidence and permalinks are in the proposed amendment to `docs/vllm.md` (assumptions 4 and 5), so the fake
+      vLLM pins them.
+    - The old code doesn't record why it inlined; the target stack doesn't need it. Remastered sends what it shows.
+    - Moved to G10: the object-root rule (remote OpenAI-compatible APIs reject non-object function parameters) and
+      the tool-parser requirement (assumption 5).
 
 ### Cases
 - **G11. Vignette sources.** [maybe fix remastered] (old D1)
