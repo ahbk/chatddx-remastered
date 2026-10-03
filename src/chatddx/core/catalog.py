@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, model_validator
 from chatddx.factors.base import Fingerprint
 from chatddx.factors.cases import SourceCase
 
-# src/chatddx/store/migrations/0011-t2-catalog-checks.sql repeats these kinds and fields.
+# src/chatddx/store/migrations/0014-t2-catalog-kinds.sql repeats these kinds.
 THREAD_KINDS = frozenset(
     {
         "chunk.instructions",
@@ -26,10 +26,16 @@ THREAD_KINDS = frozenset(
         "scoring",
         "appendix",
         "expectation",
+        "model",
+        "engine.local",
+        "engine.remote",
+        "expectation_schema",
+        "canary_set",
     }
 )
 
 
+# src/chatddx/store/migrations/0011-t2-catalog-checks.sql repeats these fields.
 class EntryField(StrEnum):
     NAME = "name"
     DESCRIPTION = "description"

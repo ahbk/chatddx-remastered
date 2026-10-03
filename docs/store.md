@@ -153,3 +153,7 @@ tier-2 triggers).
 - the database allows a thread without edits; `Catalog.create` writes both in one transaction.
 
 ## Proposed amendments
+- ADD to "Tier 2": `0014-t2-catalog-kinds.sql`: replaces the thread-kind check so that every kind but `case` has
+  threads.
+- CHANGE "Tier 2": "insert-only triggers for `catalog.families`" should read `catalog.family` and `catalog.binding`
+  (`src/chatddx/store/migrations/0013-t2-catalog-families.sql`).

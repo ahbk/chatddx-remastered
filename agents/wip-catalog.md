@@ -59,7 +59,10 @@ combinatorial explosion. It is a UX entity with no exact representation in the c
 
 Implemented (was a take), by today's kinds (`THREAD_KINDS`):
 - In: the seven `chunk.*` kinds, `skeleton`, `trial`, `judge`, `scorer`, `scoring`, `appendix`, `expectation`.
-- Out: `case` (decided), `model`, `engine.local`, `engine.remote`, `expectation_schema`, `canary_set`.
+- Also in, decided later: `model`, `engine.local`, `engine.remote`, `expectation_schema`, `canary_set`. They are
+  rarely edited, but threads are the one place names attach for everything but cases (migration
+  `0014-t2-catalog-kinds.sql`).
+- Out: `case` (decided; see decision 7). A test pins `THREAD_KINDS` to every registered kind except `case`.
 - A thread has a kind and a sequence of edits, each pointing at one digest of that kind (composite foreign keys).
   A digest can appear in several threads. A fork is a new thread whose `forked_from` is an edit of the same kind.
 
@@ -142,22 +145,17 @@ Not implemented, waiting on the repair helpers:
   `0010-t1-catalog-grants.sql` (writer SELECT, INSERT; reader SELECT), `0011-t2-catalog-checks.sql` (kind and field
   lists mirrored from code, entry shapes, label positions, insert-only triggers reusing `factor.refuse_change()`),
   `0012-t0-catalog-families.sql` (family, binding, entries on families), `0013-t2-catalog-families.sql`
-  (insert-only triggers).
+  (insert-only triggers), `0014-t2-catalog-kinds.sql` (ops and developer kinds get threads).
 - `Compilation.digest`, the key of `factor.compilation`, so the catalog and `Store.append` share it.
 - Tests: `src/chatddx/store/test/test_catalog.py`.
 
 ## Open
 
-### 1. Names for developer and ops kinds
-Models, engines, expectation schemas and canary sets have no threads and no other attach point, so they can't be
-named. C2 doesn't settle this. Options: add them to `THREAD_KINDS` as threads that are rarely edited (one attach point
-for everything, but it reverses "Out" for them), or a separate way to name a digest. Take: threads.
-
-### 2. What deleting a thread hides
+### 1. What deleting a thread hides
 Everywhere, or only pickers, while runs that used it stay visible. A portal decision: `heads(kind, deleted=)` and
 `behind` give it what it needs.
 
-### 3. Known gaps
+### 2. Known gaps
 - SQL allows a thread without edits; `Catalog.create` writes both in one transaction.
 - A skeleton edit may omit its compilation even when one exists; nothing can require it.
 - `about()` of a subject with no entries, or no such subject, is an empty `About`.

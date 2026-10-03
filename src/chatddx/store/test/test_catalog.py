@@ -60,6 +60,8 @@ def test_threads_follow_edits(conn: Connection) -> None:
         _ = catalog.create("sha256:" + "9" * 64, alice.id)
     with pytest.raises(ValueError, match="case"):
         _ = catalog.create(ids["case"], alice.id)
+    for kind in ("engine", "canaries"):
+        assert catalog.history(catalog.create(ids[kind], alice.id).thread)
     with pytest.raises(LookupError):
         _ = catalog.edit(999, v1, alice.id)
     with pytest.raises(LookupError):
@@ -375,7 +377,7 @@ def test_kinds_and_fields_match_the_database(admin: Connection) -> None:
     for names in (THREAD_KINDS, {f.value for f in EntryField}):
         [check] = [c for c in checks if all(f"'{n}'" in c for n in names)]
         assert check.count("'") == 2 * len(names)
-    assert THREAD_KINDS <= Component.registry.keys()
+    assert THREAD_KINDS == Component.registry.keys() - {"case"}
 
 
 def test_reader_reads_the_catalog(conn: Connection) -> None:

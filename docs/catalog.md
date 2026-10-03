@@ -47,3 +47,8 @@ new edits on their threads, and builds the new cases. When both change, the vign
 helpers are not implemented.
 
 ## Proposed amendments
+- ADD to "Threads and edits": every kind has threads except `case`, including the ones ops and developers author
+  (models, engines, expectation schemas, canary sets), so threads are where names attach for everything but cases
+  (`src/chatddx/core/catalog.py:THREAD_KINDS`, `src/chatddx/store/migrations/0014-t2-catalog-kinds.sql`).
+- CHANGE "A note on the "evolution of configurations" workflow": entries are on a thread, a family, a run or a score
+  (`src/chatddx/core/catalog.py:Subject`).
