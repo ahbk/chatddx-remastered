@@ -253,3 +253,6 @@ The one hard block is clearance: sending case-derived content to an engine that 
 **Case drift and canary drift are not implemented.** `RunItem.vignette` records the observed fingerprint, but nothing compares it with `CaseInput.vignette`, and nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
+- ADD after **Normalization**: "**Schema op:** a named, versioned rewrite an output chunk applies to its schema at
+  compile time, so the skeleton sends and shows the rewritten schema. Today the only one is `inline_refs@1`."
+  (`src/chatddx/factors/request.py:23`)

@@ -239,3 +239,10 @@ the seed isn't sent, but the trial's seeds still count toward its hash, so two o
 - `Hardware` has no GPU count, so tensor-parallel engines can't be told apart by hardware (the old code had `gpu_count`).
 
 ## Proposed amendments
+- ADD in "Output", after the guidance paragraph: "An output may list schema ops (`schema_ops`). Compilation applies
+  them in order to the output's schema, and the result is the one schema the skeleton sends and shows. As with
+  text-cleanup steps, each op name pins one behavior. `inline_refs@1` replaces every local `$ref` (`#…`, JSON
+  Pointer with `~0`/`~1` and percent-decoding) with its target and drops `$defs` and `definitions`. Keywords beside a
+  `$ref` override the target's. It refuses refs outside the schema, refs to nothing and recursive schemas, which
+  can't be inlined. Use it for engines that don't resolve `$ref` themselves; vLLM 0.24 does (`docs/vllm.md`).
+  Without ops, the schema is sent as authored." (`src/chatddx/factors/request.py:205`, `:230`, `:276`, `:468`)

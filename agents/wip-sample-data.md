@@ -237,6 +237,27 @@ tags = ["ddx"]
     - The old code doesn't record why it inlined; the target stack doesn't need it. Remastered sends what it shows.
     - Moved to G10: the object-root rule (remote OpenAI-compatible APIs reject non-object function parameters) and
       the tool-parser requirement (assumption 5).
+- **G16. An inline path for engines that don't resolve `$ref`.** [maybe fix remastered] (follows G15)
+  - The old code inlined because pydantic wasn't cooperative. Remastered uses no pydantic-ai, but it must not
+    depend on vLLM. Some engines resolve local refs, some reject them, and some ignore what they don't understand,
+    which leaves part of the answer unconstrained without an error. The remote Gemma engine's server software is
+    unknown.
+  - **Fixed** (user's choice: a separate gap, compile-time and opt-in).
+    - `Output.schema_ops` is a tuple of named, versioned ops, like `NormalizeOp`. It's empty by default, so
+      existing digests are kept. The first op is `inline_refs@1`.
+    - `compile_request` applies the ops to the one schema the skeleton sends (`response_format` or the tool's
+      `parameters`) and shows (the `schema` insert). A text contract's schema in the skeleton is the rewritten one
+      too.
+    - `Output.authored_schema` is the schema as written; `Output.output_schema` is the one after the ops.
+    - `inline_refs@1`:
+      - resolves local refs (RFC 6901: `~0`/`~1`, percent-decoding, array indices) and drops `$defs`/`definitions`;
+      - lets keywords beside a `$ref` override the target's;
+      - refuses refs outside the schema, refs to nothing, and recursion (a `ValidationError` on the output chunk).
+    - On the sample's `management_plan_v1.json` it gives exactly the old code's inlined schema, key order included.
+    - Not done: deciding per engine. That's a G10 lint: `$ref` in a skeleton bound to an engine not known to
+      resolve refs, fed by G1 facts or what's learned about the remote engine.
+    - Proposed amendments: `docs/chatddx.md` (glossary: Schema op) and `docs/factors.md` (Output).
+    - Tests: `test_schema_ops_inline_refs`, `test_schema_ops_are_checked`.
 
 ### Cases
 - **G11. Vignette sources.** [maybe fix remastered] (old D1)

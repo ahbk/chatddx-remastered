@@ -414,6 +414,101 @@ def test_skeleton_structure_is_enforced() -> None:
         )
 
 
+def test_schema_ops_inline_refs(reg: Registry) -> None:
+    authored: dict[str, JsonValue] = {
+        "type": "object",
+        "properties": {
+            "diagnoses": {"type": "array", "items": {"$ref": "#/$defs/Diagnosis"}},
+            "worst": {"$ref": "#/$defs/Diagnosis", "description": "The worst one."},
+            "odd": {"$ref": "#/$defs/a~1b"},
+            "first": {"$ref": "#/properties/diagnoses/items"},
+        },
+        "$defs": {
+            "Diagnosis": {
+                "type": "object",
+                "description": "A diagnosis.",
+                "properties": {"name": {"type": "string"}},
+            },
+            "a/b": {"type": "string"},
+        },
+    }
+    diagnosis: dict[str, JsonValue] = {
+        "type": "object",
+        "description": "A diagnosis.",
+        "properties": {"name": {"type": "string"}},
+    }
+    inlined: dict[str, JsonValue] = {
+        "type": "object",
+        "properties": {
+            "diagnoses": {"type": "array", "items": diagnosis},
+            "worst": {**diagnosis, "description": "The worst one."},
+            "odd": {"type": "string"},
+            "first": diagnosis,
+        },
+    }
+    ops: tuple[Literal["inline_refs@1"], ...] = ("inline_refs@1",)
+    prompt = reg.add(Prompt(segments=(Slot(slot="case"),)))
+    sampling = reg.add(Sampling())
+
+    def compiled(output: Output) -> Skeleton:
+        return compile_request(
+            Recipe(prompt=prompt, output=reg.add(output), sampling=sampling), reg.get
+        )
+
+    shown = (Insert(insert="schema"),)
+    for contract in (NativeOutput(), ToolOutput(name="final_result")):
+        skeleton = compiled(
+            Output(
+                contract=contract,
+                json_schema=authored,
+                guidance=shown,
+                schema_ops=ops,
+            )
+        )
+        assert json.dumps(skeleton.output_schema) == json.dumps(inlined)
+        assert skeleton.messages[0].content == (
+            json.dumps(inlined, indent=2, ensure_ascii=False),
+        )
+    text = compiled(
+        Output(
+            contract=TextOutput(json_schema=authored), guidance=shown, schema_ops=ops
+        )
+    )
+    assert json.dumps(text.output_schema) == json.dumps(inlined)
+    kept = compiled(Output(contract=NativeOutput(), json_schema=authored))
+    assert kept.output_schema == authored
+
+
+def test_schema_ops_are_checked() -> None:
+    ops: tuple[Literal["inline_refs@1"], ...] = ("inline_refs@1",)
+
+    def output(schema: dict[str, JsonValue]) -> Output:
+        return Output(contract=NativeOutput(), json_schema=schema, schema_ops=ops)
+
+    with pytest.raises(ValidationError, match="refers to itself"):
+        _ = output(
+            {
+                "type": "object",
+                "properties": {"next": {"$ref": "#/$defs/Node"}},
+                "$defs": {"Node": {"properties": {"next": {"$ref": "#/$defs/Node"}}}},
+            }
+        )
+    with pytest.raises(ValidationError, match="outside the schema"):
+        _ = output({"$ref": "https://example.org/schema.json"})
+    with pytest.raises(ValidationError, match="refers to nothing"):
+        _ = output({"$ref": "#/$defs/Missing"})
+    with pytest.raises(ValidationError, match="need a schema"):
+        _ = Output(contract=TextOutput(), schema_ops=ops)
+    with pytest.raises(ValidationError, match="duplicates"):
+        _ = Output(
+            contract=NativeOutput(),
+            json_schema={"type": "object"},
+            schema_ops=("inline_refs@1", "inline_refs@1"),
+        )
+    plain = Output(contract=NativeOutput(), json_schema={"type": "object"})
+    assert "schema_ops" not in json.loads(plain.canonical)
+
+
 def test_tool_contracts_carry_a_description(reg: Registry) -> None:
     schema: dict[str, JsonValue] = {"type": "object"}
     described = ToolOutput(name="final_result", description="Answer by calling this.")

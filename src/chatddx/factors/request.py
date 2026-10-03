@@ -1,8 +1,9 @@
 import json
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Annotated, Literal, cast
+from urllib.parse import unquote
 
-from pydantic import AfterValidator, Field, JsonValue, model_validator
+from pydantic import AfterValidator, Field, JsonValue, field_validator, model_validator
 
 from .base import (
     Component,
@@ -17,6 +18,9 @@ from .base import (
 
 SlotName = Literal["case", "appendices", "completion", "expectation"]
 InsertName = Literal["schema", "output_guidance"]
+# As with NormalizeOp (cases.py), each op name pins one behavior; a changed behavior
+# gets a new name.
+SchemaOp = Literal["inline_refs@1"]
 Purpose = Literal["generation", "judge"]
 
 SLOTS_BY_PURPOSE: dict[Purpose, frozenset[SlotName]] = {
@@ -182,11 +186,60 @@ OutputContract = Annotated[
 ]
 
 
+def _pointer(schema: dict[str, JsonValue], ref: str) -> JsonValue:
+    if ref != "#" and not ref.startswith("#/"):
+        raise ValueError(f"{ref} is outside the schema")
+    node: JsonValue = schema
+    for token in unquote(ref[2:]).split("/") if ref != "#" else ():
+        key = token.replace("~1", "/").replace("~0", "~")
+        match node:
+            case dict() if key in node:
+                node = node[key]
+            case list() if key.isdigit() and int(key) < len(node):
+                node = node[int(key)]
+            case _:
+                raise ValueError(f"{ref} refers to nothing")
+    return node
+
+
+def _inline_refs(schema: dict[str, JsonValue]) -> dict[str, JsonValue]:
+    def resolve(node: JsonValue, seen: tuple[str, ...]) -> JsonValue:
+        match node:
+            case {"$ref": str(ref), **siblings}:
+                if ref in seen:
+                    raise ValueError(f"{ref} refers to itself")
+                target = resolve(_pointer(schema, ref), (*seen, ref))
+                rest = {k: resolve(v, seen) for k, v in siblings.items()}
+                return {**target, **rest} if isinstance(target, dict) else target
+            case dict():
+                return {k: resolve(v, seen) for k, v in node.items()}
+            case list():
+                return [resolve(v, seen) for v in node]
+            case _:
+                return node
+
+    top = {k: v for k, v in schema.items() if k not in ("$defs", "definitions")}
+    return cast(dict[str, JsonValue], resolve(top, ()))
+
+
+_SCHEMA_OPS: dict[SchemaOp, Callable[[dict[str, JsonValue]], dict[str, JsonValue]]] = {
+    "inline_refs@1": _inline_refs,
+}
+
+
 class Output(Component):
     kind: Literal["chunk.output"] = "chunk.output"
     contract: OutputContract
     json_schema: dict[str, JsonValue] | None = None
     guidance: Text | None = None
+    schema_ops: tuple[SchemaOp, ...] = ()
+
+    @field_validator("schema_ops")
+    @classmethod
+    def _unique_ops(cls, ops: tuple[SchemaOp, ...]) -> tuple[SchemaOp, ...]:
+        if len(set(ops)) != len(ops):
+            raise ValueError("duplicates are not allowed")
+        return ops
 
     @model_validator(mode="after")
     def _schema_placement(self) -> "Output":
@@ -206,11 +259,27 @@ class Output(Component):
             raise ValueError("only an output with a schema can show it")
         return self
 
+    @model_validator(mode="after")
+    def _schema_ops(self) -> "Output":
+        if self.schema_ops and self.authored_schema is None:
+            raise ValueError("schema ops need a schema")
+        _ = self.output_schema
+        return self
+
     @property
-    def output_schema(self) -> dict[str, JsonValue] | None:
+    def authored_schema(self) -> dict[str, JsonValue] | None:
         if isinstance(self.contract, TextOutput):
             return self.contract.json_schema
         return self.json_schema
+
+    @property
+    def output_schema(self) -> dict[str, JsonValue] | None:
+        schema = self.authored_schema
+        if schema is None:
+            return None
+        for op in self.schema_ops:
+            schema = _SCHEMA_OPS[op](schema)
+        return schema
 
     def guidance_text(self) -> str:
         if self.guidance is None:
@@ -443,25 +512,26 @@ def compile_request(spec: Recipe, get: Resolver) -> Skeleton:
             managed["thinking_token_budget"] = reasoning.thinking_token_budget
         if reasoning.chat_template_kwargs:
             managed["chat_template_kwargs"] = reasoning.chat_template_kwargs
-    match output.contract:
+    contract = output.contract
+    match contract:
         case NativeOutput():
             managed["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {
                     "name": "output",
                     "strict": True,
-                    "schema": output.json_schema,
+                    "schema": output.output_schema,
                 },
             }
         case ToolOutput(name=name, description=description):
             function: dict[str, JsonValue] = {"name": name}
             if description is not None:
                 function["description"] = description
-            function["parameters"] = output.json_schema
+            function["parameters"] = output.output_schema
             managed["tools"] = [{"type": "function", "function": function}]
             managed["tool_choice"] = {"type": "function", "function": {"name": name}}
         case TextOutput():
-            pass
+            contract = TextOutput(json_schema=output.output_schema)
     if clash := body.keys() & managed.keys():
         raise StructuralError(f"passthrough overrides managed keys {sorted(clash)}")
     body.update(managed)
@@ -470,7 +540,7 @@ def compile_request(spec: Recipe, get: Resolver) -> Skeleton:
         purpose=spec.purpose,
         messages=tuple(messages),
         body=body,
-        contract=output.contract,
+        contract=contract,
         appendix_layout=spec.appendix_layout,
     )
 
