@@ -3,7 +3,7 @@ CHATDDX_PGSOCK="$REPO_ROOT/dev-db/pgsock"
 osuser="$(id -un)"
 
 usage() {
-  echo "Usage: dev-db {start|stop|enter [psql args...]}"
+  echo "Usage: dev-db {start|stop|status|reset|enter [psql args...]}"
 }
 
 init_pg() {

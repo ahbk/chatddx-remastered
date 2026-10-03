@@ -48,6 +48,7 @@ Settings: `chatddx.core.settings.database(owner=False)`, from `DB_HOST`, `DB_NAM
 - Tier-2 triggers bind the owner too; only a superuser who disables triggers gets around them.
 - Roles are cluster-wide, so every database in a cluster shares `chatddx_writer` and `chatddx_reader`.
 
+Agents use the system cluster at /var/run/postgresql, while the devShell uses dev-db and its socket `${REPO_ROOT}/dev-db/pgsock`.
 Local setup used by in the agent container (Unix socket, peer auth mapped from the OS user):
 ```
 CREATE ROLE chatddx LOGIN CREATEDB CREATEROLE;
