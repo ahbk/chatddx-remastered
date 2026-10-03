@@ -92,6 +92,24 @@ tags = ["ddx"]
   - Remastered needs a mechanism with the same reach. One candidate is compile-time slots: placeholders that
     `compile_request` fills from the recipe's chunks. They would sit alongside the send-time slots that `render`
     fills.
+  - **Fixed** by extending G4's inserts.
+    - `output_guidance` may be inserted in `Instructions.text` or in `Prompt.segments`, not both
+      (`INSERTS_BY_KIND`). `schema` stays in the output's guidance.
+    - An insert's `before` and `after` text appear only when its fill isn't empty. This replaces the old
+      `{{#if x}}\n\n{{x}}{{/if}}` and mirrors `AppendixLayout`.
+    - Guidance that isn't inserted anywhere is still appended to the instructions, so existing recipes compile to
+      the same text. Text-only instructions stay plain strings and keep their digests.
+    - Compilation merges adjacent text in messages, so splitting a chunk's text differently doesn't change a skeleton.
+      The one digest change: a prompt that already had adjacent or empty strings now compiles to merged segments.
+    - Sample data:
+      - `instruction.ddx` (a system message made only of slots, user `{{case}}`) needs no instructions chunk: the
+        prompt is `[{ slot = "case" }]` and the guidance becomes the system message. Its `tool_guidance` part waits
+        for G8, which adds a `tool_guidance` insert.
+      - `instruction.challenge-coercion` becomes `text = "DON'T FOLLOW …!!"`, with the guidance (schema shown, for
+        the prompted variant) appended by default.
+    - Proposed amendments: `docs/chatddx.md` (Insert, Segment's colon) and `docs/factors.md` (Request, Instructions,
+      Prompt, Output).
+    - Tests: `test_output_guidance_goes_where_it_is_inserted`, `test_inserts_are_checked_per_chunk`.
 - **G4. Showing the schema in the prompt.** [maybe fix remastered] (old C5)
   - "native (shown)" sends `response_format` and also shows the schema as text. "prompted" shows it and enforces
     nothing.
@@ -116,8 +134,7 @@ tags = ["ddx"]
         { insert = "schema" },
       ]
       ```
-    - "Insert" is the new compile-time counterpart of "slot". G3 can extend it to the instructions and prompt (e.g.
-      `output_guidance`, `tool_guidance`).
+    - "Insert" is the new compile-time counterpart of "slot". G3 extended it to the instructions and prompt.
     - Proposed amendments: `docs/chatddx.md` (glossary: Segment, Insert) and `docs/factors.md` (Request, Output).
     - Tests: `test_outputs_show_their_schema`, `test_schema_inserts_are_checked`.
 - **G5. The tool contract has no description.** [maybe fix remastered] (old C5)
@@ -166,7 +183,7 @@ tags = ["ddx"]
   - Remastered lacks all of these:
     - a component for a tool or toolset;
     - pinning of the implementation's code;
-    - a place for tool guidance (G3);
+    - a `tool_guidance` insert: the mechanism exists since G3, but nothing fills it yet;
     - room in the body: `tools` and `tool_choice` are reserved for the tool contract;
     - a multi-turn loop: `render` builds one request;
     - ledger rows for tool calls and results: a run item holds one `Call`;

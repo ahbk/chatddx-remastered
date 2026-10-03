@@ -37,6 +37,7 @@ from chatddx.factors.request import (
     Reasoning,
     Recipe,
     Sampling,
+    Segment,
     Skeleton,
     Slot,
     TextOutput,
@@ -267,6 +268,78 @@ def test_schema_inserts_are_checked() -> None:
     assert split.guidance == "Answer in JSON."
     assert split.digest == text.digest
     assert json.loads(text.canonical)["guidance"] == "Answer in JSON."
+
+
+def test_output_guidance_goes_where_it_is_inserted(reg: Registry) -> None:
+    guided = reg.add(Output(contract=TextOutput(), guidance="Answer in JSON."))
+    unguided = reg.add(Output(contract=TextOutput()))
+    sampling = reg.add(Sampling())
+    case = reg.add(Prompt(segments=(Slot(slot="case"),)))
+    first = reg.add(
+        Instructions(text=(Insert(insert="output_guidance", after="\n\n"), "Be terse."))
+    )
+
+    def system_and_user(
+        instructions: str | None, prompt: str, output: str
+    ) -> list[tuple[Segment, ...]]:
+        recipe = Recipe(
+            instructions=instructions, prompt=prompt, output=output, sampling=sampling
+        )
+        return [m.content for m in compile_request(recipe, reg.get).messages]
+
+    assert system_and_user(first, case, guided) == [
+        ("Answer in JSON.\n\nBe terse.",),
+        (Slot(slot="case"),),
+    ]
+    assert system_and_user(first, case, unguided) == [
+        ("Be terse.",),
+        (Slot(slot="case"),),
+    ]
+
+    last = reg.add(
+        Prompt(
+            segments=(
+                "Case: ",
+                Slot(slot="case"),
+                Insert(insert="output_guidance", before="\n\n"),
+                "\n\nDifferential?",
+            )
+        )
+    )
+    terse = reg.add(Instructions(text="Be terse."))
+    assert system_and_user(terse, last, guided) == [
+        ("Be terse.",),
+        ("Case: ", Slot(slot="case"), "\n\nAnswer in JSON.\n\nDifferential?"),
+    ]
+    assert system_and_user(None, last, unguided) == [
+        ("Case: ", Slot(slot="case"), "\n\nDifferential?"),
+    ]
+    assert system_and_user(terse, case, guided) == [
+        ("Be terse.\n\nAnswer in JSON.",),
+        (Slot(slot="case"),),
+    ]
+
+    with pytest.raises(StructuralError, match="both the instructions and the prompt"):
+        _ = system_and_user(first, last, guided)
+
+
+def test_inserts_are_checked_per_chunk() -> None:
+    with pytest.raises(ValidationError, match="cannot use inserts"):
+        _ = Instructions(text=(Insert(insert="schema"),))
+    with pytest.raises(ValidationError, match="cannot use inserts"):
+        _ = Output(contract=TextOutput(), guidance=(Insert(insert="output_guidance"),))
+    with pytest.raises(ValidationError, match="used more than once"):
+        _ = Prompt(
+            segments=(
+                Insert(insert="output_guidance"),
+                Slot(slot="case"),
+                Insert(insert="output_guidance"),
+            )
+        )
+    assert (
+        Instructions(text=("Be ", "terse.")).digest
+        == Instructions(text="Be terse.").digest
+    )
 
 
 def test_few_shot_developer_role_and_budgets(reg: Registry) -> None:

@@ -1,8 +1,8 @@
 import json
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Annotated, Literal, cast
 
-from pydantic import Field, JsonValue, field_validator, model_validator
+from pydantic import AfterValidator, Field, JsonValue, model_validator
 
 from .base import (
     Component,
@@ -16,7 +16,7 @@ from .base import (
 )
 
 SlotName = Literal["case", "appendices", "completion", "expectation"]
-InsertName = Literal["schema"]
+InsertName = Literal["schema", "output_guidance"]
 Purpose = Literal["generation", "judge"]
 
 SLOTS_BY_PURPOSE: dict[Purpose, frozenset[SlotName]] = {
@@ -26,6 +26,11 @@ SLOTS_BY_PURPOSE: dict[Purpose, frozenset[SlotName]] = {
 REQUIRED_SLOTS: dict[Purpose, frozenset[SlotName]] = {
     "generation": frozenset({"case"}),
     "judge": frozenset({"completion"}),
+}
+INSERTS_BY_KIND: dict[str, frozenset[InsertName]] = {
+    "chunk.instructions": frozenset({"output_guidance"}),
+    "chunk.prompt": frozenset({"output_guidance"}),
+    "chunk.output": frozenset({"schema"}),
 }
 
 # Body keys filled at send time or fixed by the rig; no chunk or skeleton may set them.
@@ -45,9 +50,66 @@ Segment = str | Slot
 
 class Insert(Frozen):
     insert: InsertName
+    before: str = ""
+    after: str = ""
 
 
-Guidance = str | tuple[str | Insert, ...]
+def _merged[T](segments: Iterable[str | T]) -> tuple[str | T, ...]:
+    merged: list[str | T] = []
+    for s in segments:
+        if isinstance(s, str) and merged and isinstance(merged[-1], str):
+            merged[-1] += s
+        else:
+            merged.append(s)
+    return tuple(s for s in merged if s != "")
+
+
+def _text(text: str | tuple[str | Insert, ...]) -> str | tuple[str | Insert, ...]:
+    if isinstance(text, str):
+        return text
+    merged = _merged(text)
+    if all(isinstance(s, str) for s in merged):
+        return "".join(cast(tuple[str, ...], merged))
+    return merged
+
+
+Text = Annotated[str | tuple[str | Insert, ...], AfterValidator(_text)]
+
+
+def _segments(text: str | tuple[str | Insert, ...]) -> tuple[str | Insert, ...]:
+    return (text,) if isinstance(text, str) else text
+
+
+def _inserts(segments: Iterable[object]) -> list[InsertName]:
+    return [s.insert for s in segments if isinstance(s, Insert)]
+
+
+def _check_inserts(kind: str, segments: Iterable[object]) -> list[InsertName]:
+    used = _inserts(segments)
+    if stray := set(used) - INSERTS_BY_KIND[kind]:
+        raise ValueError(f"{kind} cannot use inserts {sorted(stray)}")
+    if dupes := {i for i in used if used.count(i) > 1}:
+        raise ValueError(f"inserts used more than once: {sorted(dupes)}")
+    return used
+
+
+def _fill(
+    segments: Iterable[Segment | Insert], fills: Mapping[InsertName, str]
+) -> tuple[Segment, ...]:
+    filled: list[Segment] = []
+    for s in segments:
+        if isinstance(s, Insert):
+            text = fills[s.insert]
+            filled.append(f"{s.before}{text}{s.after}" if text else "")
+        else:
+            filled.append(s)
+    return _merged(filled)
+
+
+def _fill_text(
+    text: str | tuple[str | Insert, ...], fills: Mapping[InsertName, str]
+) -> str:
+    return "".join(s for s in _fill(_segments(text), fills) if isinstance(s, str))
 
 
 class Message(Frozen):
@@ -70,7 +132,12 @@ def _canonical_sampling(data: object) -> object:
 class Instructions(Component):
     kind: Literal["chunk.instructions"] = "chunk.instructions"
     role: Literal["system", "developer"] = "system"
-    text: str
+    text: Text
+
+    @model_validator(mode="after")
+    def _inserts(self) -> "Instructions":
+        _ = _check_inserts(self.kind, _segments(self.text))
+        return self
 
 
 class Example(Frozen):
@@ -86,11 +153,12 @@ class FewShot(Component):
 class Prompt(Component):
     kind: Literal["chunk.prompt"] = "chunk.prompt"
     purpose: Purpose = "generation"
-    segments: tuple[Segment, ...] = Field(min_length=1)
+    segments: tuple[Segment | Insert, ...] = Field(min_length=1)
 
     @model_validator(mode="after")
     def _slots(self) -> "Prompt":
         _check_slots(self.purpose, [self.segments])
+        _ = _check_inserts(self.kind, self.segments)
         return self
 
 
@@ -117,22 +185,7 @@ class Output(Component):
     kind: Literal["chunk.output"] = "chunk.output"
     contract: OutputContract
     json_schema: dict[str, JsonValue] | None = None
-    guidance: Guidance | None = None
-
-    @field_validator("guidance")
-    @classmethod
-    def _merge_text(cls, guidance: Guidance | None) -> Guidance | None:
-        if guidance is None or isinstance(guidance, str):
-            return guidance
-        merged: list[str | Insert] = []
-        for s in guidance:
-            if isinstance(s, str) and merged and isinstance(merged[-1], str):
-                merged[-1] += s
-            else:
-                merged.append(s)
-        if all(isinstance(s, str) for s in merged):
-            return "".join(cast(list[str], merged))
-        return tuple(s for s in merged if s != "")
+    guidance: Text | None = None
 
     @model_validator(mode="after")
     def _schema_placement(self) -> "Output":
@@ -145,12 +198,10 @@ class Output(Component):
 
     @model_validator(mode="after")
     def _inserts(self) -> "Output":
-        if self.guidance is None or isinstance(self.guidance, str):
+        if self.guidance is None:
             return self
-        inserts = [s.insert for s in self.guidance if isinstance(s, Insert)]
-        if dupes := {i for i in inserts if inserts.count(i) > 1}:
-            raise ValueError(f"inserts used more than once: {sorted(dupes)}")
-        if "schema" in inserts and self.output_schema is None:
+        used = _check_inserts(self.kind, _segments(self.guidance))
+        if "schema" in used and self.output_schema is None:
             raise ValueError("only an output with a schema can show it")
         return self
 
@@ -160,11 +211,11 @@ class Output(Component):
             return self.contract.json_schema
         return self.json_schema
 
-    def guidance_text(self) -> str | None:
-        if self.guidance is None or isinstance(self.guidance, str):
-            return self.guidance
+    def guidance_text(self) -> str:
+        if self.guidance is None:
+            return ""
         schema = json.dumps(self.output_schema, indent=2, ensure_ascii=False)
-        return "".join(s if isinstance(s, str) else schema for s in self.guidance)
+        return _fill_text(self.guidance, {"schema": schema})
 
 
 class Sampling(Component):
@@ -323,7 +374,9 @@ def _tool_names(body: Mapping[str, JsonValue]) -> list[str]:
     return [str(_get(t, "function", "name")) for t in tools]
 
 
-def _check_slots(purpose: Purpose, contents: list[tuple[Segment, ...]]) -> None:
+def _check_slots(
+    purpose: Purpose, contents: Sequence[tuple[Segment | Insert, ...]]
+) -> None:
     used = [s.slot for c in contents for s in c if isinstance(s, Slot)]
     if stray := set(used) - SLOTS_BY_PURPOSE[purpose]:
         raise ValueError(f"{purpose} requests cannot use slots {sorted(stray)}")
@@ -340,12 +393,21 @@ def compile_request(spec: Recipe, get: Resolver) -> Skeleton:
     if prompt.purpose != spec.purpose:
         raise StructuralError(f"{prompt.purpose} prompt in a {spec.purpose} recipe")
 
+    guidance = output.guidance_text()
+    fills: dict[InsertName, str] = {"output_guidance": guidance}
+    placed = "output_guidance" in _inserts(prompt.segments)
     system = ""
     role: Literal["system", "developer"] = "system"
     if spec.instructions is not None:
         instructions = resolve(get, spec.instructions, Instructions)
-        system, role = instructions.text, instructions.role
-    if guidance := output.guidance_text():
+        if "output_guidance" in _inserts(_segments(instructions.text)):
+            if placed:
+                raise StructuralError(
+                    "output guidance is inserted in both the instructions and the prompt"
+                )
+            placed = True
+        system, role = _fill_text(instructions.text, fills), instructions.role
+    if guidance and not placed:
         system = f"{system}\n\n{guidance}" if system else guidance
 
     messages: list[Message] = []
@@ -356,7 +418,7 @@ def compile_request(spec: Recipe, get: Resolver) -> Skeleton:
         messages.extend(
             Message(role=m.role, content=(m.content,)) for m in few_shot.messages
         )
-    messages.append(Message(role="user", content=prompt.segments))
+    messages.append(Message(role="user", content=_fill(prompt.segments, fills)))
 
     body: dict[str, JsonValue] = {}
     if spec.passthrough is not None:

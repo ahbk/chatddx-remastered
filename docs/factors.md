@@ -217,3 +217,20 @@ the seed isn't sent, but the trial's seeds still count toward its hash, so two o
 - `Hardware` has no GPU count, so tensor-parallel engines can't be told apart by hardware (the old code had `gpu_count`).
 
 ## Proposed amendments
+- CHANGE in "Request": "the output chunk's guidance is appended to the instructions" to "the output chunk's guidance
+  goes where the instructions or the prompt insert it, or is appended to the instructions when neither does", and
+  "the only compile-time placeholder is the output guidance's `schema` insert" to "the compile-time placeholders are
+  inserts: `schema` in the output's guidance and `output_guidance` in the instructions or the prompt. Compilation
+  merges adjacent text, so how a chunk splits its text never changes a skeleton." (`src/chatddx/factors/request.py:30`,
+  `:389`)
+- CHANGE in "Instructions": "are plain text sent as the first message" to "are text sent as the first message", and
+  ADD after "…if there are no instructions.": "Instead, the text may insert the output guidance (`output_guidance`)
+  anywhere. The insert's `before` and `after` text appear only when there is guidance, which is what the old
+  templates did with `{{#if …}}`. A message that ends up empty is left out. Text-only instructions are a plain
+  string." (`src/chatddx/factors/request.py:132`)
+- CHANGE in "Prompt": "a list of segments, each a literal string or a slot" to "a list of segments, each a literal
+  string, a slot or the `output_guidance` insert". ADD: "The output guidance may be inserted in the instructions or
+  in the prompt, not both." (`src/chatddx/factors/request.py:153`, `:389`)
+- CHANGE in "Output": "Its optional guidance is the chunk's cross-component effect: it is appended to the
+  instructions." to "Its optional guidance is the chunk's cross-component effect: it goes where the instructions or
+  the prompt insert it, or else it is appended to the instructions." (`src/chatddx/factors/request.py:389`)
