@@ -77,6 +77,11 @@ The researches will want to iterate and continuously refine configurations accor
 4. A configuration with several successful variations branch out
 5. Unsuccessful configurations are deleted
 
+A configuration is a set of pinned factors, and a variation is a configuration where one or more factors are replaced.
+Variations allow controlled experiments without the combinatorial explosion; they are a supported portal workflow, not an object in the code:
+ - `src/chatddx/store/catalog.py:Catalog.behind`
+ - `catalog.thread.forked_from`
+
 "Delete" in this case is a `deleted` flag in the `catalog` layer since true deletions are blocked on database level (see tier 2 in `docs/store.md`).
 
 ### On the table
@@ -239,7 +244,3 @@ The one hard block is clearance: sending case-derived content to an engine that 
 **Case drift and canary drift are not implemented.** `RunItem.vignette` records the observed fingerprint, but nothing compares it with `CaseInput.vignette`, and nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
-- ADD to "Intended evolution of configurations": a configuration is a set of pinned factors, and a variation is a
-  configuration where one or more factors are replaced. Variations allow controlled experiments without the
-  combinatorial explosion; they are a supported portal workflow, not an object in the code
-  (`src/chatddx/store/catalog.py:Catalog.behind`, `catalog.thread.forked_from`).

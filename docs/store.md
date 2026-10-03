@@ -11,7 +11,7 @@ It includes roles and owner (admin) setup, migrations and tests.
 - `dev-db` scripts to setup a local postgres instance for development
 
 ## Layout
-`src/chatddx/store/migrations/0001-t0-tables.sql`
+
 - Schema `factor`, not case-derived:
   - `component (digest, kind, v, canonical, doc)`: every component kind in one table. `canonical` is the source of
     truth; `doc` is its `jsonb` copy.
@@ -19,13 +19,21 @@ It includes roles and owner (admin) setup, migrations and tests.
     key on `dst`. This covers references inside lists and references that allow several kinds.
   - `compilation (digest, skeleton, payload, doc)`: keyed by the digest of the record's canonical bytes, so writing
     it again is a no-op.
+
 - Schema `ledger`, case-derived: `run_stage (run, stage)`, `run_item (run, case, replicate)`,
   `canary_call (run, phase, probe)`, `score_stage (score, stage)`, `score_item (score, case, replicate, view)`.
   Item rows reference their log's started row through a constant `stage` column. `payload` holds
   `Record.canonical`; `doc` is its `jsonb` copy.
+
 - Schema `identity`, not case-derived and mutable: `person (id, name)`, `id` generated as identity
+
 - schema `identity`: `person` gains `login` (unique), `roles` and `active`; new tables
   `credential (person, hash)` and `session (token_digest, person, created, expires)`
+
+- Schema `catalog`, not case-derived, append-only: `thread (id, kind, forked_from, by, at)`,
+  `edit (id, thread, kind, digest, compilation, by, at)`, `entry (id, thread | run | score, field, value, person,
+  present, by, at)` and `label (id, scorer, part, position, value, by, at)`
+
 ## Tiers
 Migrations apply in file-name order, not tier order, so a later schema's tier-0 file (`0004-t0-…`)
 runs after earlier tier-1 and tier-2 files (`src/chatddx/store/migrate.py`, `pending`).
@@ -35,10 +43,13 @@ runs after earlier tier-1 and tier-2 files (`src/chatddx/store/migrate.py`, `pen
 migrations:
 - `0001-t0-tables.sql`
 - `0004-t0-identity.sql`
-- `0006-t0-identity-auth.sql`.
+- `0006-t0-identity-auth.sql`
+- `0009-t0-catalog.sql`
 
 Endowes:
 - tables, keys, foreign keys.
+- `UNIQUE (digest, kind)` to `factor.component` and
+- `UNIQUE (digest, skeleton)` to `factor.compilation`, as targets for the catalog's composite foreign keys.
 
 ### Tier 1
 
@@ -46,6 +57,7 @@ migration:
 - `0002-t1-grants.sql`
 - `0005-t1-identity-grants.sql`
 - `0007-t1-identity-auth-grants.sql`
+- `0010-t1-catalog-grants.sql`
 
 Endowes:
 - roles `chatddx_writer` (SELECT, INSERT on both schemas) and `chatddx_reader`
@@ -60,12 +72,14 @@ Endowes:
 - `chatddx_writer` gets SELECT, INSERT, UPDATE on `identity.credential` and SELECT, INSERT,
   DELETE on `identity.session` (sessions are deleted on logout, expiry and deactivation); `chatddx_reader` gets neither.
 
+- `chatddx_writer` gets SELECT, INSERT and `chatddx_reader` gets SELECT on `catalog`, with default privileges like `factor`.
+
 ### Tier 2
 
 migrations:
 - `0003-t2-integrity.sql`
 - `0008-t2-identity-checks.sql`
-
+- `0011-t2-catalog-checks.sql`
 Endowes:
 - CHECKs that digests match canonical text, that `doc` and every key column match
   the payload, a deferred constraint trigger that each reference row points at an allowed kind and matches the value
@@ -76,6 +90,8 @@ Endowes:
 - `identity` gets no insert-only triggers; it is the one mutable schema.
 - CHECKs on `identity.person.login` (lowercase pattern), `identity.person.roles` (known role
   names, mirrored by `src/chatddx/core/identity.py:Role` and tested against it) and `identity.session` expiry.
+- thread kinds and entry fields (mirrored by `src/chatddx/core/catalog.py` and tested against it),
+  entry shapes, label positions, and insert-only triggers reusing `factor.refuse_change()`.
 
 ## Roles and connections
 Settings: `chatddx.core.settings.database(admin=False)`, from `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_ADMIN`
@@ -112,6 +128,8 @@ migrations up to the tier (default 2) and prints each one; `--dry-run` only list
 - `run(id)`, `score(id)`, `compilations(skeleton)`: reassemble from rows; seals don't depend on row order.
 - `People` (`src/chatddx/store/people.py`): `add`, `get`, `find`, `update`, `set_password`,
   `authenticate`, `open_session`, `session`, `close_session`, `purge_sessions`.
+- `Catalog` (`src/chatddx/store/catalog.py`): `create`, `edit`, `thread`, `history`, `head`,
+  `heads`, `containing`, `behind`, `note`, `about`, `label`, `labels`.
 
 ## Tests
 `src/chatddx/store/test/`: a migrated template database per session, a fresh copy per test, dropped afterwards.
@@ -124,19 +142,6 @@ tier-2 triggers).
 - `jsonb` rejects `\u0000` in strings, so a component or record containing NUL can't be stored.
 - No async API yet; the runner may want one (psycopg 3 has both).
 - Per-kind read-only views, for a future ORM, aren't written.
+- the database allows a thread without edits; `Catalog.create` writes both in one transaction.
 
 ## Proposed amendments
-- CHANGE "Layout": add schema `catalog`, not case-derived, append-only: `thread (id, kind, forked_from, by, at)`,
-  `edit (id, thread, kind, digest, compilation, by, at)`, `entry (id, thread | run | score, field, value, person,
-  present, by, at)` and `label (id, scorer, part, position, value, by, at)`
-  (`src/chatddx/store/migrations/0009-t0-catalog.sql`).
-- ADD to "Tier 0": `0009-t0-catalog.sql`. It also adds `UNIQUE (digest, kind)` to `factor.component` and
-  `UNIQUE (digest, skeleton)` to `factor.compilation`, as targets for the catalog's composite foreign keys.
-- ADD to "Tier 1": `0010-t1-catalog-grants.sql`: `chatddx_writer` gets SELECT, INSERT and `chatddx_reader` gets SELECT
-  on `catalog`, with default privileges like `factor`.
-- ADD to "Tier 2": `0011-t2-catalog-checks.sql`: thread kinds and entry fields (mirrored by
-  `src/chatddx/core/catalog.py` and tested against it), entry shapes, label positions, and insert-only triggers reusing
-  `factor.refuse_change()`.
-- ADD to "Store API": `Catalog` (`src/chatddx/store/catalog.py`): `create`, `edit`, `thread`, `history`, `head`,
-  `heads`, `containing`, `behind`, `note`, `about`, `label`, `labels`.
-- ADD to "Known gaps": the database allows a thread without edits; `Catalog.create` writes both in one transaction.
