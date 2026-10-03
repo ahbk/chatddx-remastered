@@ -121,6 +121,8 @@ A policy for such case-derived content has not settled:
 
 Note: Part of it exists now: the case-derived tables are in their own ledger schema, and at tier 1 chatddx_reader can read factor but not ledger. Who gets that role is still open.
 
+- The engine's `system_fingerprint` is kept in each call's raw response (`Call.system_fingerprint`) but never compared between calls or runs.
+
 ### Misc
 - **Records aren't in bundles.** How the ledger is delivered together with the cage isn't specified.
 - Nothing compares declared and observed scorer code. ScoreStarted.scorer_code is never checked against Scorer.code, so a mismatch goes unnoticed.

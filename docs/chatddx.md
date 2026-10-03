@@ -28,7 +28,7 @@ It must be possible to deliver the cage together with the results, for scientifi
 - **Purpose:** whether a prompt or skeleton is for `generation` or for a `judge`; it decides which slots are allowed.
 - **Contract:** how an output chunk constrains the answer: `native`, `tool` or `text`.
 - **Normalization:** the text-cleanup steps a trial applies to vignettes.
-- **Trial:** see "Trial".
+- **Trial:** The smallest unit of an scientific intent (i.e. Experiment): skeleton + engine + cases + text-cleanup steps + seeds.
 - **Replicate:** one seed of a trial, identified by its index.
 - **Item key:** (case, replicate index), which identifies one request of a run.
 - **Execution:** how a run issues requests: order, concurrency, timeout and retries.
@@ -41,7 +41,7 @@ It must be possible to deliver the cage together with the results, for scientifi
 - **Canary:** a fixed, non-sensitive probe request.
 - **Case-derived:** content produced from a vignette.
 - **Wire-body:** the exact request sent, is sensitive if it contains a vignette.
-- **Vetted:** a bookkeeping fact.
+- **Vetted:** a fact within the planned clearance pipeline.
 - **Portal:** the web-interface used to configure factors, watch runs and export results.
 - **World:** factor parameters outside of the orchestrator's direct control. (the vignette source, model files, the Nix closure, the chat-template file, the remote engine)
 - **Inventory:** ops-authored TOML files that say what the World holds and where: hosts and GPUs, engines and
@@ -88,7 +88,7 @@ The researches will want to iterate and continuously refine configurations accor
 - Storage: How components and records map to Postgres, table structures are suggested for clarity but not prescribed. In general:
     - factor and records are insert-only
     - nothing is updated;
-    - version chains between digests belong to bookkeeping.
+    - version chains between digests belong to planned catalog pipeline.
 
 ## Target stack
 - **Local inference.** Two servers, an RTX 3070 (sm_86, 8 GB) and an RTX 5090 (sm_120, 32 GB). Both serve vLLM 0.24.0 in a NixOS container that reads a `LocalEngine`, the model files, via `ModelArtifact`, the chat-template file and raw `argv`/`env`.
@@ -123,8 +123,6 @@ Canaries, prompt-token fingerprints and comparing completions show which one app
  - plus the lints in `lint.py`.
 
 The runner warns; it does not refuse. Only structurally malformed specs and records raise errors:
-
-**Case drift and canary drift are not implemented.** `RunItem.vignette` records the observed fingerprint, but nothing compares it with `CaseInput.vignette`, and nothing compares canary outputs between phases or runs. Keep them as intended behavior and list them under "Possible design issues".
 
 The one exception to "warnings, not crashes": sending case-derived content to an engine without clearance is a hard block, judge engines included.
 
@@ -183,12 +181,12 @@ There is however an intended flow of data behind the pieces, which is described 
   - adds seed only if the sampling isn't greedy;
   - adds return_token_ids: true.
 9. Send the request to the engine's /v1/chat/completions.
-  - For a remote engine the URL is RemoteEngine.base_url. For a local engine, the URL and the clearance check now belong to bookkeeping, and nothing enforces the check yet.
+  - For a remote engine the URL is RemoteEngine.base_url. [For LocalEngine?]
   - Canaries are sent in the same way, but from their literal Canary bodies, without slots. The code is unclear here as helpers for creating requests and nothing compare canary outputs, the old code had compare canaries.
 
 ### After the run
-1. After each response, fingerprint_prompt_tokens(response) takes prompt_token_ids out of the response [why? what are the prompt_token_ids?] and returns their fingerprint. The runner stores a RunItem row with the key (case, replicate), the observed vignette fingerprint and a Call. The Call holds the request's fingerprint, the timings, the attempt count, the response without its prompt token IDs, and the prompt-token fingerprint.
-2. At the end, Run(...).finish() produces a RunFinished row with the seal [how is the seal produced?]. check_run then compares what the run declared with what came back.
+1. After each response, fingerprint_prompt_tokens(response) takes prompt_token_ids out of the response and returns their fingerprint. The runner stores a RunItem row with the key (case, replicate), the observed vignette fingerprint and a Call. The Call holds the request's fingerprint, the timings, the attempt count, the response without its prompt token IDs, and the prompt-token fingerprint.
+2. At the end, Run(...).finish() produces a RunFinished row with the seal. check_run then compares what the run declared with what came back.
 
 ### Scoring records
 1. Write a ScoreStarted row naming:
@@ -229,10 +227,14 @@ A finding (`identity.py: Finding`) has a level (`warning` by default, or `info`)
 - `ledger.seal`: a run's or score's rows no longer match the seal in its finished row (`check_run`, `check_score`).
 - `engine.chat_template` and `engine.chat_template_date`: the chat-template file doesn't match the engine's declared digest, or reads the current date (`check_chat_template`).
 - `bundle.recanonicalized`: the current code would serialize a bundled component differently from its stored bytes, which remain authoritative (`Bundle.load`).
-- `model.revision`, `engine.closure`, `scorer.revision` and `vllm.temperature_clamped`: the lints above.
+- `model.revision`, `engine.closure`, `scorer.revision` and `vllm.temperature_clamped`: the lints in `docs/factors.md`.
 
 Structurally malformed input raises instead. Constructing a component, canary or record that breaks its own rules raises pydantic's `ValidationError`: for example flags the start-up script owns in `argv`, slots unsuitable for the purpose, a skeleton body at odds with its contract, runtime keys in a body, duplicate seeds or cases, a shuffle seed without shuffled order, or a stage log out of order. Problems that need other components or records to see raise `StructuralError`: a digest that doesn't match its bytes, an unknown kind or schema version, a missing or wrongly typed reference, a failed `cross_check`, a recipe whose prompt purpose differs from its own or whose passthrough overrides a managed key, and the run and score checks' own violations (items outside the trial, unplanned canary calls, a score of another run, views, items, judges or seeds that don't exist).
 
-The one hard block is clearance: sending case-derived content to an engine that isn't cleared, judge engines included, must be refused. Clearance is bookkeeping data and the factors do not enforce it; the runner must.
+The one hard block is clearance: sending case-derived content to an engine that isn't cleared, judge engines included, must be refused. Clearance has a dedicated pipeline and the factors do not enforce it; the runner must.
+
+## Possible design issues
+
+**Case drift and canary drift are not implemented.** `RunItem.vignette` records the observed fingerprint, but nothing compares it with `CaseInput.vignette`, and nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
