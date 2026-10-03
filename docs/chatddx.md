@@ -19,7 +19,12 @@ It must be possible to deliver the cage together with the results, for scientifi
 - **Cage:** the constrained environment a bundle enforces
 - **Digest:** the factor's identity and how it's referenced, an `sha256:<hex>` over the component's canonical bytes.
 - **Kind:** the discriminator of a component, e.g. `engine.local`, `chunk.prompt`.
-- **Canonical form:** sorted-key JSON with fields left out when equal to their default, plus the type's schema version.
+
+- **Canonical form:** JSON with field names sorted and fields left out when equal to their
+  default, plus the type's schema version. JSON data keeps its key order, because a schema's property order is part
+  of what a model reads; the keys of settings (`Settings`: bodies, `chat_template_kwargs`, `params`, and `env`) are
+  sorted, so equivalent settings share a digest.
+
 - **Chunk:** a factor authored in the portal that fills one part of a recipe (not to be confused with a slot).
 - **Recipe:** the chunks a skeleton was compiled from.
 - **Skeleton:** the frozen request.
@@ -244,7 +249,3 @@ The one hard block is clearance: sending case-derived content to an engine that 
 **Case drift and canary drift are not implemented.** `RunItem.vignette` records the observed fingerprint, but nothing compares it with `CaseInput.vignette`, and nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
-- CHANGE: the glossary's **Canonical form** to "JSON with field names sorted and fields left out when equal to their
-  default, plus the type's schema version. JSON data keeps its key order, because a schema's property order is part
-  of what a model reads; the keys of settings (`Settings`: bodies, `chat_template_kwargs`, `params`, and `env`) are
-  sorted, so equivalent settings share a digest." (`src/chatddx/factors/base.py:46`, `:58`, `:85`)

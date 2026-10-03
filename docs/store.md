@@ -153,8 +153,8 @@ tier-2 triggers).
 - No async API yet; the runner may want one (psycopg 3 has both).
 - Per-kind read-only views, for a future ORM, aren't written.
 - the database allows a thread without edits; `Catalog.create` writes both in one transaction.
-
-## Proposed amendments
-- ADD to "Known gaps": "`doc` is `jsonb`, which reorders object keys, so a schema's property order survives only in
+- "`doc` is `jsonb`, which reorders object keys, so a schema's property order survives only in
   `canonical` and `payload`. Components are read from `canonical` (`src/chatddx/store/store.py:Store.get`,
   `Store.load`); a future ORM or view must not rebuild them from `doc`." (`src/chatddx/factors/base.py:46`)
+
+## Proposed amendments

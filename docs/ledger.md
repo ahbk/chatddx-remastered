@@ -53,7 +53,9 @@ The seal is the sha256 over the canonical started row and the canonical item row
 
 A call records one exchange and is shared by run items, canary calls and judge calls. It holds the fingerprint of the wire body, the start and end times, the HTTP status, the number of attempts, any error, and the raw response. The response is stored without its `prompt_token_ids`: those are the token ids the engine actually read after applying its chat template, and since they encode the case text, only their fingerprint is kept (`fingerprint_prompt_tokens`). Comparing these fingerprints between runs of the same trial (`compare_prompt_tokens`) shows whether the engine read the same tokens, without storing case text.
 
-The request fingerprint (Call.request) is `fingerprint_request` taken over the body's canonical bytes.
+The request fingerprint (Call.request) is `fingerprint_request` taken over over the body's canonical bytes,
+with its top-level keys sorted and nested key order kept, so two requests whose schemas list properties in
+a different order get different fingerprints. (`src/chatddx/ledger/ledger.py:107`)
 
 ### Run
 - principal author: none; assembled from stored rows
@@ -130,6 +132,3 @@ Note: Part of it exists now: the case-derived tables are in their own ledger sch
 - Nothing compares declared and observed scorer code. ScoreStarted.scorer_code is never checked against Scorer.code, so a mismatch goes unnoticed.
 
 ## Proposed amendments
-- CHANGE: "The request fingerprint (Call.request) is `fingerprint_request` taken over the body's canonical bytes" to
-  "… over the body's canonical bytes, with its top-level keys sorted and nested key order kept, so two requests whose
-  schemas list properties in a different order get different fingerprints." (`src/chatddx/ledger/ledger.py:107`)
