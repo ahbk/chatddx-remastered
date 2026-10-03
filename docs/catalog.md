@@ -35,3 +35,15 @@ Cases need special treatment and have no threads (`THREAD_KINDS`); how cases are
 Possibly by the vignette file it reads from plus some qualifier.
 
 ## Proposed amendments
+- CHANGE "Cases": Cases have no threads; they are named through a family (`catalog.family`). A family's binding log
+  (`catalog.binding`) records where its vignette is, as (source, id, vignette fingerprint), and the latest binding is
+  current. A case belongs to the family with a binding matching its own source, id and fingerprint
+  (`src/chatddx/store/catalog.py:Catalog.family`). `Catalog.adopt` creates a family for a case, and refuses one that
+  would give an existing family's vignette new content or a new name; those are repairs. Names, tags and the rest are
+  entries on the family; the current binding's id, the file name, can root the displayed name.
+- ADD to "Cases": a repair handles a content change or a file-name change, never both: the unchanged half of the
+  binding, (source, id) or the fingerprint, identifies the family. It appends a binding, re-binds the appendices as
+  new edits on their threads, and builds the new cases. When both change, the vignette is a new family. Repair
+  helpers are not implemented.
+- ADD to "Threads and edits": `Catalog.behind` looks through cases, which have no threads: a trial's or expectation's
+  case is behind when one of its appendices has a newer head (`src/chatddx/store/catalog.py:Catalog.behind`).

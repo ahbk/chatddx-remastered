@@ -9,9 +9,10 @@ from chatddx.core.catalog import THREAD_KINDS, About, Entry, EntryField, Subject
 from chatddx.core.identity import Person
 from chatddx.factors.base import Component, StructuralError, iter_refs, resolve
 from chatddx.factors.bundle import Registry
+from chatddx.factors.cases import Appendix, CaseInput, SourceCase
 from chatddx.factors.request import compile_request
 from chatddx.factors.scoring import Judge, Scoring
-from chatddx.factors.test.sample import NOW, RIG, generation_recipe, world
+from chatddx.factors.test.sample import NOW, RIG, fp, generation_recipe, world
 from chatddx.ledger.ledger import Compilation, RunStarted, ScoreStarted
 from chatddx.store import Catalog, People, Store
 from chatddx.store.store import Connection
@@ -183,6 +184,72 @@ def test_entries(conn: Connection) -> None:
         )
 
 
+def test_families(conn: Connection) -> None:
+    catalog, store, reg, ids, alice = stored_world(conn)
+    family = catalog.adopt(ids["case"], alice.id)
+    assert catalog.adopt(ids["case"], alice.id) == family
+    assert catalog.family(ids["case"]) == family
+    case = resolve(reg.get, ids["case"], CaseInput)
+    [binding] = catalog.bindings(family)
+    assert (binding.case, binding.vignette) == (case.case, case.vignette)
+
+    bare = reg.add(CaseInput(case=case.case, vignette=case.vignette))
+    _ = store.add(reg, [bare])
+    assert catalog.adopt(bare, alice.id) == family
+    catalog.note(
+        Subject(family=family),
+        Entry(field=EntryField.NAME, value="chest pain"),
+        alice.id,
+    )
+    assert catalog.about(Subject(family=family)).name == "chest pain"
+
+    source = case.case.source
+    changed = reg.add(CaseInput(case=case.case, vignette=fp("edited at the source")))
+    renamed = reg.add(
+        CaseInput(
+            case=SourceCase(source=source, id="c1-renamed"), vignette=case.vignette
+        )
+    )
+    other = reg.add(
+        CaseInput(case=SourceCase(source=source, id="c2"), vignette=fp("x"))
+    )
+    _ = store.add(reg, [changed, renamed, other])
+    with pytest.raises(ValueError, match="new content"):
+        _ = catalog.adopt(changed, alice.id)
+    with pytest.raises(ValueError, match="a new name"):
+        _ = catalog.adopt(renamed, alice.id)
+    assert catalog.family(changed) is None
+    assert catalog.adopt(other, alice.id) != family
+
+    with pytest.raises(LookupError):
+        _ = catalog.adopt(ids["trial"], alice.id)
+    with pytest.raises(LookupError):
+        _ = catalog.bindings(999)
+
+
+def test_behind_looks_through_cases(conn: Connection) -> None:
+    catalog, store, reg, ids, alice = stored_world(conn)
+    case = resolve(reg.get, ids["case"], CaseInput)
+    [appendix] = case.appendices
+    edited = reg.add(
+        Appendix(case=case.case, vignette=case.vignette, text="Troponin 120 ng/L.")
+    )
+    _ = store.add(reg, [edited])
+    trial = catalog.create(ids["trial"], alice.id)
+    expectation = resolve(reg.get, ids["scoring"], Scoring).expectations[0]
+    expected = catalog.create(expectation, alice.id)
+    thread = catalog.create(appendix, alice.id)
+    assert catalog.behind(trial.thread) == []
+
+    head = catalog.edit(thread.thread, edited, alice.id)
+    assert [(b.path, b.digest, b.head) for b in catalog.behind(trial.thread)] == [
+        ("/cases/0/appendices/0", appendix, head)
+    ]
+    assert [(b.path, b.head) for b in catalog.behind(expected.thread)] == [
+        ("/case/appendices/0", head)
+    ]
+
+
 @pytest.mark.parametrize(
     "entry",
     [
@@ -207,6 +274,8 @@ def test_subject_is_one_thing() -> None:
         _ = Subject()
     with pytest.raises(ValidationError):
         _ = Subject(thread=1, run=uuid4())
+    with pytest.raises(ValidationError):
+        _ = Subject(thread=1, family=1)
 
 
 def test_labels(conn: Connection) -> None:
@@ -241,20 +310,32 @@ def test_labels(conn: Connection) -> None:
 def test_database_guards_the_catalog(conn: Connection, admin: Connection) -> None:
     catalog, _, _, ids, alice = stored_world(conn)
     trial = catalog.create(ids["trial"], alice.id)
+    family = catalog.adopt(ids["case"], alice.id)
     catalog.note(
         Subject(thread=trial.thread),
         Entry(field=EntryField.NAME, value="x"),
         alice.id,
     )
     conn.commit()
-    for table in ("thread", "edit", "entry", "label"):
+    for table in ("thread", "edit", "entry", "label", "family", "binding"):
         with pytest.raises(errors.InsufficientPrivilege), conn.transaction():
             _ = conn.execute(
                 sql.SQL("DELETE FROM catalog.{}").format(sql.Identifier(table))
             )
-    with pytest.raises(errors.RaiseException, match="insert-only"):
-        _ = admin.execute("UPDATE catalog.edit SET by = by")
-    admin.rollback()
+    for table in ("edit", "binding"):
+        with pytest.raises(errors.RaiseException, match="insert-only"):
+            _ = admin.execute(
+                sql.SQL("UPDATE catalog.{} SET by = by").format(sql.Identifier(table))
+            )
+        admin.rollback()
+    with pytest.raises(errors.CheckViolation), conn.transaction():
+        _ = conn.execute(
+            """
+            INSERT INTO catalog.entry (thread, family, field, value, by)
+            VALUES (%s, %s, 'name', 'x', %s)
+            """,
+            (trial.thread, family, alice.id),
+        )
     for statement in (
         "INSERT INTO catalog.thread (kind, by) VALUES ('case', %s)",
         "INSERT INTO catalog.entry (field, value, by) VALUES ('name', 'x', %s)",

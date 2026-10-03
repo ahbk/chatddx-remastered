@@ -4,6 +4,7 @@ from chatddx.core.catalog import (
     THREAD_KINDS,
     About,
     Behind,
+    Binding,
     Edit,
     Entry,
     EntryField,
@@ -11,7 +12,8 @@ from chatddx.core.catalog import (
     Subject,
     Thread,
 )
-from chatddx.factors.base import iter_refs, resolve
+from chatddx.factors.base import Fingerprint, iter_refs, resolve
+from chatddx.factors.cases import SourceCase
 from chatddx.factors.scoring import Scorer
 from chatddx.ledger.ledger import Compilation
 
@@ -145,6 +147,7 @@ class Catalog:
             assert row is not None
             recipe = Compilation.parse(str(row[0])).recipe
             refs += [(s.path, s.digest) for s in iter_refs(recipe, "/recipe")]
+        refs += self._through_cases(refs)
         rows = self._conn.execute(
             f"""
             SELECT DISTINCT r.path, r.digest, {_EDIT}
@@ -158,15 +161,98 @@ class Catalog:
         ).fetchall()
         return [Behind(path=r[0], digest=r[1], head=_edit(r[2:])) for r in rows]
 
+    def adopt(self, case: str, by: int) -> int:
+        with self._conn.transaction():
+            if (family := self.family(case)) is not None:
+                return family
+            stored = self._conn.execute(
+                "SELECT FROM factor.component WHERE digest = %s AND kind = 'case'",
+                (case,),
+            ).fetchone()
+            if stored is None:
+                raise LookupError(f"{case} is not a stored case")
+            conflict = self._conn.execute(
+                """
+                SELECT b.family, b.source_id = c.doc #>> '{case,id}'
+                FROM factor.component c, catalog.family f CROSS JOIN LATERAL (
+                    SELECT * FROM catalog.binding h
+                    WHERE h.family = f.id ORDER BY h.id DESC LIMIT 1
+                ) b
+                WHERE c.digest = %s AND b.source = c.doc #>> '{case,source}'
+                    AND (b.source_id = c.doc #>> '{case,id}' OR b.vignette = c.doc -> 'vignette')
+                LIMIT 1
+                """,
+                (case,),
+            ).fetchone()
+            if conflict is not None:
+                family, renamed = conflict[0], not conflict[1]
+                change = "a new name" if renamed else "new content"
+                raise ValueError(
+                    f"{case} gives family {family}'s vignette {change}; rebind the family"
+                )
+            row = self._conn.execute(
+                "INSERT INTO catalog.family (by) VALUES (%s) RETURNING id", (by,)
+            ).fetchone()
+            assert row is not None
+            _ = self._conn.execute(
+                """
+                INSERT INTO catalog.binding (family, source, source_id, vignette, by)
+                SELECT %s, doc #>> '{case,source}', doc #>> '{case,id}', doc -> 'vignette', %s
+                FROM factor.component WHERE digest = %s
+                """,
+                (row[0], by, case),
+            )
+            return int(row[0])
+
+    def family(self, case: str) -> int | None:
+        row = self._conn.execute(
+            """
+            SELECT b.family
+            FROM factor.component c JOIN catalog.binding b
+                ON b.source = c.doc #>> '{case,source}'
+                AND b.source_id = c.doc #>> '{case,id}'
+                AND b.vignette = c.doc -> 'vignette'
+            WHERE c.digest = %s AND c.kind = 'case'
+            ORDER BY b.id DESC LIMIT 1
+            """,
+            (case,),
+        ).fetchone()
+        return None if row is None else int(row[0])
+
+    def bindings(self, family: int) -> list[Binding]:
+        rows = self._conn.execute(
+            """
+            SELECT id, source, source_id, vignette, by, at
+            FROM catalog.binding WHERE family = %s ORDER BY id
+            """,
+            (family,),
+        ).fetchall()
+        if not rows:
+            raise LookupError(f"no family with id {family}")
+        return [
+            Binding(
+                id=id,
+                family=family,
+                case=SourceCase(source=source, id=source_id),
+                vignette=Fingerprint.model_validate(vignette),
+                by=by,
+                at=at,
+            )
+            for id, source, source_id, vignette, by, at in rows
+        ]
+
     def note(self, subject: Subject, entry: Entry, by: int) -> None:
         _ = self._conn.execute(
             """
-            INSERT INTO catalog.entry
-                (thread, run, run_stage, score, score_stage, field, value, person, present, by)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO catalog.entry (
+                thread, family, run, run_stage, score, score_stage,
+                field, value, person, present, by
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 subject.thread,
+                subject.family,
                 subject.run,
                 None if subject.run is None else "started",
                 subject.score,
@@ -223,6 +309,24 @@ class Catalog:
     def _subject(subject: Subject) -> tuple[LiteralString, object]:
         if subject.thread is not None:
             return "thread", subject.thread
+        if subject.family is not None:
+            return "family", subject.family
         if subject.run is not None:
             return "run", subject.run
         return "score", subject.score
+
+    def _through_cases(self, refs: list[tuple[str, str]]) -> list[tuple[str, str]]:
+        rows = self._conn.execute(
+            """
+            SELECT r.src, r.path, r.dst
+            FROM factor.component_ref r JOIN factor.component c ON c.digest = r.src
+            WHERE c.kind = 'case' AND r.src = ANY(%s)
+            """,
+            ([d for _, d in refs],),
+        ).fetchall()
+        return [
+            (path + inner, dst)
+            for src, inner, dst in rows
+            for path, digest in refs
+            if digest == src
+        ]

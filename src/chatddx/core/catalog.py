@@ -6,6 +6,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from chatddx.factors.base import Fingerprint
+from chatddx.factors.cases import SourceCase
+
 # src/chatddx/store/migrations/0011-t2-catalog-checks.sql repeats these kinds and fields.
 THREAD_KINDS = frozenset(
     {
@@ -66,15 +69,27 @@ class Behind(_Frozen):
     head: Edit
 
 
+class Binding(_Frozen):
+    id: int
+    family: int
+    case: SourceCase
+    vignette: Fingerprint
+    by: int
+    at: datetime
+
+
 class Subject(_Frozen):
     thread: int | None = None
+    family: int | None = None
     run: UUID | None = None
     score: UUID | None = None
 
     @model_validator(mode="after")
     def _one(self) -> Self:
-        if [self.thread, self.run, self.score].count(None) != 2:
-            raise ValueError("a subject is exactly one of a thread, a run or a score")
+        if [self.thread, self.family, self.run, self.score].count(None) != 3:
+            raise ValueError(
+                "a subject is exactly one of a thread, a family, a run or a score"
+            )
         return self
 
 

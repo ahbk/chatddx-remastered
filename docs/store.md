@@ -145,3 +145,7 @@ tier-2 triggers).
 - the database allows a thread without edits; `Catalog.create` writes both in one transaction.
 
 ## Proposed amendments
+- ADD to "Layout": schema `catalog` gains `family (id, by, at)` and `binding (id, family, source, source_id,
+  vignette, by, at)`, and `entry` gains a `family` subject (`src/chatddx/store/migrations/0012-t0-catalog-families.sql`).
+- ADD to "Tier 0": `0012-t0-catalog-families.sql`; to "Tier 2": `0013-t2-catalog-families.sql` (insert-only triggers).
+- ADD to "Store API": `Catalog.adopt`, `Catalog.family`, `Catalog.bindings` (`src/chatddx/store/catalog.py`).

@@ -78,7 +78,8 @@ and a nullable `implied_by` column can be added later.
 ### 5. What names and labels attach to
 Implemented (was a take):
 - **Names, tags, descriptions, owner, collaborators, delete flags** are entries in one log, `catalog.entry`, on a
-  thread, a run or a score. The latest entry wins per field, per tag and per collaborator (`About.of`).
+  thread, a case family (decision 7), a run or a score. The latest entry wins per field, per tag and per
+  collaborator (`About.of`).
 - **Labels for views and resources** attach to (scorer digest, `view` or `resource`, position) in `catalog.label`.
   Positions are checked against the scorer, in Python and by a tier-2 trigger. Copying labels to the next scorer
   edit is left to the portal, which knows how positions moved.
@@ -90,47 +91,67 @@ Implemented (was a take):
 Decided: only vignettes and data derived from them are sensitive; source files, names and tags are not. So the catalog
 lives outside `ledger` and `chatddx_reader` may read it.
 
+### 7. Cases are named through families (C2)
+Decided: option C2. Cases get no threads, so "Out" stands.
+
+Implemented, with one refinement: names attach to a catalog **family**, not directly to `SourceCase (source, id)`.
+With the user's suggestion that names start from the vignette's file name, a renamed file would otherwise lose them.
+- `catalog.family` is the handle. `catalog.binding` logs where the family's vignette is, as (source, id, vignette
+  fingerprint); the latest binding is current. This is also the record of the current fingerprint that C2 lacked.
+- A case belongs to the family with a binding, current or earlier, that matches its (source, id, fingerprint), so
+  cases from before a repair still find their family (`Catalog.family`).
+- `Catalog.adopt(case)` returns the case's family or creates one. It refuses a case whose (source, id) is another
+  family's current binding with other content, or whose fingerprint is another family's current binding under
+  another id: those need a repair, not a new family.
+- Names, tags and the rest are entries on the family (`Subject(family=)`). The current binding's id (the file name)
+  can be the root of the displayed name, qualified by a name entry or the appendices' names; that's for the portal.
+- `behind` looks through cases, since they have no threads: a trial's or expectation's case is behind when one of
+  its appendices has a newer head (paths like `/cases/0/appendices/0` and `/case/appendices/0`). The portal proposes
+  the new case and, for expectations, the re-key edit, which a clinician confirms because an appendix may change
+  the answer.
+
+Decided: helpers that repair either a content change or a file-name change, never both; not implemented now. C2 with
+the binding log allows them, because each repair keeps one half of the binding as its anchor:
+- **Content changed, same file name.** The anchor is (source, id), the family's current binding. The helper appends
+  a binding with the new fingerprint, re-binds each appendix head to it (same text, new digest, a new edit on the same
+  appendix thread) and builds the new cases; `behind` then flags trials and expectations. Expectations need a
+  clinician to confirm, since the vignette changed and the answer may have.
+- **File renamed, same content.** The anchor is (source, fingerprint), the family's current binding. The helper
+  appends a binding with the new id, re-binds appendices to the new `SourceCase` (same text and fingerprint) and
+  builds the new cases. Names stay on the family; a name rooted in the file name follows the rename. Expectation data
+  can't be affected, so the helper may write the re-key edits itself.
+- **Both changed.** No anchor, so no repair: it's a new family through `adopt`, and names are carried over by hand.
+  For the helpers, consecutive bindings of a family must share the id or the fingerprint; a tier-2 trigger can
+  enforce that when they land.
+- Detection: the import script's listing of a source (id → fingerprint) compared with current bindings, or the
+  case-drift check (`docs/factors.md`, "Misc", not implemented).
+
+Not implemented, waiting on the repair helpers:
+- appending bindings (no API yet) and the "share the id or the fingerprint" trigger;
+- `behind` doesn't report a case whose binding isn't current. That can only happen after a repair, and matters for
+  cases without appendices, which `behind` can't otherwise flag.
+
 ## Implemented
 - `src/chatddx/core/catalog.py`: `THREAD_KINDS`, `EntryField`, `Entry` (shape rules), `Subject`, `About.of`,
-  `Thread`, `Edit`, `Behind`.
+  `Thread`, `Edit`, `Behind`, `Binding`.
 - `src/chatddx/store/catalog.py`: `Catalog` with `create` (optionally `forked_from`), `edit`, `thread`, `history`,
-  `head`, `heads(kind, deleted=)`, `containing(digest)`, `behind`, `note`, `about`, `label`, `labels`.
+  `head`, `heads(kind, deleted=)`, `containing(digest)`, `behind`, `adopt`, `family`, `bindings`, `note`,
+  `about`, `label`, `labels`.
 - Migrations: `0009-t0-catalog.sql` (tables, composite foreign keys, and `UNIQUE (digest, kind)` on
   `factor.component` and `UNIQUE (digest, skeleton)` on `factor.compilation` as their targets),
   `0010-t1-catalog-grants.sql` (writer SELECT, INSERT; reader SELECT), `0011-t2-catalog-checks.sql` (kind and field
-  lists mirrored from code, entry shapes, label positions, insert-only triggers reusing `factor.refuse_change()`).
+  lists mirrored from code, entry shapes, label positions, insert-only triggers reusing `factor.refuse_change()`),
+  `0012-t0-catalog-families.sql` (family, binding, entries on families), `0013-t2-catalog-families.sql`
+  (insert-only triggers).
 - `Compilation.digest`, the key of `factor.compilation`, so the catalog and `Store.append` share it.
 - Tests: `src/chatddx/store/test/test_catalog.py`.
 
 ## Open
 
-### 1. Cases (next)
-Nobody edits a case, but its digest changes when an appendix is edited (even a typo), added or removed (a clinician
-editing its composition by hand), or when the vignette drifts. The earlier note that "a case is replaced, never
-edited" holds for the vignette only. Each change also needs a new expectation with the same data, because
-`Expectation.case` is the case digest (`src/chatddx/factors/scoring.py:21`); without one, the new case is scored
-against nothing, silently (`docs/factors.md:199`). Re-keying automatically would defeat why expectations key on the
-case (an appendix may change the answer), which B1 already rules out.
-
-Options:
-- **C1. Name the case digest.** Cheap; the name is lost on every appendix edit and drift.
-- **C2. Implied family.** Names and tags attach to `SourceCase (source, id)`; cases get no threads, so "Out" stands.
-  A case shows as its family name plus its appendices' thread names; the portal builds the current case from the
-  family, the appendix heads and the current fingerprint, and content addressing finds it if it exists. The attach
-  key has no foreign key (sources aren't rows), and "current fingerprint" needs an import record that doesn't exist.
-- **C3. Case threads.** Reverses "Out"; nearly every case edit is forced by an appendix edit or drift, so the portal
-  keeps many threads current.
-
-Take: C2, with expectations keeping their threads and taking re-key edits the portal proposes.
-
-Left undone until this is decided:
-- `case` is not in `THREAD_KINDS` (consistent with "Out"; C3 would add it to the code list and the tier-2 check).
-- No attach point for case families (C2) or case digests (C1); `catalog.entry` subjects are threads, runs and scores.
-- `behind` never reports cases, since they have no threads. Under C2, a trial's or expectation's case is stale when
-  its appendices aren't heads or its fingerprint isn't current, which is a different query.
-- The expectation re-key flow after an appendix edit or drift.
-- Names for developer and ops kinds (models, engines, expectation schemas, canary sets): one-edit threads or naming
-  digests directly. Same choice as C1 vs threads, so it rides with this question.
+### 1. Names for developer and ops kinds
+Models, engines, expectation schemas and canary sets have no threads and no other attach point, so they can't be
+named. C2 doesn't settle this. Options: add them to `THREAD_KINDS` as threads that are rarely edited (one attach point
+for everything, but it reverses "Out" for them), or a separate way to name a digest. Take: threads.
 
 ### 2. What deleting a thread hides
 Everywhere, or only pickers, while runs that used it stay visible. A portal decision: `heads(kind, deleted=)` and
@@ -140,3 +161,6 @@ Everywhere, or only pickers, while runs that used it stay visible. A portal deci
 - SQL allows a thread without edits; `Catalog.create` writes both in one transaction.
 - A skeleton edit may omit its compilation even when one exists; nothing can require it.
 - `about()` of a subject with no entries, or no such subject, is an empty `About`.
+- Two concurrent `adopt` calls for the same vignette can create two families; nothing makes current bindings unique.
+- Two identical vignettes under different ids in one source look like a rename to `adopt`, which refuses the second.
+- If bindings of several families match a case, `family` returns the one with the latest binding.
