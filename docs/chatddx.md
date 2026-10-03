@@ -77,10 +77,11 @@ The researches will want to iterate and continuously refine configurations accor
 4. A configuration with several successful variations branch out
 5. Unsuccessful configurations are deleted
 
-"Delete" in this case is a `deleted` flag in the `catalog` layer and only true deletions for non-referenced instances.
+"Delete" in this case is a `deleted` flag in the `catalog` layer since true deletions are blocked on database level (see tier 2 in `docs/store.md`).
 
 ### On the table
 - The result from scorers needs to be aggregated and exported. Since python is well-suited for statistical analysis, processing the data into publishable results may become a requirement.
+- Garbage collector for true deletions of non-referenced items.
 
 ### Work in progress
 - How scores are aggregated and exported together with the factors and the ledger for publication.
