@@ -44,11 +44,11 @@ It must be possible to deliver the cage together with the results, for scientifi
 - **Vetted:** a bookkeeping fact.
 - **Portal:** the web-interface used to configure factors, watch runs and export results.
 - **World:** factor parameters outside of the orchestrator's direct control. (the vignette source, model files, the Nix closure, the chat-template file, the remote engine)
-
-### Yet to be properly defined
-- **Inventory:** A set of toml-files declared by the ops.
-- **Manifest:** A document derived from an inventory that the World can read from.
-- **Rig:** Unclear, is it a bundle?
+- **Inventory:** ops-authored TOML files that say what the World holds and where: hosts and GPUs, engines and
+  their endpoints, model file paths, chat-template files, Nix closures, vignette sources. It is mutable and not
+  content-addressed.
+- **Manifest:** a document the rig writes for one consumer in the World, joining factors (what) with inventory entries (where).
+- **Rig:** the chatddx software that builds cages from factors, runs and scores inside them and records what happened.
 
 ### Roles mentioned
 These roles are distinct and not overlapping, a person may inhabit more than one role.
@@ -64,7 +64,8 @@ These roles are distinct and not overlapping, a person may inhabit more than one
 - Nothing can be expected of the vignettes: They may or may not include labs and imaging results, and may even lack basic details such as age or sex. The source exposes no revision identifier.
 - Portal interfaces for managing instructions, few-shots, prompts, output, sampling, reasoning, passthrough, recepies, appendices, expectations, trials, judges, scorings and starting and monitoring runs.
 - Engines, models, canary sets, expectation schemas and scorers are authored by ops or developers.
-- a self-contained export (bundle) that can be verified offline and read by the container's start-up script
+- a self-contained bundle that can be verified offline
+- manifest that the start-up script reads
 - scripts that can read the World to import factor parameters.
 - import scripts that fingerprint World inputs (model files, closure, chat template, vignettes) into factors.
 
@@ -102,7 +103,7 @@ No comparison between the 3070 and the 5090; each hardware class is its own cage
 
 Returns model identifiers: the run check compares the returned `model` with the declared one (`ledger.py: check_run`). `system_fingerprint` is kept in the raw response but not checked.
 
-- **Orchestrator.** Runs in Kubernetes, owns the manifest and hosts the portal. A postgres database store user-managed data: factors and records are append-only; nothing is updated.
+- **Orchestrator.** Runs in Kubernetes, write the manifest and hosts the portal. A postgres database store user-managed data: factors and records are append-only; nothing is updated.
 
 ## Compromises
 The code declares no tier (the old tier assessment was dropped). The tier is *observed*:
@@ -235,21 +236,3 @@ Structurally malformed input raises instead. Constructing a component, canary or
 The one hard block is clearance: sending case-derived content to an engine that isn't cleared, judge engines included, must be refused. Clearance is bookkeeping data and the factors do not enforce it; the runner must.
 
 ## Proposed amendments
-- CHANGE: **Rig:** the chatddx software that builds cages from factors, runs and scores inside them and records what
-  happened. One rig version produces many bundles, so it is not a bundle: a bundle is one cage's factors, and the rig
-  is what produced and ran it. Records identify it by its `Code` (`src/chatddx/ledger/ledger.py:129` `RunStarted.rig`,
-  `:217` `ScoreStarted.rig`), and so do bundles (`src/chatddx/factors/bundle.py:87` `Bundle.generator`) and compilations
-  (`Compilation.compiler`), each under a different field name.
-- CHANGE: **Inventory:** ops-authored TOML files that say what the World holds and where: hosts and GPUs, engines and
-  their endpoints, model file paths, chat-template files, Nix closures, vignette sources. It is mutable and not
-  content-addressed. Import scripts read it together with the World to produce factors (`model`, `engine.local`,
-  `engine.remote`, the fingerprints in `case`), and it holds the location facts that are not factors, such as a local
-  engine's URL, which this document currently assigns to bookkeeping (Intended dataflow, per-item step 9).
-- CHANGE: **Manifest:** a document the rig writes for one consumer in the World, joining factors (what) with inventory
-  entries (where). Example: for a local engine host, the engine's digest and component, the model file paths and the
-  chat-template path, which the start-up script turns into `--model`, `--served-model-name`, `--chat-template` and the
-  other flags it owns (`src/chatddx/factors/engine.py:9`). A bundle is location-free and can be published with the
-  results; a manifest is bound to one deployment and is not part of the cage.
-- CHANGE (follows from the three above): "a self-contained export (bundle) that can be verified offline and read by the
-  container's start-up script" (Requirements) becomes two requirements: a bundle that can be verified offline, and a
-  manifest that the start-up script reads. "Owns the manifest" (Target stack, Orchestrator) becomes "writes manifests".
