@@ -45,17 +45,26 @@ An appendix (kind `appendix`) is a block of plain text, written in the portal an
 A case lists its appendices in a pinned order that is part of the case's digest, and rejects any appendix bound to another source case or vignette (`CaseInput.cross_check`), so an appendix is never reused across source cases. It can, however, appear in several cases of the same source case, for example a case with a lab appendix and one without. At send time the appendices are joined into one text by the recipe's `AppendixLayout`, which is frozen into the skeleton (see "Rendering and runtime keys").
 
 ### Request
-The request side is built in three layers: chunks are authored in the portal, a recipe selects one chunk per part, and the compiler turns a recipe into a frozen skeleton, which is what trials and judges reference. Chunks affect each other only in two pre-specified ways, both owned by the components: the output chunk's guidance is appended to the instructions, and greedy sampling drops `top_p`, `top_k` and `min_p` (the seed is left out at send time). There are no validation retries: the run stores the raw completion and parsing belongs to scoring. Transport retries are a separate matter, declared per run (`Execution.retries`) and counted per call (`ledger:Call.attempts`).
+The request side is built in three layers: chunks are authored in the portal, a recipe selects one chunk per part, and the compiler turns a recipe into a frozen skeleton, which is what trials and judges reference. Chunks affect each other only in two pre-specified ways, both owned by the components:
+the output chunk's guidance goes where the instructions or the prompt insert it, or is appended to the instructions when neither does,
+and greedy sampling drops `top_p`, `top_k` and `min_p` (the seed is left out at send time).
+
+There are no validation retries: the run stores the raw completion and parsing belongs to scoring. Transport retries are a separate matter, declared per run (`Execution.retries`) and counted per call (`ledger:Call.attempts`).
 
 Each chunk is a component that fills one part of a recipe. None of them is a template:
 text is plain text. The only runtime placeholders are the prompt's slots, filled by concatenation, so clinical text
-is never interpreted; the only compile-time placeholder is the output guidance's `schema` insert.
+is never interpreted; the compile-time placeholders are inserts:
+`schema` in the output's guidance and `output_guidance` in the instructions or the prompt.
+Compilation merges adjacent text, so how a chunk splits its text never changes a skeleton.
 
 #### Instructions
 - principal author: Researchers
 - defined in: `request.py:Instructions`
 
-Instructions (kind `chunk.instructions`) are plain text sent as the first message, with the role `system` or `developer`. Their cross-component effect is passive: the output chunk's guidance is appended to them, separated by a blank line, and becomes the whole message if there are no instructions.
+Instructions (kind `chunk.instructions`) are text sent as the first message, with the role `system` or `developer`. Their cross-component effect is passive: the output chunk's guidance is appended to them, separated by a blank line, and becomes the whole message if there are no instructions. Instead, the text may insert the output guidance (`output_guidance`) anywhere.
+
+The insert's `before` and `after` text appear only when there is guidance, which is what the old templates did with `{{#if …}}`.
+A message that ends up empty is left out. Text-only instructions are a plain string.
 
 #### FewShot
 - principal author: Researchers
@@ -67,7 +76,9 @@ A few-shot chunk (kind `chunk.few_shot`) is a list of plain-text user/assistant 
 - principal author: Researchers
 - defined in: `request.py:Prompt`
 
-A prompt (kind `chunk.prompt`) is the user message: a list of segments, each a literal string or a slot, with a purpose of `generation` or `judge`. A generation prompt must contain the `case` slot and may contain `appendices`. A judge prompt must contain `completion` and may contain `case`, `appendices` and `expectation`. No slot may appear twice, and the prompt's purpose must match the recipe's.
+A prompt (kind `chunk.prompt`) is the user message: a list of segments, each a literal string, a slot or the `output_guidance` insert, with a purpose of `generation` or `judge`. A generation prompt must contain the `case` slot and may contain `appendices`. A judge prompt must contain `completion` and may contain `case`, `appendices` and `expectation`. No slot may appear twice, and the prompt's purpose must match the recipe's.
+
+The output guidance may be inserted in the instructions or in the prompt, not both.
 
 #### Output
 - principal author: Researchers
@@ -78,7 +89,9 @@ An output chunk (kind `chunk.output`) declares where the answer goes, through on
 function call whose parameters are the schema. `text` constrains nothing and may
 carry a schema, for scoring and for the guidance to show.
 
-Its optional guidance is the chunk's cross-component effect: it is appended to the instructions.
+Its optional guidance is the chunk's cross-component effect: it goes where the instructions or
+the prompt insert it, or else it is appended to the instructions.
+
 Guidance is text, or segments of text and the `schema` insert, which compilation replaces with the
 output's schema as `json.dumps(indent=2, ensure_ascii=False)`, exactly once and only when there is a schema.
 A `native` output that shows its schema is the old "native (shown)"; a `text` output that
@@ -217,20 +230,3 @@ the seed isn't sent, but the trial's seeds still count toward its hash, so two o
 - `Hardware` has no GPU count, so tensor-parallel engines can't be told apart by hardware (the old code had `gpu_count`).
 
 ## Proposed amendments
-- CHANGE in "Request": "the output chunk's guidance is appended to the instructions" to "the output chunk's guidance
-  goes where the instructions or the prompt insert it, or is appended to the instructions when neither does", and
-  "the only compile-time placeholder is the output guidance's `schema` insert" to "the compile-time placeholders are
-  inserts: `schema` in the output's guidance and `output_guidance` in the instructions or the prompt. Compilation
-  merges adjacent text, so how a chunk splits its text never changes a skeleton." (`src/chatddx/factors/request.py:30`,
-  `:389`)
-- CHANGE in "Instructions": "are plain text sent as the first message" to "are text sent as the first message", and
-  ADD after "…if there are no instructions.": "Instead, the text may insert the output guidance (`output_guidance`)
-  anywhere. The insert's `before` and `after` text appear only when there is guidance, which is what the old
-  templates did with `{{#if …}}`. A message that ends up empty is left out. Text-only instructions are a plain
-  string." (`src/chatddx/factors/request.py:132`)
-- CHANGE in "Prompt": "a list of segments, each a literal string or a slot" to "a list of segments, each a literal
-  string, a slot or the `output_guidance` insert". ADD: "The output guidance may be inserted in the instructions or
-  in the prompt, not both." (`src/chatddx/factors/request.py:153`, `:389`)
-- CHANGE in "Output": "Its optional guidance is the chunk's cross-component effect: it is appended to the
-  instructions." to "Its optional guidance is the chunk's cross-component effect: it goes where the instructions or
-  the prompt insert it, or else it is appended to the instructions." (`src/chatddx/factors/request.py:389`)

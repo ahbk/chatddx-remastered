@@ -29,9 +29,11 @@ It must be possible to deliver the cage together with the results, for scientifi
 - **Recipe:** the chunks a skeleton was compiled from.
 - **Skeleton:** the frozen request.
 - **Slot:** a placeholder filled at send time.
-- **Insert:** a placeholder filled at compile time. Today the only one is `schema`, in an output chunk's guidance,
+- **Insert:** a placeholder filled at compile time: `schema` in an output chunk's guidance,
+  filled with that output's schema, and `output_guidance` in the instructions or the prompt, filled with the output's
+  guidance. An insert's `before` and `after` text appear only when what it inserts isn't empty.
   filled with that output's schema.
-- **Segment** a literal string, a slot or an insert
+- **Segment:** a literal string, a slot or an insert
 - **Purpose:** whether a prompt or skeleton is for `generation` or for a `judge`; it decides which slots are allowed.
 - **Contract:** how an output chunk constrains the answer: `native`, `tool` or `text`.
 - **Normalization:** the text-cleanup steps a trial applies to vignettes.
@@ -251,7 +253,3 @@ The one hard block is clearance: sending case-derived content to an engine that 
 **Case drift and canary drift are not implemented.** `RunItem.vignette` records the observed fingerprint, but nothing compares it with `CaseInput.vignette`, and nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
-- CHANGE: the glossary's **Insert** to "a placeholder filled at compile time: `schema` in an output chunk's guidance,
-  filled with that output's schema, and `output_guidance` in the instructions or the prompt, filled with the output's
-  guidance. An insert's `before` and `after` text appear only when what it inserts isn't empty.", and add the
-  missing colon after **Segment**. (`src/chatddx/factors/request.py:30`, `:51`, `:96`)
