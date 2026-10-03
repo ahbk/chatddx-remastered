@@ -5,6 +5,7 @@ description = "A reproducible and composable rig for accuracy assessment of LLMs
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "argon2-cffi>=25.1",
     "psycopg[binary]>=3.3.6",
     "pydantic>=2.13.5",
 ]

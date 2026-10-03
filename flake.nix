@@ -82,6 +82,15 @@
           pkgs = nixpkgs.legacyPackages.${system};
           pythonSet = pythonSets.${system}.overrideScope editableOverlay;
 
+          dev-db = pkgs.writeShellApplication {
+            name = "dev-db";
+            runtimeInputs = [
+              pkgs.postgresql_16
+              pkgs.coreutils
+            ];
+            text = builtins.readFile ./scripts/dev-db.sh;
+          };
+
           # workspace.deps.all includes dev/test dependency-groups
           virtualenv = pythonSet.mkVirtualEnv "${name}-dev-env" workspace.deps.all;
         in
@@ -91,6 +100,7 @@
 
             packages = [
               virtualenv
+              dev-db
               pkgs.uv
             ];
 
@@ -104,7 +114,7 @@
             shellHook = ''
               unset PYTHONPATH
               export REPO_ROOT=$(git rev-parse --show-toplevel)
-              set -a && source .env && set +a
+              set -a && source "$REPO_ROOT/.env" && set +a
               echo "• Flake version: ${version}"
               echo "• Nixpkgs:       ${nixpkgs.shortRev}"
               echo "• Python path:   $UV_PYTHON"
