@@ -230,3 +230,9 @@ the seed isn't sent, but the trial's seeds still count toward its hash, so two o
 - `Hardware` has no GPU count, so tensor-parallel engines can't be told apart by hardware (the old code had `gpu_count`).
 
 ## Proposed amendments
+- CHANGE in "Output": "`tool` forces a single function call whose parameters are the schema." to "`tool` forces a
+  single function call whose parameters are the schema, named by the contract's `name` and described by its optional
+  `description` (the old `tool_description`)." (`src/chatddx/factors/request.py:169`, `compile_request`)
+- CHANGE in "Skeleton": "a `tool` contract needs exactly one tool of the declared name plus `tool_choice`" to "a `tool`
+  contract needs exactly one tool of the declared name and description plus `tool_choice`".
+  (`src/chatddx/factors/request.py:Skeleton._structure`, `_tool_description`)

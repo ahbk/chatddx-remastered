@@ -403,6 +403,56 @@ def test_skeleton_structure_is_enforced() -> None:
             },
             contract=ToolOutput(name="b"),
         )
+    with pytest.raises(ValidationError, match="described as"):
+        _ = Skeleton(
+            messages=(user,),
+            body={
+                "tools": [{"type": "function", "function": {"name": "a"}}],
+                "tool_choice": "required",
+            },
+            contract=ToolOutput(name="a", description="Answer here."),
+        )
+
+
+def test_tool_contracts_carry_a_description(reg: Registry) -> None:
+    schema: dict[str, JsonValue] = {"type": "object"}
+    described = ToolOutput(name="final_result", description="Answer by calling this.")
+    skeleton = compile_request(
+        Recipe(
+            prompt=reg.add(Prompt(segments=(Slot(slot="case"),))),
+            output=reg.add(
+                Output(contract=described, json_schema=schema, guidance="Use the tool.")
+            ),
+            sampling=reg.add(Sampling()),
+        ),
+        reg.get,
+    )
+    assert json.dumps(skeleton.body["tools"]) == json.dumps(
+        [
+            {
+                "type": "function",
+                "function": {
+                    "name": "final_result",
+                    "description": "Answer by calling this.",
+                    "parameters": schema,
+                },
+            }
+        ]
+    )
+    assert skeleton.contract == described
+    assert json.loads(ToolOutput(name="final_result").model_dump_json()) == {
+        "kind": "tool",
+        "name": "final_result",
+        "description": None,
+    }
+    assert (
+        "description"
+        not in json.loads(
+            Output(contract=ToolOutput(name="a"), json_schema=schema).canonical
+        )["contract"]
+    )
+    with pytest.raises(ValidationError, match="at least 1 character"):
+        _ = ToolOutput(name="a", description="")
 
 
 def test_engine_argv_cannot_override_manifest(reg: Registry) -> None:

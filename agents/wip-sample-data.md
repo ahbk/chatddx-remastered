@@ -141,6 +141,17 @@ tags = ["ddx"]
   - `ToolOutput` holds only a name, and `compile_request` emits the function without a description. The old
     `coercion.tool` had `tool_description` and the name `final_result`.
   - A defaulted `description` field is additive, so stored digests keep their values.
+  - **Fixed.**
+    - `ToolOutput.description` is optional and non-empty when given. `compile_request` emits it between the
+      function's `name` and `parameters`.
+    - A skeleton's tool contract must match its body's description, as it already had to match the name.
+    - Tool contracts without a description compile, digest and validate as before.
+    - Sample data: `coercion.tool` →
+      `contract = { kind = "tool", name = "final_result", description = "Give your answer by calling this tool, with
+      the answer as its arguments." }`.
+    - Proposed amendments: `docs/factors.md` (Output, Skeleton).
+    - Tests: `test_tool_contracts_carry_a_description` and the description case in
+      `test_skeleton_structure_is_enforced`.
 - **G6. Views.** [maybe fix remastered] (old C6)
   - `View.output` and `View.expectation` are JSON Pointers. They can't express `[*]`
     (`$.diagnoses[*].diagnosis`) or filters (`$.diagnoses[?(@.critical)].diagnosis`).

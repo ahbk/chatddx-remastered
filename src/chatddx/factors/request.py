@@ -169,6 +169,7 @@ class NativeOutput(Frozen):
 class ToolOutput(Frozen):
     kind: Literal["tool"] = "tool"
     name: str
+    description: str | None = Field(default=None, min_length=1)
 
 
 class TextOutput(Frozen):
@@ -325,12 +326,16 @@ class Skeleton(Component):
                     raise ValueError(
                         "native contract needs response_format and no tools"
                     )
-            case ToolOutput(name=name):
+            case ToolOutput(name=name, description=description):
                 if set(self.body) & OUTPUT_KEYS != {"tools", "tool_choice"}:
                     raise ValueError("tool contract needs tools and tool_choice only")
                 if _tool_names(self.body) != [name]:
                     raise ValueError(
                         f"tool contract needs exactly one tool named {name!r}"
+                    )
+                if _tool_description(self.body) != description:
+                    raise ValueError(
+                        f"tool contract needs its tool described as {description!r}"
                     )
             case TextOutput():
                 if set(self.body) & OUTPUT_KEYS:
@@ -372,6 +377,11 @@ def _tool_names(body: Mapping[str, JsonValue]) -> list[str]:
     if not isinstance(tools, list):
         return []
     return [str(_get(t, "function", "name")) for t in tools]
+
+
+def _tool_description(body: Mapping[str, JsonValue]) -> JsonValue:
+    function = _get(body.get("tools"), 0, "function")
+    return function.get("description") if isinstance(function, dict) else None
 
 
 def _check_slots(
@@ -443,13 +453,12 @@ def compile_request(spec: Recipe, get: Resolver) -> Skeleton:
                     "schema": output.json_schema,
                 },
             }
-        case ToolOutput(name=name):
-            managed["tools"] = [
-                {
-                    "type": "function",
-                    "function": {"name": name, "parameters": output.json_schema},
-                }
-            ]
+        case ToolOutput(name=name, description=description):
+            function: dict[str, JsonValue] = {"name": name}
+            if description is not None:
+                function["description"] = description
+            function["parameters"] = output.json_schema
+            managed["tools"] = [{"type": "function", "function": function}]
             managed["tool_choice"] = {"type": "function", "function": {"name": name}}
         case TextOutput():
             pass
