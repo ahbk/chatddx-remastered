@@ -233,3 +233,23 @@ A finding (`identity.py: Finding`) has a level (`warning` by default, or `info`)
 Structurally malformed input raises instead. Constructing a component, canary or record that breaks its own rules raises pydantic's `ValidationError`: for example flags the start-up script owns in `argv`, slots unsuitable for the purpose, a skeleton body at odds with its contract, runtime keys in a body, duplicate seeds or cases, a shuffle seed without shuffled order, or a stage log out of order. Problems that need other components or records to see raise `StructuralError`: a digest that doesn't match its bytes, an unknown kind or schema version, a missing or wrongly typed reference, a failed `cross_check`, a recipe whose prompt purpose differs from its own or whose passthrough overrides a managed key, and the run and score checks' own violations (items outside the trial, unplanned canary calls, a score of another run, views, items, judges or seeds that don't exist).
 
 The one hard block is clearance: sending case-derived content to an engine that isn't cleared, judge engines included, must be refused. Clearance is bookkeeping data and the factors do not enforce it; the runner must.
+
+## Proposed amendments
+- CHANGE: **Rig:** the chatddx software that builds cages from factors, runs and scores inside them and records what
+  happened. One rig version produces many bundles, so it is not a bundle: a bundle is one cage's factors, and the rig
+  is what produced and ran it. Records identify it by its `Code` (`src/chatddx/ledger/ledger.py:129` `RunStarted.rig`,
+  `:217` `ScoreStarted.rig`), and so do bundles (`src/chatddx/factors/bundle.py:87` `Bundle.generator`) and compilations
+  (`Compilation.compiler`), each under a different field name.
+- CHANGE: **Inventory:** ops-authored TOML files that say what the World holds and where: hosts and GPUs, engines and
+  their endpoints, model file paths, chat-template files, Nix closures, vignette sources. It is mutable and not
+  content-addressed. Import scripts read it together with the World to produce factors (`model`, `engine.local`,
+  `engine.remote`, the fingerprints in `case`), and it holds the location facts that are not factors, such as a local
+  engine's URL, which this document currently assigns to bookkeeping (Intended dataflow, per-item step 9).
+- CHANGE: **Manifest:** a document the rig writes for one consumer in the World, joining factors (what) with inventory
+  entries (where). Example: for a local engine host, the engine's digest and component, the model file paths and the
+  chat-template path, which the start-up script turns into `--model`, `--served-model-name`, `--chat-template` and the
+  other flags it owns (`src/chatddx/factors/engine.py:9`). A bundle is location-free and can be published with the
+  results; a manifest is bound to one deployment and is not part of the cage.
+- CHANGE (follows from the three above): "a self-contained export (bundle) that can be verified offline and read by the
+  container's start-up script" (Requirements) becomes two requirements: a bundle that can be verified offline, and a
+  manifest that the start-up script reads. "Owns the manifest" (Target stack, Orchestrator) becomes "writes manifests".
