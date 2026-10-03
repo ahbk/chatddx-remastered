@@ -12,6 +12,7 @@ This document contains project-wide instructions written by humans for agents. A
     `pg_ident.conf` lack the `chatddx` map. Setup: add `map=chatddx` to the `local all all peer` line, append
     `chatddx root chatddx` and `chatddx root chatddx_writer` to `pg_ident.conf`, `service postgresql start`, then
     `su postgres -c "psql -f src/chatddx/store/setup.sql"` and `chatddx migrate` (`src/chatddx/store/setup.sql`).
+    A `service postgresql start` is needed on every session.
 * Base the fake vLLM on 0.24.0, extend/amend continuously as new facts are discovered, questions arise or sample data is needed.
 * `chatddx.core.settings` is the project-wide source of truth.
 

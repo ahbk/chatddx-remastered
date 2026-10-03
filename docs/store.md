@@ -34,6 +34,9 @@ It includes roles and owner (admin) setup, migrations and tests.
   `edit (id, thread, kind, digest, compilation, by, at)`, `entry (id, thread | run | score, field, value, person,
   present, by, at)` and `label (id, scorer, part, position, value, by, at)`
 
+- schema `catalog` gains `family (id, by, at)` and `binding (id, family, source, source_id,
+  vignette, by, at)`, and `entry` gains a `family` subject.
+
 ## Tiers
 Migrations apply in file-name order, not tier order, so a later schema's tier-0 file (`0004-t0-…`)
 runs after earlier tier-1 and tier-2 files (`src/chatddx/store/migrate.py`, `pending`).
@@ -45,6 +48,7 @@ migrations:
 - `0004-t0-identity.sql`
 - `0006-t0-identity-auth.sql`
 - `0009-t0-catalog.sql`
+- `0012-t0-catalog-families.sql`
 
 Endowes:
 - tables, keys, foreign keys.
@@ -80,6 +84,8 @@ migrations:
 - `0003-t2-integrity.sql`
 - `0008-t2-identity-checks.sql`
 - `0011-t2-catalog-checks.sql`
+- `0013-t2-catalog-families.sql`
+
 Endowes:
 - CHECKs that digests match canonical text, that `doc` and every key column match
   the payload, a deferred constraint trigger that each reference row points at an allowed kind and matches the value
@@ -92,6 +98,7 @@ Endowes:
   names, mirrored by `src/chatddx/core/identity.py:Role` and tested against it) and `identity.session` expiry.
 - thread kinds and entry fields (mirrored by `src/chatddx/core/catalog.py` and tested against it),
   entry shapes, label positions, and insert-only triggers reusing `factor.refuse_change()`.
+- insert-only triggers for `catalog.families`.
 
 ## Roles and connections
 Settings: `chatddx.core.settings.database(admin=False)`, from `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_ADMIN`
@@ -130,6 +137,7 @@ migrations up to the tier (default 2) and prints each one; `--dry-run` only list
   `authenticate`, `open_session`, `session`, `close_session`, `purge_sessions`.
 - `Catalog` (`src/chatddx/store/catalog.py`): `create`, `edit`, `thread`, `history`, `head`,
   `heads`, `containing`, `behind`, `note`, `about`, `label`, `labels`.
+- `Catalog.adopt`, `Catalog.family`, `Catalog.bindings` (`src/chatddx/store/catalog.py`).
 
 ## Tests
 `src/chatddx/store/test/`: a migrated template database per session, a fresh copy per test, dropped afterwards.
@@ -145,7 +153,3 @@ tier-2 triggers).
 - the database allows a thread without edits; `Catalog.create` writes both in one transaction.
 
 ## Proposed amendments
-- ADD to "Layout": schema `catalog` gains `family (id, by, at)` and `binding (id, family, source, source_id,
-  vignette, by, at)`, and `entry` gains a `family` subject (`src/chatddx/store/migrations/0012-t0-catalog-families.sql`).
-- ADD to "Tier 0": `0012-t0-catalog-families.sql`; to "Tier 2": `0013-t2-catalog-families.sql` (insert-only triggers).
-- ADD to "Store API": `Catalog.adopt`, `Catalog.family`, `Catalog.bindings` (`src/chatddx/store/catalog.py`).
