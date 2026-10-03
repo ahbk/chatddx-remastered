@@ -22,15 +22,20 @@ def test_migrate_command(
         "would apply 0005-t1-identity-grants",
         "would apply 0006-t0-identity-auth",
         "would apply 0007-t1-identity-auth-grants",
+        "would apply 0009-t0-catalog",
+        "would apply 0010-t1-catalog-grants",
         "applied 0001-t0-tables",
         "applied 0002-t1-grants",
         "applied 0004-t0-identity",
         "applied 0005-t1-identity-grants",
         "applied 0006-t0-identity-auth",
         "applied 0007-t1-identity-auth-grants",
+        "applied 0009-t0-catalog",
+        "applied 0010-t1-catalog-grants",
         "nothing to apply up to tier 1",
         "applied 0003-t2-integrity",
         "applied 0008-t2-identity-checks",
+        "applied 0011-t2-catalog-checks",
     ]
     with pytest.raises(SystemExit):
         main(["migrate", "--tier", "3"])

@@ -126,3 +126,17 @@ tier-2 triggers).
 - Per-kind read-only views, for a future ORM, aren't written.
 
 ## Proposed amendments
+- CHANGE "Layout": add schema `catalog`, not case-derived, append-only: `thread (id, kind, forked_from, by, at)`,
+  `edit (id, thread, kind, digest, compilation, by, at)`, `entry (id, thread | run | score, field, value, person,
+  present, by, at)` and `label (id, scorer, part, position, value, by, at)`
+  (`src/chatddx/store/migrations/0009-t0-catalog.sql`).
+- ADD to "Tier 0": `0009-t0-catalog.sql`. It also adds `UNIQUE (digest, kind)` to `factor.component` and
+  `UNIQUE (digest, skeleton)` to `factor.compilation`, as targets for the catalog's composite foreign keys.
+- ADD to "Tier 1": `0010-t1-catalog-grants.sql`: `chatddx_writer` gets SELECT, INSERT and `chatddx_reader` gets SELECT
+  on `catalog`, with default privileges like `factor`.
+- ADD to "Tier 2": `0011-t2-catalog-checks.sql`: thread kinds and entry fields (mirrored by
+  `src/chatddx/core/catalog.py` and tested against it), entry shapes, label positions, and insert-only triggers reusing
+  `factor.refuse_change()`.
+- ADD to "Store API": `Catalog` (`src/chatddx/store/catalog.py`): `create`, `edit`, `thread`, `history`, `head`,
+  `heads`, `containing`, `behind`, `note`, `about`, `label`, `labels`.
+- ADD to "Known gaps": the database allows a thread without edits; `Catalog.create` writes both in one transaction.

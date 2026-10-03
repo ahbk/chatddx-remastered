@@ -30,3 +30,7 @@ For docs in (`docs/*`), the same rule applies as to this document: Humans write,
 * For placeholder usernames in docs and tests, use alice, bob, carol... or semantic names (archive, guest, nobody, other, collaborator-one, admin).
 
 ## Proposed amendments
+* ADD to "Environment": in a fresh cloud container PostgreSQL 16 is installed but stopped, and `pg_hba.conf` /
+  `pg_ident.conf` lack the `chatddx` map. Setup: add `map=chatddx` to the `local all all peer` line, append
+  `chatddx root chatddx` and `chatddx root chatddx_writer` to `pg_ident.conf`, `service postgresql start`, then
+  `su postgres -c "psql -f src/chatddx/store/setup.sql"` and `chatddx migrate` (`src/chatddx/store/setup.sql`).

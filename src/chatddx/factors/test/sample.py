@@ -75,9 +75,11 @@ def local_engine(reg: Registry) -> LocalEngine:
     )
 
 
-def generation_skeleton(reg: Registry) -> Skeleton:
-    spec = Recipe(
-        instructions=reg.add(Instructions(text="You are an emergency physician.")),
+def generation_recipe(
+    reg: Registry, instructions: str = "You are an emergency physician."
+) -> Recipe:
+    return Recipe(
+        instructions=reg.add(Instructions(text=instructions)),
         prompt=reg.add(
             Prompt(
                 segments=(
@@ -105,7 +107,10 @@ def generation_skeleton(reg: Registry) -> Skeleton:
         ),
         reasoning=reg.add(Reasoning(chat_template_kwargs={"enable_thinking": False})),
     )
-    return compile_request(spec, reg.get)
+
+
+def generation_skeleton(reg: Registry) -> Skeleton:
+    return compile_request(generation_recipe(reg), reg.get)
 
 
 def world(reg: Registry) -> dict[str, str]:

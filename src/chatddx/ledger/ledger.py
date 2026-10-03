@@ -309,6 +309,10 @@ class Compilation(Record):
     compiler: Code
     at: UtcDatetime
 
+    @property
+    def digest(self) -> str:
+        return sha256_digest(self.canonical)
+
 
 def _sealed(log: Run | Score, subject: str) -> list[Finding]:
     finished = log.finished

@@ -126,3 +126,7 @@ Note: Part of it exists now: the case-derived tables are in their own ledger sch
 ### Misc
 - **Records aren't in bundles.** How the ledger is delivered together with the cage isn't specified.
 - Nothing compares declared and observed scorer code. ScoreStarted.scorer_code is never checked against Scorer.code, so a mismatch goes unnoticed.
+
+## Proposed amendments
+- CHANGE "Compilation": `factor.compilation` is keyed by `Compilation.digest`, the digest of the record's canonical
+  bytes (`src/chatddx/ledger/ledger.py:Compilation.digest`); catalog skeleton edits reference it.
