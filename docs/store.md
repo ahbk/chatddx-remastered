@@ -121,3 +121,14 @@ tier-2 triggers).
   (`src/chatddx/core/settings.py:9`), the `owner` test fixture → `admin` (`src/chatddx/store/test/conftest.py:61`).
   Affects "Roles and connections", "Command" and "Tests". Postgres' own `OWNER` (as in `CREATE DATABASE … OWNER`) is
   unchanged. "Owner" is freed for the catalog.
+- ADD to "Layout", schema `identity`: `person` gains `login` (unique), `roles` and `active`; new tables
+  `credential (person, hash)` and `session (token_digest, person, created, expires)`
+  (`src/chatddx/store/migrations/0006-t0-identity-auth.sql`).
+- ADD to "Tiers", tier 1: `chatddx_writer` gets SELECT, INSERT, UPDATE on `identity.credential` and SELECT, INSERT,
+  DELETE on `identity.session` (sessions are deleted on logout, expiry and deactivation); `chatddx_reader` gets
+  neither (`0007-t1-identity-auth-grants.sql`).
+- ADD to "Tiers", tier 2: CHECKs on `identity.person.login` (lowercase pattern), `identity.person.roles` (known role
+  names, mirrored by `src/chatddx/core/identity.py:Role` and tested against it) and `identity.session` expiry
+  (`0008-t2-identity-checks.sql`).
+- ADD to "Store API": `People` (`src/chatddx/store/people.py`): `add`, `get`, `find`, `update`, `set_password`,
+  `authenticate`, `open_session`, `session`, `close_session`, `purge_sessions`.

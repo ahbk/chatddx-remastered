@@ -8,10 +8,14 @@ Material for `docs/identity.md`. Split out of the former `agents/wip-bookkeeping
 referenced by the catalog (owners, collaborators, who started a run) and possibly by clearance (who granted it).
 
 ## Done
-- Migrations `src/chatddx/store/migrations/0004-t0-identity.sql` (schema and `person`) and `0005-t1-identity-grants.sql`
-  (writer SELECT, INSERT, UPDATE; reader SELECT; no DELETE for anyone but the admin role), tested in
-  `src/chatddx/store/test/test_identity.py`. No t2 migration: nothing in `identity` is insert-only.
-- Not done: `core/identity.py` (no Python model or `Store` API yet), `active` column.
+- Migrations `0004-t0-identity.sql`, `0005-t1-identity-grants.sql` (person, grants), `0006-t0-identity-auth.sql`,
+  `0007-t1-identity-auth-grants.sql` (login, roles, active, credential, session) and `0008-t2-identity-checks.sql`
+  (login pattern, role names, session expiry), all in `src/chatddx/store/migrations/`.
+- `src/chatddx/core/identity.py`: `Role`, `Person`, argon2id hashing (`argon2-cffi`), session tokens.
+- `src/chatddx/store/people.py`: `People`, the store API for people, passwords and sessions.
+- `chatddx person add` / `chatddx person password` (`src/chatddx/cli.py`).
+- Tests: `src/chatddx/store/test/test_identity.py`, `test_cli.py`.
+- `DB_OWNER` renamed to `DB_ADMIN`, freeing "owner" for the catalog.
 
 ## Decisions
 
@@ -30,15 +34,24 @@ Take:
 
 ### 2. Not sensitive
 Decided: only vignettes and data derived from them are sensitive. Names are not, so `chatddx_reader` may read
-`identity`.
+`identity.person` (not credentials or sessions, which are secrets rather than sensitive data).
+
+### 3. Authentication, roles and authorization
+Decided:
+- Authentication is owned by the app (option B): passwords and sessions in the database. No IdP today. The deployment
+  will eventually sit behind Keycloak; know it, don't implement it.
+- Roles live in code and are stored as strings on the person (R1).
+- Authorization is a convenience that decides what is relevant to show, not a protection: by role first (Z1), then
+  also by catalog owner and collaborators (Z2).
+
+Take, for when Keycloak arrives: Keycloak (or a proxy in front, such as oauth2-proxy) authenticates and the app maps
+its username onto `person.login`, which is why logins are lowercase like Keycloak's. Password login can stay as the
+development path. Roles could then come from Keycloak's realm roles instead of the column; not decided.
 
 ## Open
-- **Roles.** `docs/chatddx.md` ("Roles mentioned") lists clinicians, researchers, developers and ops, a person may hold
-  several. Are they only descriptive (who authors what), or do they grant permissions in the portal (only clinicians
-  edit expectations, only ops edit engines)? If they grant, `identity.person_role (person, role)` is the obvious
-  shape, and it is mutable like `person`.
-- **Authentication.** Nothing exists: no portal, no login. Whether people log in through an external provider (the
-  orchestrator runs in Kubernetes), and whether `person` stores that provider's subject id, is unspecified.
-- **Authorization** beyond roles: per-thread owner and collaborators live in the catalog (`agents/wip-catalog.md`); who
-  may edit a thread is then a rule over identity and catalog together. Where that rule lives is open.
-- **Naming clash with the database owner**: resolved, the database side is now `DB_ADMIN` / `database(admin=…)`.
+- **Web framework.** No portal exists, so nothing sets or reads a session cookie yet. Cookie flags (`HttpOnly`,
+  `Secure`, `SameSite`), CSRF protection and login rate limiting belong to that layer.
+- **Z1's map from role to kinds** isn't written; it needs the portal's views to mean anything.
+- **Who may administer people.** `Role.ADMIN` exists, but nothing checks it; the CLI connects as `DB_USER`, so anyone
+  with database access can add people.
+- **Expired sessions** are only removed by `People.purge_sessions()`; nothing calls it on a schedule.

@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 from pathlib import Path
 
 from psycopg.conninfo import make_conninfo
@@ -12,3 +13,6 @@ def database(admin: bool = False) -> str:
         user=os.environ["DB_ADMIN" if admin else "DB_USER"],
         dbname=os.environ["DB_NAME"],
     )
+
+
+SESSION_TTL = timedelta(hours=12)

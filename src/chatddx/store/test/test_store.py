@@ -49,7 +49,11 @@ def stored_world(conn: Connection) -> tuple[Store, Registry, dict[str, str]]:
 
 
 def test_migrations_apply_up_to_a_tier(empty: Connection) -> None:
-    assert migrate(empty, tier=0) == ["0001-t0-tables", "0004-t0-identity"]
+    assert migrate(empty, tier=0) == [
+        "0001-t0-tables",
+        "0004-t0-identity",
+        "0006-t0-identity-auth",
+    ]
     assert empty.info.transaction_status == TransactionStatus.IDLE
     assert migrate(empty, tier=0) == []
     with empty.transaction():
@@ -62,6 +66,8 @@ def test_migrations_apply_up_to_a_tier(empty: Connection) -> None:
         "0002-t1-grants",
         "0003-t2-integrity",
         "0005-t1-identity-grants",
+        "0007-t1-identity-auth-grants",
+        "0008-t2-identity-checks",
     ]
     with pytest.raises(errors.RaiseException, match="insert-only"):
         _ = empty.execute("TRUNCATE factor.component CASCADE")
