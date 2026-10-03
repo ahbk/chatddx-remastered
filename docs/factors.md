@@ -85,9 +85,12 @@ The output guidance may be inserted in the instructions or in the prompt, not bo
 - defined in: `request.py:Output`
 
 An output chunk (kind `chunk.output`) declares where the answer goes, through one of three contracts.
-`native` sends a JSON schema as `response_format` (named `output`, strict). `tool` forces a single
-function call whose parameters are the schema. `text` constrains nothing and may
-carry a schema, for scoring and for the guidance to show.
+`native` sends a JSON schema as `response_format` (named `output`, strict).
+
+`tool` forces a single function call whose parameters are the schema, named by the contract's `name`
+and described by its optional `description` (the old `tool_description`).
+
+`text` constrains nothing and may carry a schema, for scoring and for the guidance to show.
 
 Its optional guidance is the chunk's cross-component effect: it goes where the instructions or
 the prompt insert it, or else it is appended to the instructions.
@@ -125,7 +128,13 @@ A recipe is not a component. It holds a purpose, an appendix layout, required re
 - principal author: none; normally produced by the compiler (`compile_request`)
 - defined in: `request.py:Skeleton`
 
-A skeleton (kind `skeleton`) is the frozen request, and the only component normally produced by code rather than people; trials and judges reference it. Nothing prevents hand-written skeletons (see "Possible design issues"). It is fully pre-rendered: the complete chat-completions body except for what is filled in at send time. It holds a purpose, the API (`chat.completions`), the messages as segment lists (so few-shot examples are already baked in as plain text), every other body key, the output contract and the appendix layout. Its validation repeats the chunks' rules: slots must suit the purpose, greedy sampling is canonicalized, a `native` contract needs `response_format` and no tools, a `tool` contract needs exactly one tool of the declared name plus `tool_choice`, and a `text` contract may set no output keys. For `native` and `tool`, the output schema is read from the body rather than stored twice.
+A skeleton (kind `skeleton`) is the frozen request, and the only component normally produced by code rather than people; trials and judges reference it. Nothing prevents hand-written skeletons (see "Possible design issues"). It is fully pre-rendered: the complete chat-completions body except for what is filled in at send time. It holds a purpose, the API (`chat.completions`), the messages as segment lists (so few-shot examples are already baked in as plain text), every other body key, the output contract and the appendix layout.
+
+Its validation repeats the chunks' rules: slots must suit the purpose, greedy sampling is canonicalized,
+a `native` contract needs `response_format` and no tools, a `tool` contract needs exactly one tool of
+the declared name and description plus `tool_choice`, and a `text` contract may set no output keys.
+
+For `native` and `tool`, the output schema is read from the body rather than stored twice.
 
 #### Rendering and runtime keys
 `render(skeleton, model, seed, fills)` produces the wire body. It concatenates each message's segments, replacing each slot with its fill, then adds `model` (the engine digest for local engines, the requested model for remote ones), the messages and the skeleton's body. It adds `seed` only when the skeleton is not greedy, and adds `return_token_ids: true` so the response carries the prompt's token ids (see `docs/ledger.md:Call`). The appendix fill is produced beforehand by the layout, which puts text before, between and after the appendices (by default a blank line before and between, nothing after) and yields an empty string when there are none. The keys `render` owns (`model`, `messages`, `seed`, `stream`, `n` and `return_token_ids`, listed in `request.py: RUNTIME_KEYS`) may not be set by any chunk, skeleton or canary. The wire body itself is transient: only its fingerprint is stored.
@@ -230,9 +239,3 @@ the seed isn't sent, but the trial's seeds still count toward its hash, so two o
 - `Hardware` has no GPU count, so tensor-parallel engines can't be told apart by hardware (the old code had `gpu_count`).
 
 ## Proposed amendments
-- CHANGE in "Output": "`tool` forces a single function call whose parameters are the schema." to "`tool` forces a
-  single function call whose parameters are the schema, named by the contract's `name` and described by its optional
-  `description` (the old `tool_description`)." (`src/chatddx/factors/request.py:169`, `compile_request`)
-- CHANGE in "Skeleton": "a `tool` contract needs exactly one tool of the declared name plus `tool_choice`" to "a `tool`
-  contract needs exactly one tool of the declared name and description plus `tool_choice`".
-  (`src/chatddx/factors/request.py:Skeleton._structure`, `_tool_description`)
