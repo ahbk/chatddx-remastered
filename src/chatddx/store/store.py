@@ -6,7 +6,7 @@ from uuid import UUID
 import psycopg
 from psycopg.rows import TupleRow
 
-from chatddx.factors.base import Component, StructuralError, sha256_digest
+from chatddx.factors.base import Component, StructuralError
 from chatddx.factors.bundle import Registry
 from chatddx.ledger.ledger import (
     CanaryCall,
@@ -168,12 +168,7 @@ class Store:
                             VALUES (%s, %s, %s, %s::jsonb)
                             ON CONFLICT DO NOTHING
                             """,
-                            (
-                                sha256_digest(record.canonical),
-                                record.skeleton,
-                                payload,
-                                payload,
-                            ),
+                            (record.digest, record.skeleton, payload, payload),
                         )
                     case _:
                         raise TypeError(f"no table for {type(record).__name__}")

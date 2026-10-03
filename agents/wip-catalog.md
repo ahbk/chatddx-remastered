@@ -1,8 +1,9 @@
 # Catalog: work in progress
 
 Material for `docs/catalog.md`. Split out of the former `agents/wip-bookkeeping.md` (the word "bookkeeping" is retired;
-its parts are now catalog, `agents/wip-identity.md` and `agents/wip-clearance.md`); checked against d10c96d.
-"Decided" means the user said so; "Take" is the agent's recommendation and still open.
+its parts are now catalog, `agents/wip-identity.md` and `agents/wip-clearance.md`).
+"Decided" means the user said so; "Take" is the agent's recommendation and still open; "Implemented" means the code
+follows it (`src/chatddx/core/catalog.py`, `src/chatddx/store/catalog.py`, migrations `0009`–`0011`).
 
 ## Scope
 The catalog gives humans a handle on immutable factors and records: names, labels, tags, descriptions, owners,
@@ -10,79 +11,154 @@ collaborators, version history and delete flags (`docs/factors.md`, "Not factors
 score, so no factor references it. It references factors by digest, records by id and people by
 `identity.person(id)`.
 
+## Landscape
+Factors reference each other by digest, so an edit anywhere makes new digests all the way up:
+
+```
+chunk.* ─(recipe, only in factor.compilation)─▶ skeleton ─▶ trial ◀─ engine, seeds, cleanup
+                                                    └─────▶ judge ─▶ scorer ─▶ scoring
+appendix ─┐                                                                      ▲
+vignette ─┴▶ case ─▶ trial                                                       │
+              └────▶ expectation ────────────────────────────────────────────────┘
+```
+
+People edit the bottom (chunks, appendices, expectation data); runs and scores reference the top (trials, scorings).
+A recipe assembles chunks the way a case assembles appendices on a vignette, but a case is a component with a family
+key already in its content (`SourceCase`), while a recipe is neither.
+
 ## Decisions
 
 ### 1. Append-only, the last entry is the head
 Decided: the catalog is append-only like the rest of the store. For each thing being tracked, the last entry is the
-current state (the head), and the earlier entries are its history, ordered by primary key or timestamp.
+current state (the head), and the earlier entries are its history.
 
-Take: order by an identity primary key (`bigint GENERATED ALWAYS AS IDENTITY`), not by timestamp. Two entries can share
-a timestamp and clocks can be skewed, but primary keys are unique and increase with every insert. Keep `at` for display.
-"Current" is then `DISTINCT ON (subject) … ORDER BY subject, id DESC`, or a view that does the same.
+Implemented (was a take): ordered by identity primary keys, not timestamps; `at` is kept for display.
 
 ### 2. Delete is a flag
 Decided: deleting is a `deleted` entry in the catalog. True deletion is blocked at tier 2 (`docs/store.md`); a garbage
 collector for non-referenced items is "On the table" in `docs/chatddx.md`.
 
-### 3. What a configuration is, and what its revisions are called
-Decided: "configuration" covers every chunk and component that researchers and clinicians edit, except cases. Engines
-are excluded; params and the like are not. Revisions are per component, and can be renamed if the word is taken.
+Implemented: a later entry with `present = false` restores the thread.
 
-By today's kinds (principal authors from `docs/factors.md`):
-- In: `chunk.instructions`, `chunk.few_shot`, `chunk.prompt`, `chunk.output`, `chunk.sampling`, `chunk.reasoning`,
-  `chunk.passthrough`, `appendix`, `expectation`, `trial`, `scorer`, `judge`, `scoring`, and `skeleton` when it is
-  hand-written (judges).
-- Out: `case` (decided), `model`, `engine.local`, `engine.remote` (ops), and `expectation_schema`, `canary_set`
-  (developers).
+### 3. Threads, and what a configuration is
+Decided: every chunk and component that researchers and clinicians edit has threads, except cases. Engines are
+excluded; params and the like are not. (This was first worded as what "configuration" covers; the word now means the
+UX entity below.)
 
-Naming: "revision" is taken (`ModelArtifact.revision`, `Code.revision`, meaning a commit), "version" means the schema
-version `v`, and "lineage" is what `docs/ledger.md` calls compilation provenance.
+Decided (option A2): recipes are skeleton threads. A skeleton thread's edits point at a skeleton digest and at the
+`factor.compilation` row that produced it, which holds the recipe; hand-written skeletons have edits without one. So
+`skeleton` is in unconditionally, and "a compiled skeleton's history is really its recipe's" is answered: the thread
+is the recipe's history.
 
-Take: call the stable handle a **thread** and each step an **edit**.
-- A thread has a kind and a sequence of edits, each pointing at one digest; its head is the last edit.
-- Branching (`docs/chatddx.md`, "Intended evolution of configurations", step 4) is a new thread whose first entry
-  says which thread and edit it forked from.
-- Delete flags apply to threads.
-- A digest can appear in several threads: two researchers can land on the same chunk independently, and content
-  addressing makes them the same factor.
+Decided: a configuration is a set of pinned factors, and a variation is a configuration where one or more factors are
+replaced. The user keeps a handful of configurations; variations allow controlled experiments without the
+combinatorial explosion. It is a UX entity with no exact representation in the code, only a supported workflow:
+- any digest can be run without a thread, so trying a variation costs nothing in the catalog;
+- a variation worth keeping becomes an edit of its thread or a fork (`thread.forked_from`);
+- `Catalog.behind` shows which pinned factors have moved on.
 
-### 4. What names and labels attach to
-They can't attach to a digest alone: every edit makes a new digest, so a name on a digest would disappear on every
-change, and two threads sharing a digest would have to share a name.
+Implemented (was a take), by today's kinds (`THREAD_KINDS`):
+- In: the seven `chunk.*` kinds, `skeleton`, `trial`, `judge`, `scorer`, `scoring`, `appendix`, `expectation`.
+- Also in, decided later: `model`, `engine.local`, `engine.remote`, `expectation_schema`, `canary_set`. They are
+  rarely edited, but threads are the one place names attach for everything but cases (migration
+  `0014-t2-catalog-kinds.sql`).
+- Out: `case` (decided; see decision 7). A test pins `THREAD_KINDS` to every registered kind except `case`.
+- A thread has a kind and a sequence of edits, each pointing at one digest of that kind (composite foreign keys).
+  A digest can appear in several threads. A fork is a new thread whose `forked_from` is an edit of the same kind.
 
-Take:
-- **Names, tags, descriptions, owner, collaborators, delete flags** attach to the thread. They are entries in the same
-  append-only log, and the head entry of each type wins. Tags and collaborators are additive: an entry adds or removes
-  one.
-- **Labels for views and resources** attach to (scorer digest, `view` or `resource`, position). Positions only mean
-  something inside one scorer digest; the next edit may reorder them. The portal copies labels forward when it creates
-  the next edit.
-- **Records** are their own handles: run and score UUIDs already exist. "Who started a run" and a run's name or tags
-  are entries keyed by run id. A foreign key to a run points at `ledger.run_stage (run, 'started')` through a
-  constant `stage` column, the pattern `ledger.score_stage` already uses for its run
-  (`src/chatddx/store/migrations/0001-t0-tables.sql:72`), unless a `ledger.run` id table is added.
+Naming: "revision" is taken (`ModelArtifact.revision`, `Code.revision`), "version" means the schema version `v`, and
+"lineage" is what `docs/ledger.md` calls compilation provenance; hence **thread** and **edit**.
 
-### 5. Sensitivity
+### 4. Downstream threads move only when someone saves them
+Decided (option B1). Nothing propagates. `Catalog.behind(thread)` lists the head's references, the recipe's
+included, whose own thread has a newer head, so the portal can propose the update; deleted threads are not proposed.
+One level at a time: a chunk edit makes its skeleton threads behind; saving one of those makes its trial threads
+behind. A fork doesn't make anything behind, since it doesn't contain the digest it forked from.
+
+Not implemented: storing what caused an edit (option B3). It can be derived by diffing consecutive edits' references,
+and a nullable `implied_by` column can be added later.
+
+### 5. What names and labels attach to
+Implemented (was a take):
+- **Names, tags, descriptions, owner, collaborators, delete flags** are entries in one log, `catalog.entry`, on a
+  thread, a case family (decision 7), a run or a score. The latest entry wins per field, per tag and per
+  collaborator (`About.of`).
+- **Labels for views and resources** attach to (scorer digest, `view` or `resource`, position) in `catalog.label`.
+  Positions are checked against the scorer, in Python and by a tier-2 trigger. Copying labels to the next scorer
+  edit is left to the portal, which knows how positions moved.
+- **Records**: entries on a run or score point at its started row through a constant stage column, as
+  `ledger.score_stage` does. "Who started a run" is the run's owner entry.
+- The "owner" field name is used, now that the database role is "admin".
+
+### 6. Sensitivity
 Decided: only vignettes and data derived from them are sensitive; source files, names and tags are not. So the catalog
 lives outside `ledger` and `chatddx_reader` may read it.
 
-## Store readiness
-- Schema `catalog`, append-only: the writer gets SELECT, INSERT; the reader gets SELECT.
-- Grants (`src/chatddx/store/migrations/0002-t1-grants.sql`) and insert-only triggers
-  (`0003-t2-integrity.sql`) name their schemas and tables explicitly, so the catalog needs its own `t0`, `t1` and `t2`
-  migrations. Numbering them `0004-t0-…` onward works: `migrate` applies pending files in name order up to the tier
-  (`src/chatddx/store/migrate.py`).
-- `factor.refuse_change()` can be reused, but lives in schema `factor`; moving it to `public` would stop the catalog
-  depending on `factor` for anything but foreign keys.
-- `Store` (`src/chatddx/store/store.py`) has no catalog API; whether it grows one or a separate class is open.
+### 7. Cases are named through families (C2)
+Decided: option C2. Cases get no threads, so "Out" stands.
+
+Implemented, with one refinement: names attach to a catalog **family**, not directly to `SourceCase (source, id)`.
+With the user's suggestion that names start from the vignette's file name, a renamed file would otherwise lose them.
+- `catalog.family` is the handle. `catalog.binding` logs where the family's vignette is, as (source, id, vignette
+  fingerprint); the latest binding is current. This is also the record of the current fingerprint that C2 lacked.
+- A case belongs to the family with a binding, current or earlier, that matches its (source, id, fingerprint), so
+  cases from before a repair still find their family (`Catalog.family`).
+- `Catalog.adopt(case)` returns the case's family or creates one. It refuses a case whose (source, id) is another
+  family's current binding with other content, or whose fingerprint is another family's current binding under
+  another id: those need a repair, not a new family.
+- Names, tags and the rest are entries on the family (`Subject(family=)`). The current binding's id (the file name)
+  can be the root of the displayed name, qualified by a name entry or the appendices' names; that's for the portal.
+- `behind` looks through cases, since they have no threads: a trial's or expectation's case is behind when one of
+  its appendices has a newer head (paths like `/cases/0/appendices/0` and `/case/appendices/0`). The portal proposes
+  the new case and, for expectations, the re-key edit, which a clinician confirms because an appendix may change
+  the answer.
+
+Decided: helpers that repair either a content change or a file-name change, never both; not implemented now. C2 with
+the binding log allows them, because each repair keeps one half of the binding as its anchor:
+- **Content changed, same file name.** The anchor is (source, id), the family's current binding. The helper appends
+  a binding with the new fingerprint, re-binds each appendix head to it (same text, new digest, a new edit on the same
+  appendix thread) and builds the new cases; `behind` then flags trials and expectations. Expectations need a
+  clinician to confirm, since the vignette changed and the answer may have.
+- **File renamed, same content.** The anchor is (source, fingerprint), the family's current binding. The helper
+  appends a binding with the new id, re-binds appendices to the new `SourceCase` (same text and fingerprint) and
+  builds the new cases. Names stay on the family; a name rooted in the file name follows the rename. Expectation data
+  can't be affected, so the helper may write the re-key edits itself.
+- **Both changed.** No anchor, so no repair: it's a new family through `adopt`, and names are carried over by hand.
+  For the helpers, consecutive bindings of a family must share the id or the fingerprint; a tier-2 trigger can
+  enforce that when they land.
+- Detection: the import script's listing of a source (id → fingerprint) compared with current bindings, or the
+  case-drift check (`docs/factors.md`, "Misc", not implemented).
+
+Not implemented, waiting on the repair helpers:
+- appending bindings (no API yet) and the "share the id or the fingerprint" trigger;
+- `behind` doesn't report a case whose binding isn't current. That can only happen after a repair, and matters for
+  cases without appendices, which `behind` can't otherwise flag.
+
+## Implemented
+- `src/chatddx/core/catalog.py`: `THREAD_KINDS`, `EntryField`, `Entry` (shape rules), `Subject`, `About.of`,
+  `Thread`, `Edit`, `Behind`, `Binding`.
+- `src/chatddx/store/catalog.py`: `Catalog` with `create` (optionally `forked_from`), `edit`, `thread`, `history`,
+  `head`, `heads(kind, deleted=)`, `containing(digest)`, `behind`, `adopt`, `family`, `bindings`, `note`,
+  `about`, `label`, `labels`.
+- Migrations: `0009-t0-catalog.sql` (tables, composite foreign keys, and `UNIQUE (digest, kind)` on
+  `factor.component` and `UNIQUE (digest, skeleton)` on `factor.compilation` as their targets),
+  `0010-t1-catalog-grants.sql` (writer SELECT, INSERT; reader SELECT), `0011-t2-catalog-checks.sql` (kind and field
+  lists mirrored from code, entry shapes, label positions, insert-only triggers reusing `factor.refuse_change()`),
+  `0012-t0-catalog-families.sql` (family, binding, entries on families), `0013-t2-catalog-families.sql`
+  (insert-only triggers), `0014-t2-catalog-kinds.sql` (ops and developer kinds get threads).
+- `Compilation.digest`, the key of `factor.compilation`, so the catalog and `Store.append` share it.
+- Tests: `src/chatddx/store/test/test_catalog.py`.
 
 ## Open
-1. **Thread granularity for the request side.** This blocks the main table. Researchers edit chunks, a recipe is not a
-   component and exists only inside a `Compilation` row, and a trial references the compiled skeleton. One edit to a
-   chunk therefore means a new compilation, a new skeleton and a new trial: a chain of new digests. Does a thread follow
-   the chunk, the recipe, the skeleton or the trial? A compiled skeleton's history is really its recipe's.
-2. **Cases** are not configurations, but clinicians will want to name them: a thread with a single edit, or a plain
-   naming table keyed by digest. Naming a digest directly is harmless here, because a case is replaced, never edited.
-   Developer-authored kinds may want names and tags without threads too.
-3. **The "owner" field name**: free to use; the database role is now "admin".
-4. **What deleting a thread hides:** everywhere, or only pickers, while runs that used it stay visible.
+
+### 1. What deleting a thread hides
+Everywhere, or only pickers, while runs that used it stay visible. A portal decision: `heads(kind, deleted=)` and
+`behind` give it what it needs.
+
+### 2. Known gaps
+- SQL allows a thread without edits; `Catalog.create` writes both in one transaction.
+- A skeleton edit may omit its compilation even when one exists; nothing can require it.
+- `about()` of a subject with no entries, or no such subject, is an empty `About`.
+- Two concurrent `adopt` calls for the same vignette can create two families; nothing makes current bindings unique.
+- Two identical vignettes under different ids in one source look like a rename to `adopt`, which refuses the second.
+- If bindings of several families match a case, `family` returns the one with the latest binding.

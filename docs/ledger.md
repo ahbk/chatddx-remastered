@@ -107,7 +107,9 @@ Just as with `RunFinished`, the seal is the sha256 over the canonical started ro
 - defined in: `ledger.py:Compilation`
 - suggested storage table: `factor.compilation`
 
-A compilation is a single row: a recipe, the skeleton it produced, the compiler's code version and the time. It is the lineage from portal chunks to the frozen request; recompiling with a newer compiler adds a new row, not a new factor. It holds no case text and is not case-derived.
+A compilation is a row with a recipe, the skeleton it produced, the compiler's code version and timestamp. It is the lineage from portal chunks to the frozen request; recompiling with a newer compiler adds a new row, not a new factor. It holds no case text and is not case-derived.
+
+`factor.compilation` is keyed by the compilation's digest (`Compilation.digest`) which catalog skeleton references. [1. is this not true for all factors? 2.does this contradict the paragraph above?]
 
 ## Possible design issues
 
@@ -126,3 +128,5 @@ Note: Part of it exists now: the case-derived tables are in their own ledger sch
 ### Misc
 - **Records aren't in bundles.** How the ledger is delivered together with the cage isn't specified.
 - Nothing compares declared and observed scorer code. ScoreStarted.scorer_code is never checked against Scorer.code, so a mismatch goes unnoticed.
+
+## Proposed amendments
