@@ -354,6 +354,7 @@ tags = ["ddx"]
     - Sample data, when the loader exists: a `language` entry on each case's family (79 `en`, 20 `sv`).
     - Proposed amendments: `docs/catalog.md`, `docs/store.md`, `docs/factors.md`.
     - Tests: `test_cases_have_a_language`, and the language cases in `test_entry_shapes`.
+    - This covers the case side of the one-language ambition only; the request side is G18.
 - **G13. Repairs.** [maybe fix remastered] (old D3, D4)
   - 13d317d holds both repair cases: a renamed vignette file (`DutchFall10w.txt` → `Dutchfall10w.txt`) and changed
     content (comments appended to `Dutchfall11w.txt` and `casesfromedn1.txt`).
@@ -380,6 +381,55 @@ tags = ["ddx"]
   - The database can't require a name entry, just as it can't require a thread's first edit (`docs/store.md`,
     "Known gaps"); Python would enforce it.
   - Also to decide: what an unsaved variation is called in the docs, if "variation" now implies a name.
+
+### Language
+- **G18. One language per trial.** [maybe fix remastered] (follows G12)
+  - The ambition, from the old `docs/backlog/language-slice.md` (chatddx-administration/chatddx, branch
+    `new-datamodel`, never built): a trial runs in one language throughout. Its cases, the instructions, the
+    guidance, every other text a chunk brings, and the expectations it's scored against are all Swedish or all
+    English, never mixed. The research is Swedish, and what holds in English may not hold in Swedish.
+  - The backlog's design was gettext-style translation files:
+    - texts are written once in a source language, and a language variation is a catalog of translations
+      (source text → translation);
+    - a missing translation refuses the run (nothing is guessed, nothing mixes);
+    - a catalog is versioned content, and a run names the catalog it read;
+    - a translated case is a case of its own, with its own targets, that names what it translates
+      (`translation_of`);
+    - languages are compared by varying the language over paired cases.
+  - It rejected parallel per-language variations (`ddx-sv`): nothing holds them to one another or to completeness.
+  - **Not like Facts.** Facts write literal chunks before compilation and leave no record, by design, so that a
+    corrected fact changes nothing stored. Translations need the opposite:
+    - provenance, to find what to retranslate when a source text changes and to pair languages;
+    - versioning as content, since they change what the model reads;
+    - keys by source text per language, not by model.
+  - **Take: translations as a recipe part, applied at compile time.**
+    - A translations chunk with a source language, a target language, and source text → translation entries. The
+      recipe references it as an optional part.
+    - `compile_request` renders every chunk-supplied text through it, the way inserts are filled. A missing
+      translation fails the compilation.
+    - The skeleton stays literal translated text, and the `Compilation` records which translations produced it.
+    - An edited translation makes the skeleton threads that used it behind (`Catalog.behind` already looks through
+      recipes), so retranslation is a proposal.
+  - **The two sides.**
+    - The case side stays G12's `language` entry on the family: a vignette's language can only be labelled, not
+      produced. Expectations follow their case.
+    - The request side is the translations above. Labelling chunk or skeleton threads with `language` entries
+      would be the rejected parallel variations.
+  - Open, whichever way it's built:
+    - **Texts compile doesn't own yet.** Few-shot examples could join the translations. The schema is harder: its
+      descriptions are English the model reads (and sees when shown, G4), but translating property names or enum
+      values (`high`, `Lab`) changes the answer's structure and breaks scoring.
+    - **Per-case texts.** Appendices and expectation data are written per case by clinicians, so they're in the
+      case's language by authorship, unchecked.
+    - **A skeleton's language.** A same-language check needs it: either read from the compilation (a check that
+      needs the store, unlike today's registry-only lints), or written as a `language` entry when a compiled
+      skeleton thread is saved.
+    - **Pairing translated cases.** A translated vignette is its own family; `translation_of` needs a
+      family-to-family link the catalog doesn't have.
+    - **Warning or refusal.** The backlog refused mixed runs; remastered's rule is "warnings, not crashes".
+      Language mixing could become a second hard block next to clearance, or stay a lint.
+    - **The source language of untranslated recipes.** A recipe without translations has the language its chunks
+      were written in, which nothing declares today.
 
 ## Parked with the deferred work
 
