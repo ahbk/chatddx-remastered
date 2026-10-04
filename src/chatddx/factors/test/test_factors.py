@@ -60,6 +60,8 @@ from chatddx.factors.scoring import (
     Expectation,
     ExpectationSchema,
     Judge,
+    Scorer,
+    View,
 )
 from chatddx.factors.test.sample import (
     KEY,
@@ -825,6 +827,9 @@ def test_engine_argv_cannot_override_manifest(reg: Registry) -> None:
     for argv in (["--served-model-name=x"], ["--chat_template", "t.jinja"]):
         with pytest.raises(ValidationError, match="may not set"):
             _ = LocalEngine.model_validate({**engine.model_dump(), "argv": argv})
+    for argv in (["--config", "serve.yaml"], ["--config=serve.yaml"]):
+        with pytest.raises(ValidationError, match="config"):
+            _ = LocalEngine.model_validate({**engine.model_dump(), "argv": argv})
     assert engine.served_model_name == engine.digest
 
 
@@ -1023,6 +1028,35 @@ def test_expectations_are_linted_against_their_schema(reg: Registry) -> None:
         )
     ]
     assert findings({}, dangling) == []
+
+
+def test_views_are_checked_against_the_expectation_schema(reg: Registry) -> None:
+    closed = reg.add(
+        ExpectationSchema(
+            json_schema={
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {"ddx": {"type": "array"}},
+            }
+        )
+    )
+    scorer = reg.add(
+        Scorer(
+            code=RIG,
+            consumes=closed,
+            views=(
+                View(expectation="$.ddx[*]", metric="m"),
+                View(expectation="$.targets", metric="m"),
+            ),
+        )
+    )
+    assert [(f.code, f.message) for f in lint(reg, [scorer])] == [
+        (
+            "view.unreachable",
+            "view 1's expectation selector '$.targets' reaches nothing in the "
+            + "expectation schema",
+        )
+    ]
 
 
 def test_languages_are_linted_per_trial(reg: Registry) -> None:

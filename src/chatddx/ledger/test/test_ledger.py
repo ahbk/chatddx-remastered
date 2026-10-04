@@ -10,6 +10,7 @@ from chatddx.factors.bundle import Registry
 from chatddx.factors.cases import CaseInput
 from chatddx.factors.engine import LocalEngine
 from chatddx.factors.request import Output, Tool, ToolOutput, Toolset, compile_request
+from chatddx.factors.scoring import Scorer, Scoring, View
 from chatddx.factors.test.sample import (
     NOW,
     RIG,
@@ -313,3 +314,41 @@ def test_tool_rounds_are_checked(reg: Registry) -> None:
             {**plain.model_dump(), "turns": ()}
         ).canonical_doc()
     )
+
+
+def test_score_views_are_checked_against_the_output_schema(reg: Registry) -> None:
+    ids = world(reg)
+    scoring = resolve(reg.get, ids["scoring"], Scoring)
+    consumes = resolve(reg.get, scoring.scorer, Scorer).consumes
+    scorer = reg.add(
+        Scorer(
+            code=RIG,
+            consumes=consumes,
+            views=(
+                View(output="$.ddx[*]", metric="m"),
+                View(output="$.ddx.first", metric="m"),
+            ),
+        )
+    )
+    unreachable = reg.add(Scoring(scorer=scorer, expectations=scoring.expectations))
+    run_id, score_id = uuid4(), uuid4()
+    run = Run(stages=(RunStarted(run=run_id, at=NOW, rig=RIG, trial=ids["trial"]),))
+    score = Score(
+        stages=(
+            ScoreStarted(
+                score=score_id,
+                run=run_id,
+                at=NOW,
+                rig=RIG,
+                scorer_code=RIG,
+                scoring=unreachable,
+            ),
+        )
+    )
+    assert [(f.code, f.message) for f in check_score(score, run, reg)] == [
+        (
+            "view.unreachable",
+            "view 1's output selector '$.ddx.first' reaches nothing in the run's "
+            + "output schema",
+        )
+    ]

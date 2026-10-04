@@ -150,3 +150,8 @@ Note: Part of it exists now: the case-derived tables are in their own ledger sch
 - Nothing compares declared and observed scorer code. ScoreStarted.scorer_code is never checked against Scorer.code, so a mismatch goes unnoticed.
 
 ## Proposed amendments
+
+### G6: views against the run's output
+- **Score**, `check_score`, append: "It warns (`view.unreachable`) when a view's output selector can't pick
+  anything from answers that follow the run skeleton's output schema. Free text (a `text` contract without a
+  schema) is reachable only by the empty selector."

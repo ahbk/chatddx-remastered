@@ -90,3 +90,8 @@ the request's language, or some of a trial's cases', is unknown, because a label
 the labels disagree (`lint`, with `languages=`).
 
 ## Proposed amendments
+
+### G6: views
+- `view.unreachable`: a view's selector can't pick anything from documents that follow the schema: the
+  expectation schema for its expectation selector (`lint`, on scorers), or the run's output schema for its output
+  selector (`check_score`).

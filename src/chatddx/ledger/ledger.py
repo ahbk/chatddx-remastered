@@ -30,6 +30,7 @@ from chatddx.factors.request import (
     tool_calls,
 )
 from chatddx.factors.scoring import Judge, JudgeRef, Scorer, Scoring, ScoringRef
+from chatddx.factors.select import reaches
 from chatddx.factors.trial import (
     CanarySet,
     CanarySetRef,
@@ -482,6 +483,18 @@ def check_score(score: Score, run: Run, registry: Registry) -> list[Finding]:
     scoring = resolve(registry.get, started.scoring, Scoring)
     scorer = resolve(registry.get, scoring.scorer, Scorer)
     judges = {j: resolve(registry.get, j, Judge) for j in scorer.judges}
+    trial = resolve(registry.get, run.started.trial, Trial)
+    schema = resolve(registry.get, trial.skeleton, Skeleton).output_schema
+    findings = [
+        Finding(
+            code="view.unreachable",
+            message=f"view {i}'s output selector {view.output!r} reaches nothing in "
+            + "the run's output schema",
+            subject=scoring.scorer,
+        )
+        for i, view in enumerate(scorer.views)
+        if not reaches(schema, view.output)
+    ]
     run_keys = {i.key for i in run.items}
     for item in score.items:
         if item.view >= len(scorer.views):
@@ -494,4 +507,4 @@ def check_score(score: Score, run: Run, registry: Registry) -> list[Finding]:
                 raise StructuralError(f"judge {jc.judge} is not part of the scoring")
             if jc.seed_index >= len(judge.seeds):
                 raise StructuralError(f"judge seed index {jc.seed_index} out of range")
-    return _sealed(score, str(started.score))
+    return findings + _sealed(score, str(started.score))

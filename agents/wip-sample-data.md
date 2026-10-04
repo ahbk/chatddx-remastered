@@ -167,6 +167,34 @@ tags = ["ddx"]
     (`$.diagnoses[*].diagnosis`) or filters (`$.diagnoses[?(@.critical)].diagnosis`).
   - Free-text outputs were read through parsers (`lines`, `whole`).
   - The rest of the scorer is deferred, but the sample data's outputs can't be described without this.
+  - **Fixed**:
+    - Decided: an RFC 9535 subset as well as JSON Pointers; a split op on the view for free text; views checked
+      against schemas in `check_score`.
+    - `factors/select.py`: `parse_selector`, `select`, `split` and `reaches`. `View.output` and `View.expectation`
+      are selectors, `View.split` is `lines@1` or none, and `View.output_items` and `View.expectation_items` apply
+      a view. Existing views keep their digests: pointers are still valid, and `split` defaults to none.
+    - The old views, translated:
+      - differential `$.diagnoses[*].diagnosis`;
+      - warning `$.acute_warning`;
+      - disposition `$.management.disposition`;
+      - critical `$.diagnoses[?@.critical == true].diagnosis`;
+      - diagnoses `$.diagnoses[*]`;
+      - free text: the empty selector with `lines@1` (old `lines`), or no split (old `whole`).
+    - The old `[?(@.critical)]` meant "is true". In RFC 9535, `[?@.critical]` means "exists", hence `== true`.
+    - Real-data check:
+      - all five reach `management_plan_v1.json` and `diagnoses.json`;
+      - on 2,000 random documents the new selectors pick what the old `read` did, once its null-dropping is
+        applied;
+      - `lines@1` equals the old `lines`.
+    - `view.unreachable`: a scorer lint for expectation selectors against the consumed schema; `check_score` for
+      output selectors against the run's output schema. Reachability only; item types are the metric's business.
+    - Differences from the old code:
+      - nulls are kept (RFC 9535), where old `read` dropped them;
+      - filters may compare with any literal, and run over object values too.
+    - Proposed amendments: `docs/factors.md` (Scorer, Linting), `docs/ledger.md` (check_score),
+      `docs/findings.md`.
+    - Tests: `src/chatddx/factors/test/test_select.py`, `test_views_are_checked_against_the_expectation_schema`,
+      `test_score_views_are_checked_against_the_output_schema`.
 - **G7. JSON key order is lost in storage.** [maybe fix remastered] (confirmed)
   - `canonical_bytes` sorts keys, and a component read back (`Registry.add_raw`, `Store.get`, `Bundle.load`) keeps
     that order. A skeleton built in memory sends its schema properties as authored (`diagnosis, probability,
@@ -308,8 +336,17 @@ tags = ["ddx"]
       `response_format`, gpt-oss and `tool_choice = required`) and whether a model reasons by default. That default
       is what would turn the `info` into a warning or silence it. Also waiting: the object-root rule for remotes,
       until verified.
-    - Open, not fixed: vLLM's `--config FILE` pulls arguments from a YAML file the digest doesn't cover, including
-      owned flags. Options: forbid `--config` in argv, or lint it.
+    - Decided: `--config` is forbidden in argv (`engine.py:UNPINNED_FLAGS`), in every spelling.
+      - Why: on vLLM 0.24, `--config FILE` splices in a YAML file's arguments. The digest doesn't cover them and
+        lints can't see them. A `tool-call-parser` set there would trigger a false `vllm.tools_refused`, for
+        example.
+      - The start-up script's own flags still win, since the command line beats the file, but nothing else is
+        pinned.
+      - `--config=FILE` is accepted and silently ignored.
+      - argv can say everything a YAML can, so forbidding loses nothing.
+      - Rejected: a lint (the digest would stop being the engine's identity), or pinning the file next to the
+        chat template (more machinery, and lints still couldn't see inside).
+      - Test: the `--config` cases in `test_engine_argv_cannot_override_manifest`.
     - Proposed amendments: `docs/factors.md` (Linting, Local engine), `docs/chatddx.md` (Findings), `docs/vllm.md`
       (6–8).
     - Tests: `test_skeleton_and_engine_compatibility`, and the underscore case in
@@ -607,9 +644,9 @@ tags = ["ddx"]
 
 ### Scorers
 - Scoring code: the pattern matcher, `reciprocal_rank`, `first_mention` and `mentions`.
-- Free-text parsing (G6).
+- Free-text parsing beyond `lines@1` (G6).
 - Aggregation (`mean`, `stderr`).
-- A check that views agree with the output schema (old `prove`).
+- A check that views agree with the output schema (old `prove`): reachability done in G6; item types are open.
 - One scorer per output shape (`plan`, `diagnoses`, `free-text`, `raw`), with the old view names as labels.
 
 ### The command

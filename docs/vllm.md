@@ -63,3 +63,9 @@ vLLM is used for running local models within our control. A fake vLLM is under p
 Fake vLLM based on 0.24.0 should pin all of them
 
 ## Proposed amendments
+
+### G10: `--config`
+- **8**, append: "Only the two-token form is expanded: `--config FILE` (an exact match,
+  https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/utils/argparse_utils.py#L298-L299) splices the file's arguments in before the rest of the command
+  line, so the command line wins (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/utils/argparse_utils.py#L489-L497). `--config=FILE` is accepted by the
+  parser (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/cli_args.py#L368-L372) and then ignored." `LocalEngine` refuses both.

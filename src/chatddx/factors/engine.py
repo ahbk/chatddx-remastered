@@ -10,6 +10,9 @@ from .base import Component, Digest, Finding, Frozen, RefTo, Sha256Hex, sorted_k
 OWNED_FLAGS = frozenset(
     {"--model", "--served-model-name", "--chat-template", "--tokenizer", "--revision"}
 )
+# Flags that pull arguments from elsewhere: `--config FILE` reads a YAML file the digest
+# doesn't cover, and `--config=FILE` is accepted but silently ignored (vLLM 0.24).
+UNPINNED_FLAGS = frozenset({"--config"})
 
 
 # vLLM reads "_" as "-" in a flag's name, up to its first "." (FlexibleArgumentParser).
@@ -75,6 +78,11 @@ class LocalEngine(Component):
         owned = flag_names(argv) & OWNED_FLAGS
         if owned:
             raise ValueError(f"argv may not set {sorted(owned)}")
+        if unpinned := flag_names(argv) & UNPINNED_FLAGS:
+            raise ValueError(
+                f"argv may not use {sorted(unpinned)}: its arguments belong in argv, "
+                + "where the digest pins them"
+            )
         return argv
 
     @property

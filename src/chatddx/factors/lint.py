@@ -15,6 +15,7 @@ from .bundle import Registry
 from .engine import LocalEngine, ModelArtifact, flag_names
 from .request import NativeOutput, Skeleton, ToolOutput
 from .scoring import Expectation, ExpectationSchema, Judge, Scorer
+from .select import reaches
 from .trial import Trial
 
 _COMMIT = re.compile(r"^[0-9a-f]{40}$")
@@ -39,13 +40,22 @@ def _engine(c: LocalEngine, _: Registry) -> Iterable[Finding]:
         )
 
 
-def _scorer(c: Scorer, _: Registry) -> Iterable[Finding]:
+def _scorer(c: Scorer, registry: Registry) -> Iterable[Finding]:
     if c.code.revision is None:
         yield Finding(
             code="scorer.revision",
             message="scorer code has no revision",
             subject=c.digest,
         )
+    schema = resolve(registry.get, c.consumes, ExpectationSchema).json_schema
+    for i, view in enumerate(c.views):
+        if not reaches(schema, view.expectation):
+            yield Finding(
+                code="view.unreachable",
+                message=f"view {i}'s expectation selector {view.expectation!r} "
+                + "reaches nothing in the expectation schema",
+                subject=c.digest,
+            )
 
 
 def _where(error: ValidationError | SchemaError) -> str:
