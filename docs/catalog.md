@@ -50,32 +50,33 @@ copies them to the next scorer edit.
 ## Cases
 Cases have no threads; they are named through a family (`catalog.family`). A family's binding log
 (`catalog.binding`) records where its vignette is, as (source, id, vignette fingerprint), and the latest binding is
-current. A case belongs to the family with a binding matching its own source, id and fingerprint
+current.
+
+A case belongs to the family with a binding matching its own source, id and fingerprint
 (`src/chatddx/store/catalog.py:Catalog.family`). `Catalog.adopt` creates a family for a case, and refuses one that
 would give an existing family's vignette new content or a new name; those are repairs. Names, tags and the rest are
 entries on the family; the current binding's id, the file name, can root the displayed name.
 
-a repair handles a content change or a file-name change, never both: the unchanged half of the
+A repair handles a content change or a file-name change, never both: the unchanged half of the
 binding, (source, id) or the fingerprint, identifies the family. It appends a binding, re-binds the appendices as
-new edits on their threads, and builds the new cases. When both change, the vignette is a new family. Repair
-helpers are not implemented.
+new edits on their threads, and builds the new cases. When both change, the vignette is a new family.
+
+The following helpers assist re-mapping changes in vignette sources:
+
+- `Catalog.survey(source, listing)` compares a source's listing (id → fingerprint, e.g. from `Source.cases()`)
+  with the current bindings of that source's families. It sorts them into unchanged, changed (same id, new
+  content), renamed (same content under an id the listing has, while the old id is gone), new, and gone. A
+  vignette whose name and content both changed shows up as gone plus new.
+- `Catalog.repair(family, by, id=…)` or `vignette=…` changes exactly one half of the binding. It appends a
+  binding, gives the appendix threads at the old binding a re-bound edit (same text), and builds the family's
+  cases anew. A rename also re-keys the expectation threads of those cases, whose data a rename can't affect. A
+  content change leaves them, and `behind` proposes the new case for a clinician to confirm.
+- `Catalog.behind` reports a case whose family has a newer binding (`Behind.binding` instead of `Behind.head`),
+  so cases without appendices are flagged too.
+- Consecutive bindings must keep the id or the vignette (tier 2).
 
 A case's language is a `language` entry on its family. It holds a language tag such as `sv` or `pt-BR`; it can
 be replaced but not removed, and the latest one wins (`About.language`). It describes the vignette and never
 reaches a request.
 
 ## Proposed amendments
-- CHANGE in "Cases": "Repair helpers are not implemented." to:
-  - `Catalog.survey(source, listing)` compares a source's listing (id → fingerprint, e.g. from `Source.cases()`)
-    with the current bindings of that source's families. It sorts them into unchanged, changed (same id, new
-    content), renamed (same content under an id the listing has, while the old id is gone), new, and gone. A
-    vignette whose name and content both changed shows up as gone plus new.
-  - `Catalog.repair(family, by, id=…)` or `vignette=…` changes exactly one half of the binding. It appends a
-    binding, gives the appendix threads at the old binding a re-bound edit (same text), and builds the family's
-    cases anew. A rename also re-keys the expectation threads of those cases, whose data a rename can't affect. A
-    content change leaves them, and `behind` proposes the new case for a clinician to confirm.
-  - `Catalog.behind` reports a case whose family has a newer binding (`Behind.binding` instead of `Behind.head`),
-    so cases without appendices are flagged too.
-  - Consecutive bindings must keep the id or the vignette (tier 2).
-
-  (`src/chatddx/store/catalog.py:334`, `:379`, `:587`, `src/chatddx/core/catalog.py:97`, `:110`, `:118`)

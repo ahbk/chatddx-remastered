@@ -267,7 +267,6 @@ the seed isn't sent, but the trial's seeds still count toward its hash, so two o
 - **Canary drift is not checked.** No function compares canary outputs between phases or between runs. The old code had `compare_canaries`.
 - **Judge engines are not verified by canaries** (reconciliation D5, option B, deferred).
 - **Skeleton provenance.** Should a skeleton only be accepted with a compilation record? Hand-written ones (e.g. judge prompts) are possible today.
-- **Re-binding after vignette drift.** A changed vignette orphans its appendices and expectations; who re-binds them?
 - **Metric names are free strings.** `View.metric` is only meaningful to the scorer code that `Scorer.code` pins; nothing checks that the code knows the name.
 - No helper prepares a case, i.e. per-item steps 2–5 (fetch, drift check, cleanup, joining appendices). The old code had one (prepare_case), and it's worth adding back.
 - Where the model name comes from (per-item step 6) is repeated in check_run, so it belongs on the engine as one method.
@@ -281,8 +280,3 @@ the seed isn't sent, but the trial's seeds still count toward its hash, so two o
 - `Hardware` has no GPU count, so tensor-parallel engines can't be told apart by hardware (the old code had `gpu_count`).
 
 ## Proposed amendments
-- CHANGE in "Misc": "**Re-binding after vignette drift.** A changed vignette orphans its appendices and
-  expectations; who re-binds them?" to "**Re-binding after vignette drift.** `Catalog.repair` re-binds appendices
-  and builds new cases when a vignette's content or file name changes (`docs/catalog.md`, "Cases"). On a content
-  change a clinician confirms each expectation, proposed by `Catalog.behind`; on a rename the repair re-keys them."
-  (`src/chatddx/store/catalog.py:379`)
