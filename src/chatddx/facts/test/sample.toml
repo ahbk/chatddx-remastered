@@ -1,0 +1,66 @@
+# The old inventory's llm facts (chatddx 7893656, src/chatddx/data/inventory/llms.toml), ported by hand.
+
+[model."Qwen/Qwen3-8B-AWQ"]
+family = "qwen3"
+parameters_b = 8.2
+quantization = "awq"
+context_length = 32768
+licence = "apache-2.0"
+
+[model."Qwen/Qwen3-8B-AWQ".reasoning]
+default = "on"
+off = { chat_template_kwargs = { enable_thinking = false } }
+on = { chat_template_kwargs = { enable_thinking = true } }
+minimal = "on"
+low = "on"
+medium = "on"
+high = "on"
+xhigh = "on"
+budget = "thinking_token_budget"
+
+[model."Qwen/Qwen3-8B-AWQ".sampling.recommended]
+on = { temperature = 0.6, top_p = 0.95, top_k = 20, presence_penalty = 1.5 }
+off = { temperature = 0.7, top_p = 0.8, top_k = 20, presence_penalty = 1.5 }
+
+[model."Qwen/Qwen3-8B-AWQ".sampling.generation_config]
+temperature = 0.6
+top_p = 0.95
+top_k = 20
+
+[model."Qwen/Qwen3-8B-AWQ".output]
+default = "native"
+native = {}
+tool = {}
+text = {}
+
+[model."openai/gpt-oss-20b"]
+family = "gpt-oss"
+parameters_b = 21
+active_parameters_b = 3.6
+quantization = "mxfp4"
+context_length = 131072
+licence = "apache-2.0"
+
+[model."openai/gpt-oss-20b".reasoning]
+default = "medium"
+off = { refused = "always reasons: vLLM rejects reasoning_effort = none for harmony" }
+on = "medium"
+minimal = { refused = "harmony has no minimal effort, only low, medium and high" }
+low = { effort = "low" }
+medium = { effort = "medium" }
+high = { effort = "high" }
+xhigh = { refused = "harmony has no xhigh effort, only low, medium and high" }
+budget = { refused = "no thinking budget is documented for harmony" }
+
+[model."openai/gpt-oss-20b".sampling.recommended]
+low = { temperature = 1.0, top_p = 1.0 }
+medium = { temperature = 1.0, top_p = 1.0 }
+high = { temperature = 1.0, top_p = 1.0 }
+
+[model."openai/gpt-oss-20b".sampling.generation_config]
+
+[model."openai/gpt-oss-20b".output]
+default = "native"
+native = { note = "harmony renders no response_format: the model reads the schema only if the guidance shows it" }
+tool = {}
+text = {}

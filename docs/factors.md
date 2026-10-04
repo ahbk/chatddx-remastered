@@ -253,3 +253,13 @@ the seed isn't sent, but the trial's seeds still count toward its hash, so two o
 - `Hardware` has no GPU count, so tensor-parallel engines can't be told apart by hardware (the old code had `gpu_count`).
 
 ## Proposed amendments
+- ADD to "Not factors": "- knowledge about models (reasoning levels, recommended sampling, output caveats, specs):
+  these are model facts (`src/chatddx/facts/facts.py`, material in `agents/wip-facts.md` until a `facts.md`
+  exists). They produce and check literal chunks at authoring, and no digest depends on them."
+- CHANGE in "Linting": the paragraph on the temperature clamp still says it is "the only one keyed by the declared
+  runtime version". The earlier amendment listing the pair rules (`vllm.tool_unconstrained`,
+  `vllm.thinking_budget_refused`, `vllm.grammar_before_reasoning`, `schema.ref_unverified`) was removed from this
+  list without landing in the text. ADD as well: "`lint(registry, digests, facts=)` takes model facts. With them,
+  trials and judges also get `facts.missing` (info), `facts.reasoning_unmatched`, `facts.budget_refused`,
+  `facts.output_refused` and `facts.output_note` (info), and `vllm.grammar_before_reasoning` takes its level from
+  the model's default reasoning." (`src/chatddx/factors/lint.py:154`, `:196`)

@@ -3,6 +3,8 @@ from collections.abc import Iterable
 
 from pydantic import JsonValue
 
+from chatddx.facts.facts import ContractFact, Facts, ModelFacts, Refusal, model_name
+
 from .base import Component, Finding, resolve
 from .bundle import Registry
 from .engine import LocalEngine, ModelArtifact, flag_names
@@ -64,7 +66,30 @@ def _asks_to_reason(body: dict[str, JsonValue]) -> bool | None:
     return None
 
 
-def _pair(subject: str, skeleton: Skeleton, engine: Component) -> Iterable[Finding]:
+def _pair(
+    subject: str,
+    skeleton: Skeleton,
+    engine: Component,
+    registry: Registry,
+    facts: Facts | None,
+) -> Iterable[Finding]:
+    model = None if facts is None else facts.about(engine, registry)
+    if facts is not None and model is None:
+        yield Finding(
+            level="info",
+            code="facts.missing",
+            message=f"no facts about {model_name(engine, registry)!r}, so "
+            + "model-level checks were skipped",
+            subject=subject,
+        )
+    yield from _runtime(subject, skeleton, engine, model)
+    if model is not None:
+        yield from _model_facts(subject, skeleton, model)
+
+
+def _runtime(
+    subject: str, skeleton: Skeleton, engine: Component, model: ModelFacts | None
+) -> Iterable[Finding]:
     constrained = isinstance(skeleton.contract, NativeOutput | ToolOutput)
     if not (
         isinstance(engine, LocalEngine)
@@ -110,6 +135,12 @@ def _pair(subject: str, skeleton: Skeleton, engine: Component) -> Iterable[Findi
         )
     if constrained and "--reasoning-parser" not in flags:
         reasons = _asks_to_reason(skeleton.body)
+        if (
+            reasons is None
+            and model is not None
+            and "--default-chat-template-kwargs" not in flags
+        ):
+            reasons = model.reasons_by_default()
         if reasons is not False:
             yield Finding(
                 level="warning" if reasons else "info",
@@ -120,17 +151,53 @@ def _pair(subject: str, skeleton: Skeleton, engine: Component) -> Iterable[Findi
             )
 
 
-def _trial(c: Trial, registry: Registry) -> Iterable[Finding]:
+def _model_facts(
+    subject: str, skeleton: Skeleton, model: ModelFacts
+) -> Iterable[Finding]:
+    body = skeleton.body
+    asked = (body.get("reasoning_effort"), body.get("chat_template_kwargs") or {})
+    known = [
+        (w.effort, w.chat_template_kwargs) for w in model.reasoning.realized().values()
+    ]
+    if asked != (None, {}) and asked not in known:
+        yield Finding(
+            code="facts.reasoning_unmatched",
+            message="the skeleton's reasoning settings match none of the model's "
+            + "reasoning levels",
+            subject=subject,
+        )
+    if "thinking_token_budget" in body and isinstance(model.reasoning.budget, Refusal):
+        yield Finding(
+            code="facts.budget_refused",
+            message=model.reasoning.budget.refused,
+            subject=subject,
+        )
+    match model.output.fact(skeleton.contract.kind):
+        case Refusal(refused=reason):
+            yield Finding(code="facts.output_refused", message=reason, subject=subject)
+        case ContractFact(note=str() as note):
+            yield Finding(
+                level="info", code="facts.output_note", message=note, subject=subject
+            )
+        case _:
+            pass
+
+
+def _trial(c: Trial, registry: Registry, facts: Facts | None) -> Iterable[Finding]:
     skeleton = resolve(registry.get, c.skeleton, Skeleton)
-    yield from _pair(c.digest, skeleton, registry.get(c.engine))
+    yield from _pair(c.digest, skeleton, registry.get(c.engine), registry, facts)
 
 
-def _judge(c: Judge, registry: Registry) -> Iterable[Finding]:
+def _judge(c: Judge, registry: Registry, facts: Facts | None) -> Iterable[Finding]:
     skeleton = resolve(registry.get, c.skeleton, Skeleton)
-    yield from _pair(c.digest, skeleton, registry.get(c.engine))
+    yield from _pair(c.digest, skeleton, registry.get(c.engine), registry, facts)
 
 
-def lint(registry: Registry, digests: Iterable[str] | None = None) -> list[Finding]:
+def lint(
+    registry: Registry,
+    digests: Iterable[str] | None = None,
+    facts: Facts | None = None,
+) -> list[Finding]:
     findings: list[Finding] = []
     for d in registry if digests is None else digests:
         match registry.get(d):
@@ -141,9 +208,9 @@ def lint(registry: Registry, digests: Iterable[str] | None = None) -> list[Findi
             case Scorer() as c:
                 findings.extend(_scorer(c, registry))
             case Trial() as c:
-                findings.extend(_trial(c, registry))
+                findings.extend(_trial(c, registry, facts))
             case Judge() as c:
-                findings.extend(_judge(c, registry))
+                findings.extend(_judge(c, registry, facts))
             case _:
                 pass
     return findings

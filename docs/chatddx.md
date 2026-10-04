@@ -255,3 +255,9 @@ The one hard block is clearance: sending case-derived content to an engine that 
 **Case drift and canary drift are not implemented.** `RunItem.vignette` records the observed fingerprint, but nothing compares it with `CaseInput.vignette`, and nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
+- ADD to the glossary, after **Inventory**: "**Facts:** ops- or developer-authored knowledge about models (how
+  each reasoning level is expressed or refused, recommended sampling, output caveats, specs), typed in code,
+  written in TOML and keyed by model name. Not factors: they write and check literal chunks, and no digest depends
+  on them." (`src/chatddx/facts/facts.py:182`)
+- CHANGE in "Findings and errors": add `facts.missing`, `facts.reasoning_unmatched`, `facts.budget_refused`,
+  `facts.output_refused` and `facts.output_note` to the lints listed. (`src/chatddx/factors/lint.py:154`)

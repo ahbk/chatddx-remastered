@@ -79,11 +79,21 @@ tags = ["ddx"]
     - a component kind that references a `model` (facts then get a digest and a thread);
     - the World inventory (mutable, ops-authored);
     - code, like the vLLM clamp lint.
+  - **Fixed** (user's choices: typed in code with values in TOML, applied at authoring, keyed by model name). See
+    `agents/wip-facts.md`.
+    - The package is `chatddx.facts`. `ModelFacts.reasoning_chunk` and `sampling_chunk` write literal chunks,
+      and `lint(…, facts=)` checks pairs.
+    - The sample's two models are ported in `src/chatddx/facts/test/sample.toml`.
 - **G2. Reasoning levels.** [maybe fix remastered] (old C2)
   - The old intent levels were `default, off, on, minimal, low, medium, high, xhigh` and `budget`. They were
     translated per model, and a model could refuse a level with a reason.
   - `chunk.reasoning` holds only literal body values (`effort`, `thinking_token_budget`, `chat_template_kwargs`).
   - The same tension as G1: a level needs a model to become a body, and a skeleton has none.
+  - **Fixed with G1.**
+    - The old levels are kept as facts per model: writes, collapses, refusals, a default and a budget.
+    - They become literal `Reasoning` chunks at authoring (`ModelFacts.reasoning_chunk`).
+    - `facts.reasoning_unmatched` catches a skeleton whose reasoning belongs to another model.
+    - Open: `xhigh` has no `Reasoning.effort` value yet (`agents/wip-facts.md`).
 - **G3. Placing chunk-supplied text.** [maybe fix remastered] (old C4)
   - The only composition `compile_request` knows is output guidance appended to the instructions after a blank line
     (`src/chatddx/factors/request.py:compile_request`).
@@ -236,6 +246,9 @@ tags = ["ddx"]
     - Flags are read as vLLM reads them, `_` and `-` alike (`engine.py:flag_names`). This also fixed a bypass:
       `LocalEngine` rejected `--served-model-name` but let `--served_model_name` and `--chat_template` through.
     - Evidence: `docs/vllm.md` proposed assumptions 6–8.
+    - Done with G1: `facts.reasoning_unmatched`, `facts.budget_refused`, `facts.output_refused` and
+      `facts.output_note`, plus the model's default reasoning for `vllm.grammar_before_reasoning`. The rest of
+      this bullet is kept for history.
     - Waits for G1: the model-level refusals (gpt-oss can't turn reasoning off, harmony doesn't render
       `response_format`, gpt-oss and `tool_choice = required`) and whether a model reasons by default. That default
       is what would turn the `info` into a warning or silence it. Also waiting: the object-root rule for remotes,
