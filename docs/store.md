@@ -158,6 +158,7 @@ migrations up to the tier (default 2) and prints each one; `--dry-run` only list
 - `Catalog` (`src/chatddx/store/catalog.py`): `create`, `edit`, `thread`, `history`, `head`,
   `heads`, `containing`, `behind`, `note`, `about`, `label`, `labels`, `recipe`, `variation`, `proposal`,
   `title`, `title_of`, `survey`, `repair` and `language_of`.
+  `find(kind, name, owner=)`, `forks(thread)`, `expectations_of(case)`.
 - `Catalog.adopt`, `Catalog.family`, `Catalog.bindings`.
 
 ## Tests
@@ -177,10 +178,3 @@ tier-2 triggers).
   `Store.load`); a future ORM or view must not rebuild them from `doc`." (`src/chatddx/factors/base.py:46`)
 
 ## Proposed amendments
-
-### init-data
-- **Command**, append: "`chatddx init-data USER (--vignettes DIR | --world FILE) [--source NAME] [--giftbag]
-  [--data DIR] [--facts PATH …]` connects as `DB_USER` and seeds the sample data in one transaction (`docs/chatddx.md`,
-  "Sample data"). It prints one line per record: created, validated, updated, skipped, missing, needs repair,
-  forked or kept."
-- **Store API**, `Catalog`: add `find(kind, name, owner=)`, `forks(thread)`, `expectations_of(case)`.

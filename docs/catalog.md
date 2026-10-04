@@ -15,6 +15,11 @@ Every kind has threads except `case`, including the ones ops and developers auth
 (models, engines, expectation schemas, canary sets), so threads are where names attach for everything but cases
 (`src/chatddx/core/catalog.py:THREAD_KINDS`, `src/chatddx/store/migrations/0014-t2-catalog-kinds.sql`).
 
+`Catalog.find(kind, name, owner=)` lists the live threads of a kind whose current
+name is `name`, owned by `owner` if given; the sample loader uses it to match its records on a re-run. Names
+aren't unique, so it may return several. `Catalog.forks(thread)` lists the threads forked from any edit of a
+thread, and `Catalog.expectations_of(case)` the expectation threads whose head expects a case.
+
 ## Recipes
 Recipes are skeleton threads. A skeleton edit names the compilation that produced its skeleton, which holds the
 recipe (`catalog.edit.compilation`); a hand-written skeleton's edits name none.
@@ -113,9 +118,3 @@ Vignettes are never translated: a case runs in the language it was written in, s
 sets."
 
 ## Proposed amendments
-
-### init-data: lookups
-- **Threads and edits**, append: "`Catalog.find(kind, name, owner=)` lists the live threads of a kind whose current
-  name is `name`, owned by `owner` if given; the sample loader uses it to match its records on a re-run. Names
-  aren't unique, so it may return several. `Catalog.forks(thread)` lists the threads forked from any edit of a
-  thread, and `Catalog.expectations_of(case)` the expectation threads whose head expects a case."
