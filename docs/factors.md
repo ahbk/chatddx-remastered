@@ -192,18 +192,24 @@ A trial (kind `trial`) is a scientific intent: a generation skeleton, an engine,
 - defined in: `scoring.py:ExpectationSchema`
 
 An expectation schema (kind `expectation_schema`) is a JSON Schema describing the reference data a scorer consumes.
+Its `$schema` names the draft it's written in, 2020-12 when absent.
 
 ### Expectation
 - principal author: Clinicians
 - defined in: `scoring.py:Expectation`
 
-An expectation (kind `expectation`) is the reference data for one case, authored in the portal: the case's digest, the expectation schema's digest and the data. Because the key is the case digest, appendices included, the same source case can have different expectations under different appendices. Expectations are not sensitive. The factors do not validate the data against its schema; the scorer does.
+An expectation (kind `expectation`) is the reference data for one case, authored in the portal: the case's digest, the expectation schema's digest and the data. Because the key is the case digest, appendices included, the same source case can have different expectations under different appendices. Expectations are not sensitive.
+
+Building an expectation doesn't validate its data against its schema. Lints check it (see "Linting"),
+and the scorer decides what to do with data that fails.
 
 ### Scorer
 - principal author: Researchers
 - defined in: `scoring.py:Scorer`
 
-A scorer (kind `scorer`) pins scoring code, written by developers. It declares that code (`Code`: distribution, version, revision), the expectation schema it consumes, an ordered list of views, ordered resource digests (such as synonym tables or ontology releases) and free parameters. Views and resources are referred to by position; their labels belong to `catalog`. A view scores one part of an output against one part of an expectation: it holds a JSON pointer into each, a metric name that only the scorer's code interprets, optional parameters, and optionally the judge it uses. Parsing is the scorer's job, not the factors': outputs that fail validation are scored best-effort.
+A scorer (kind `scorer`) pins scoring code, written by developers. It declares that code (`Code`: distribution, version, revision), the expectation schema it consumes, an ordered list of views, ordered resource digests (such as synonym tables or ontology releases) and free parameters. Views and resources are referred to by position; their labels belong to `catalog`.
+
+A view scores one part of an output against one part of an expectation: it holds a JSON pointer into each, a metric name that only the scorer's code interprets, optional parameters, and optionally the judge it uses. Parsing is the scorer's job, not the factors': outputs that fail validation are scored best-effort.
 
 ### Judge
 - principal author: Researchers
@@ -226,27 +232,19 @@ A canary set (kind `canary_set`) is a list of fixed, non-sensitive probe request
 ## Linting
 Lints (`lint.py`) warn about settings that are valid but risky. They are plain functions over a registry, run on demand; nothing in the factor components stores their findings. Keeping them out of the data layer means knowledge that changes between vLLM releases can change without touching any factor. `lint(registry, digests)` applies one rule per kind. A model artifact whose revision is not a 40-character commit gets `model.revision`, because a branch or tag can move. A local engine whose closure is not a Nix store path gets `engine.closure`. A scorer whose code has no revision gets `scorer.revision`.
 
-A trial or a judge pairs a skeleton with an engine, and both get the same pair rules. Five are keyed by the declared runtime,
-vLLM 0.24 (`docs/vllm.md`):
-- `vllm.temperature_clamped`: the skeleton sets a temperature between 0 and 0.01, which vLLM 0.24 raises to 0.01.
-- `vllm.tool_unconstrained`: a `tool` contract without `--enable-auto-tool-choice` and `--tool-call-parser` in
-  the engine's argv goes out unconstrained.
-- `vllm.thinking_budget_refused`: `thinking_token_budget` without `--reasoning-parser` or `--reasoning-config` is
-  refused.
-- `vllm.grammar_before_reasoning`: a `native` contract, or a constrained `tool` one, without `--reasoning-parser`
-  is constrained from the first token, so the model can't reason first. It's a warning when the skeleton asks
-  for reasoning (`reasoning_effort`, `thinking_token_budget`, `enable_thinking: true`), and `info` when it leaves
-  reasoning to the model. Nothing is reported when it turns reasoning off.
-- `lint(registry, digests, facts=)` takes model facts. With them,
-  trials and judges also get `facts.missing` (info), `facts.reasoning_unmatched`, `facts.budget_refused`,
-  `facts.output_refused` and `facts.output_note` (info), and `vllm.grammar_before_reasoning` takes its level from
-  the model's default reasoning.
+Expectation schemas and expectations are checked with the
+`jsonschema` library. An expectation schema gets `expectation_schema.invalid` when its `$schema` names a draft
+the library can't check, or when it breaks its draft's metaschema. An expectation gets `expectation.invalid`
+when its data fails its schema; the message gives the most relevant error's JSON Pointer and how many more
+there are. It gets `expectation.unchecked` when a `$ref` the data reaches can't be resolved: refs are resolved
+within the schema only, and nothing is fetched. An expectation whose schema is invalid isn't checked, since the
+schema's own finding covers it. `format` is an annotation, as 2020-12 has it, and isn't asserted.
 
 Engines that aren't vLLM 0.24 (remote engines and other versions) get `schema.ref_unverified` when a `native` or
 `tool` schema has `$ref`: the engine isn't known to resolve it, and `inline_refs@1` removes it. Flags are read as
-vLLM reads them, with `_` and `-` alike in their names." (`src/chatddx/factors/lint.py:67`, `:128`,
-`src/chatddx/factors/engine.py:16`). This also drops "(an unverified assumption, …)": `docs/vllm.md` assumption 2
-verifies it.
+vLLM reads them, with `_` and `-` alike in their names.
+
+See the `docs/findings.md:Linting`.
 
 ## Possible design issues
 
@@ -280,25 +278,3 @@ the seed isn't sent, but the trial's seeds still count toward its hash, so two o
 - `Hardware` has no GPU count, so tensor-parallel engines can't be told apart by hardware (the old code had `gpu_count`).
 
 ## Proposed amendments
-
-### G14: expectations are linted against their schema
-- **Expectation schema**, append: "Its `$schema` names the draft it's written in, 2020-12 when absent."
-- **Expectation**, replace "The factors do not validate the data against its schema; the scorer does." with "Building
-  an expectation doesn't validate its data against its schema. Lints check it (see "Linting"), and the scorer
-  decides what to do with data that fails."
-- **Linting**, new paragraph after the first: "Expectation schemas and expectations are checked with the
-  `jsonschema` library. An expectation schema gets `expectation_schema.invalid` when its `$schema` names a draft
-  the library can't check, or when it breaks its draft's metaschema. An expectation gets `expectation.invalid`
-  when its data fails its schema; the message gives the most relevant error's JSON Pointer and how many more
-  there are. It gets `expectation.unchecked` when a `$ref` the data reaches can't be resolved: refs are resolved
-  within the schema only, and nothing is fetched. An expectation whose schema is invalid isn't checked, since the
-  schema's own finding covers it. `format` is an annotation, as 2020-12 has it, and isn't asserted."
-  (`src/chatddx/factors/lint.py:81`)
-- **Linting**, cleanup found while reading it:
-  - The last paragraph ends with text left from an earlier amendment. Everything after "with `_` and `-` alike
-    in their names." should go, i.e. the quote mark, the source references and "This also drops … verifies it."
-  - "Five are keyed by the declared runtime, vLLM 0.24" introduces four vLLM rules and the facts bullet. The fifth
-    runtime-keyed rule is `schema.ref_unverified`, which is keyed by the runtime *not* being vLLM 0.24. Suggest
-    "Four are keyed by the declared runtime, vLLM 0.24", and moving the facts bullet out of that list into its own
-    paragraph.
-

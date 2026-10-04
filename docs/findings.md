@@ -1,6 +1,10 @@
 # Findings
 A list of all findings and what they mean.
 
+## Ledger
+The ledger emits findings as they come. [They might benefit from having a separate mechanism for this (what linting is for factors),
+but nothing is planned or decided.]
+
 - `attestation.model`:
 the engine returned a different model name than declared: the engine digest for a local engine, the requested model for a remote one (`check_run`).
 
@@ -25,39 +29,50 @@ the current code would serialize a bundled component differently from its stored
 - `model.revision`, `engine.closure`, `scorer.revision`:
 kand the pair rules for trials and judges
 
-`vllm.temperature_clamped`:
-
-`vllm.tool_unconstrained`:
-
-`vllm.thinking_budget_refused`:
-
-`vllm.grammar_before_reasoning`:
-
-`schema.ref_unverified`:
-
-`facts.missing`:
-
-`facts.reasoning_unmatched`:
-
-`facts.budget_refused`:
-
-`facts.output_refused`:
-
-`facts.output_note`:
-
-`case.drift`:
+- `case.drift`:
 the vignette read at the source differs from the case's fingerprint (`prepare_case`, `check_run`).
 
-`model.revision`:
+## Factors
+Factors are "linted" in one sweep by passing a registry (of factors) to `lint(registry, digests, facts=)`
 
-`engine.closure`:
+- `vllm.temperature_clamped`:
+the skeleton sets a temperature between 0 and 0.01, which vLLM 0.24 raises to 0.01.
 
-`scorer.revision`:
+- `vllm.tool_unconstrained`:
+a `tool` contract without `--enable-auto-tool-choice` and `--tool-call-parser` in the engine's argv goes out unconstrained.
 
-`expectation_schema.invalid`:
+- `vllm.thinking_budget_refused`:
+`thinking_token_budget` without `--reasoning-parser` or `--reasoning-config` is refused.
 
-`expectation.invalid`:
+- `vllm.grammar_before_reasoning`:
+takes its level from the model's default reasoning.
+a `native` contract, or a constrained `tool` one, without `--reasoning-parser` is constrained from the first token,
+so the model can't reason first. It's a warning when the skeleton asks for reasoning
+(`reasoning_effort`, `thinking_token_budget`, `enable_thinking: true`), and `info` when it leaves reasoning to the model.
+Nothing is reported when it turns reasoning off.
 
-`expectation.unchecked`:
+- `model.revision`:
+
+- `engine.closure`:
+
+- `scorer.revision`:
+
+- `expectation_schema.invalid`:
+
+- `expectation.invalid`:
+
+- `expectation.unchecked`:
+
+- `schema.ref_unverified`:
+
+- `facts.missing`:
+
+- `facts.reasoning_unmatched`:
+
+- `facts.budget_refused`:
+
+- `facts.output_refused`:
+
+- `facts.output_note`:
 
 ## Proposed amendments

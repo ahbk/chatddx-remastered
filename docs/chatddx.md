@@ -84,22 +84,25 @@ These roles are distinct and not overlapping, a person may inhabit more than one
 - import scripts that fingerprint World inputs (model files, closure, chat template, vignettes) into factors.
 
 ### Intended evolution of configurations
-The researches will want to iterate and continuously refine configurations according to the following workflow.
+The researchers will want to iterate and continuously refine configurations according to the following workflow.
 1. Chunks are added by hand-edits
 2. Successful variations are saved as configurations proper
 3. Unsuccessful variations are deleted
 4. A configuration with several successful variations branch out
 5. Unsuccessful configurations are deleted
 
-A configuration is a named set of pinned factors, and a variation is a configuration where one or more factors are replaced.
+A configuration is a set of pinned factors kept on a skeleton thread, and a variation replaces one or more of them.
+A variation being tried is just a digest; saved, it's a fork, which is a configuration of its own.
+Names are optional: an unnamed configuration is shown by its title, e.g. its base and what it varies (`docs/catalog.md`, "Titles").
 Variations allow controlled experiments without the combinatorial explosion; they are a supported portal workflow, not an object in the code:
  - `src/chatddx/store/catalog.py:Catalog.behind`
  - `catalog.thread.forked_from`
 
-"Delete" in this case is a `deleted` flag in the `catalog` layer since true deletions are blocked on database level (see tier 2 in `docs/store.md`).
+"Delete" in this case is a `deleted` flag in the `catalog` layer since true deletions are blocked on database level
+(see tier 2 in `docs/store.md`).
 
 `src/chatddx/store/catalog.py:Catalog.variation` and `Catalog.proposal` (what a fork varies,
-and re-applying it when its origin moves), and `catalog.edit.based_on`".
+and re-applying it when its origin moves), and `catalog.edit.based_on`.
 
 ### On the table
 - The result from scorers needs to be aggregated and exported. Since python is well-suited for statistical analysis, processing the data into publishable results may become a requirement.
@@ -254,14 +257,3 @@ See `docs/findings.md` for a list of all findings and what they mean.
 **Canary drift are not implemented:** nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
-
-### G14: expectation lints
-
-### G17: configurations needn't be named
-- **Intended evolution of configurations**, replace "A configuration is a named set of pinned factors, and a
-  variation is a configuration where one or more factors are replaced." with "A configuration is a set of pinned
-  factors kept on a skeleton thread, and a variation replaces one or more of them. A variation being tried is just
-  a digest; saved, it's a fork, which is a configuration of its own. Names are optional: an unnamed configuration
-  is shown by its title, e.g. its base and what it varies (`docs/catalog.md`, "Titles")."
-- Same section, cleanup: the line ending in `catalog.edit.based_on` has a lone `"` before its full stop, and "The researches"
-  should be "The researchers".
