@@ -122,6 +122,9 @@ Just as with `RunFinished`, the seal is the sha256 over the canonical started ro
 
 `Score` reassembles a score's log the way `Run` does, and `Score.finish()` produces the finished row. `check_score` raises when the score belongs to another run, a view position doesn't exist, an item isn't in the run, or a judge call uses a judge the scorer's views don't name or a seed index out of range. It warns when rows changed after sealing.
 
+It warns (`view.unreachable`) when a view's output selector can't pick anything from answers that follow the run skeleton's output schema.
+Free text (a `text` contract without a schema) is reachable only by the empty selector.
+
 ## Compilation
 - principal author: none; written by the compiler
 - defined in: `ledger.py:Compilation`
@@ -150,8 +153,3 @@ Note: Part of it exists now: the case-derived tables are in their own ledger sch
 - Nothing compares declared and observed scorer code. ScoreStarted.scorer_code is never checked against Scorer.code, so a mismatch goes unnoticed.
 
 ## Proposed amendments
-
-### G6: views against the run's output
-- **Score**, `check_score`, append: "It warns (`view.unreachable`) when a view's output selector can't pick
-  anything from answers that follow the run skeleton's output schema. Free text (a `text` contract without a
-  schema) is reachable only by the empty selector."

@@ -238,12 +238,15 @@ A model artifact (kind `model`) pins a model by its repo, a revision (linted unl
 - principal author: Ops
 - defined in: `engine.py:LocalEngine`
 
-A local engine (kind `engine.local`) is a vLLM server we run. It declares its hardware (GPU, compute capability, VRAM, driver) and runtime (`vllm`, its version, the Nix closure path), references a model artifact, and requires the digest of its chat-template file. Its raw `argv` and `env` are passed to vLLM, except the flags the start-up script owns (`--model`, `--served-model-name`, `--chat-template`, `--tokenizer`, `--revision`), which they may not set, whether spelled with dashes or underscores, since vLLM reads both.
+A local engine (kind `engine.local`) is a vLLM server we run. It declares its hardware (GPU, compute capability, VRAM, driver) and runtime (`vllm`, its version, the Nix closure path), references a model artifact, and requires the digest of its chat-template file.
+
+Its raw `argv` and `env` are passed to vLLM, except the flags the start-up script owns (`--model`, `--served-model-name`, `--chat-template`, `--tokenizer`, `--revision`), which they may not set, whether spelled with dashes or underscores, since vLLM reads both. Nor may argv use `--config`: `--config FILE` pulls arguments from a YAML file the digest doesn't cover (and lints can't read), and `--config=FILE` is silently ignored (`docs/vllm.md` 8). Every argument belongs in argv.
 
 Knowledge that changes between vLLM versions lives in lints rather than in these fields, and batch invariance is declared through `env` (for example `VLLM_BATCH_INVARIANT=1`). The served model name is the engine's digest, so every response names the cage it came from. `check_chat_template` warns when the template file doesn't match the declared digest or reads the current date. Hardware and runtime are part of the engine rather than components of their own.
 
 They can therefore not be listed, picked or reused as standalone rows, for example in the portal or as Postgres foreign keys; the same GPU or closure is repeated in every engine that uses it, and asking which engines share a closure means scanning engines instead of following a reference.
 
+- **Local engine**, append to the argv sentence: "" (`src/chatddx/factors/engine.py:UNPINNED_FLAGS`)
 #### Remote engine
 - principal author: Ops
 - defined in: `engine.py:RemoteEngine`
@@ -278,7 +281,20 @@ and the scorer decides what to do with data that fails.
 
 A scorer (kind `scorer`) pins scoring code, written by developers. It declares that code (`Code`: distribution, version, revision), the expectation schema it consumes, an ordered list of views, ordered resource digests (such as synonym tables or ontology releases) and free parameters. Views and resources are referred to by position; their labels belong to `catalog`.
 
-A view scores one part of an output against one part of an expectation: it holds a JSON pointer into each, a metric name that only the scorer's code interprets, optional parameters, and optionally the judge it uses. Parsing is the scorer's job, not the factors': outputs that fail validation are scored best-effort.
+A view scores one part of an output against one part of an expectation. It holds a selector into each,
+a metric name that only the scorer's code interprets, optional parameters, and optionally the judge it uses.
+A selector is a JSON Pointer (RFC 6901), which picks at most one value, or a JSONPath query (RFC 9535)
+from a pinned subset: member names (`.name`, `['name']`), indexes (`[0]`, `[-1]`), wildcards (`.*`, `[*]`),
+and filters that test a relative path for existence (`[?@.critical]`) or compare it with a literal
+(`[?@.critical == true]`, `!=`).
+
+Within the subset every RFC 9535 implementation picks the same values in the same order; anything
+outside it (`..`, slices, other operators, functions) is refused. Selection keeps nulls, as RFC 9535 does.
+A view may also split what its output selector picks (`split`), one op name per behavior as with text
+cleanup: `lines@1` turns each string into one item per non-blank line, with a leading list marker (`-`, `*`, `•`,
+`1.`, `1)`) removed, the old `lines` reader. Without a split, free text is one item, the old `whole`.
+`View.output_items(answer)` and `View.expectation_items(data)` apply the view, so every scorer selects the same
+way (`src/chatddx/factors/select.py`).
 
 ### Judge
 - principal author: Researchers
@@ -318,7 +334,11 @@ With it, a trial gets `language.mixed` when some of its cases are in another lan
 and `language.unknown` (info) when the request's language, or some cases', is unknown.
 Judges aren't checked.
 
-See the `docs/findings.md:Linting`.
+A scorer gets `view.unreachable` when a view's expectation selector can't pick anything
+from documents that follow the expectation schema it consumes. The check errs towards reachable (unknown refs,
+unconstrained schemas and unions pass), so a finding is certain.
+
+For a linting reference, see the `docs/findings.md:Linting`.
 
 ## Possible design issues
 
@@ -352,25 +372,3 @@ the seed isn't sent, but the trial's seeds still count toward its hash, so two o
 - `Hardware` has no GPU count, so tensor-parallel engines can't be told apart by hardware (the old code had `gpu_count`).
 
 ## Proposed amendments
-
-### G10: no `--config`
-- **Local engine**, append to the argv sentence: "Nor may argv use `--config`: `--config FILE` pulls arguments
-  from a YAML file the digest doesn't cover (and lints can't read), and `--config=FILE` is silently ignored
-  (`docs/vllm.md` 8). Every argument belongs in argv." (`src/chatddx/factors/engine.py:UNPINNED_FLAGS`)
-
-### G6: views select with JSONPath, and split free text
-- **Scorer**, replace "it holds a JSON pointer into each, a metric name…" with: "it holds a selector into each, a
-  metric name that only the scorer's code interprets, optional parameters, and optionally the judge it uses. A
-  selector is a JSON Pointer (RFC 6901), which picks at most one value, or a JSONPath query (RFC 9535) from a
-  pinned subset: member names (`.name`, `['name']`), indexes (`[0]`, `[-1]`), wildcards (`.*`, `[*]`), and filters
-  that test a relative path for existence (`[?@.critical]`) or compare it with a literal (`[?@.critical == true]`,
-  `!=`). Within the subset every RFC 9535 implementation picks the same values in the same order; anything
-  outside it (`..`, slices, other operators, functions) is refused. Selection keeps nulls, as RFC 9535 does.
-  A view may also split what its output selector picks (`split`), one op name per behavior as with text
-  cleanup: `lines@1` turns each string into one item per non-blank line, with a leading list marker (`-`, `*`, `•`,
-  `1.`, `1)`) removed, the old `lines` reader. Without a split, free text is one item, the old `whole`.
-  `View.output_items(answer)` and `View.expectation_items(data)` apply the view, so every scorer selects the same
-  way (`src/chatddx/factors/select.py`)."
-- **Linting**, append: "A scorer gets `view.unreachable` when a view's expectation selector can't pick anything
-  from documents that follow the expectation schema it consumes. The check errs towards reachable (unknown refs,
-  unconstrained schemas and unions pass), so a finding is certain."

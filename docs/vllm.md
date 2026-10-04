@@ -50,6 +50,13 @@ vLLM is used for running local models within our control. A fake vLLM is under p
   pulls arguments from a YAML file
   (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/utils/argparse_utils.py#L298-L299).
 
+  Only the two-token form is expanded: `--config FILE` (an exact match,
+  https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/utils/argparse_utils.py#L298-L299)
+  splices the file's arguments in before the rest of the command line, so the command line wins
+  (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/utils/argparse_utils.py#L489-L497).
+  `--config=FILE` is accepted by the parser
+  (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/cli_args.py#L368-L372) and then ignored.
+
 9. `tool_choice: required` constrains the answer to a JSON array of at least one `{name, parameters}`
   call, any of the tools, and a named choice to the tool's parameters. Either way the tool parser replaces any
   `response_format` (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/tool_parsers/abstract_tool_parser.py#L119-L148,
@@ -63,9 +70,3 @@ vLLM is used for running local models within our control. A fake vLLM is under p
 Fake vLLM based on 0.24.0 should pin all of them
 
 ## Proposed amendments
-
-### G10: `--config`
-- **8**, append: "Only the two-token form is expanded: `--config FILE` (an exact match,
-  https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/utils/argparse_utils.py#L298-L299) splices the file's arguments in before the rest of the command
-  line, so the command line wins (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/utils/argparse_utils.py#L489-L497). `--config=FILE` is accepted by the
-  parser (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/cli_args.py#L368-L372) and then ignored." `LocalEngine` refuses both.
