@@ -21,7 +21,13 @@ A run is written one row at a time as it happens.
 - defined in: `ledger.py:RunStarted`
 - suggested storage table: `ledger.run_stage` (stage `started`)
 
-`RunStarted` opens a run with the run id, the time, the rig's code version, the trial, the execution settings, the canary set and when canaries run (`verify_at`, by default at start and end). This row is the run's verification plan. It is declared before the first request and never changes, but it is not part of the trial's identity, so running exactly like run X means copying X's first row. The execution settings (`Execution`) are the order (case-major, replicate-major, or shuffled with a seed), concurrency, timeout and retries. Order and concurrency affect outputs only on engines that are not batch invariant: with batch invariance declared in the engine's `env`, re-runs may be bitwise identical, and otherwise the run falls in the best-effort tier. Timeouts and retries never change a successful output. Neither case drift (comparing the observed vignette fingerprint with the case's) nor canary drift (comparing canary outputs between phases or runs) is checked yet; see "Possible design issues".
+`RunStarted` opens a run with the run id, the time, the rig's code version, the trial, the execution settings, the canary set and when canaries run (`verify_at`, by default at start and end). This row is the run's verification plan. It is declared before the first request and never changes, but it is not part of the trial's identity, so running exactly like run X means copying X's first row.
+
+The execution settings (`Execution`) are the order (case-major, replicate-major, or shuffled with a seed), concurrency, timeout and retries. Order and concurrency affect outputs only on engines that are not batch invariant: with batch invariance declared in the engine's `env`, re-runs may be bitwise identical, and otherwise the run falls in the best-effort tier. Timeouts and retries never change a successful output.
+
+Case drift is checked: `check_run` reports `case.drift` when a run item's observed vignette fingerprint differs from its case's.
+
+Canary drift (comparing canary outputs between phases or runs) isn't checked yet.
 
 ### RunItem
 - principal author: none; written by the runner
@@ -132,7 +138,3 @@ Note: Part of it exists now: the case-derived tables are in their own ledger sch
 - Nothing compares declared and observed scorer code. ScoreStarted.scorer_code is never checked against Scorer.code, so a mismatch goes unnoticed.
 
 ## Proposed amendments
-- CHANGE in "RunStarted": "Neither case drift (comparing the observed vignette fingerprint with the case's) nor
-  canary drift (comparing canary outputs between phases or runs) is checked yet" to "Case drift is checked:
-  `check_run` reports `case.drift` when a run item's observed vignette fingerprint differs from its case's. Canary
-  drift (comparing canary outputs between phases or runs) isn't checked yet." (`src/chatddx/ledger/ledger.py:362`)

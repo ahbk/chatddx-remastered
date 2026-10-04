@@ -57,7 +57,7 @@ It must be possible to deliver the cage together with the results, for scientifi
 - **World:** factor parameters outside of the orchestrator's direct control. (the vignette source, model files, the Nix closure, the chat-template file, the remote engine)
 - **Inventory:** ops-authored TOML files that say what the World holds and where: hosts and GPUs, engines and
   their endpoints, model file paths, chat-template files, Nix closures, vignette sources. It is mutable and not
-  content-addressed.
+  content-addressed. Vignette sources are `[source.<name>]` tables (a directory of files today, sensitive unless declared otherwise).
 - **Facts:** ops- or developer-authored knowledge about models (how each reasoning level is expressed or refused,
   recommended sampling, output caveats, specs), typed in code, written in TOML and keyed by model name.
   Not factors: they write and check literal chunks, and no digest depends on them.
@@ -91,7 +91,7 @@ The researches will want to iterate and continuously refine configurations accor
 4. A configuration with several successful variations branch out
 5. Unsuccessful configurations are deleted
 
-A configuration is a set of pinned factors, and a variation is a configuration where one or more factors are replaced.
+A configuration is a named set of pinned factors, and a variation is a configuration where one or more factors are replaced.
 Variations allow controlled experiments without the combinatorial explosion; they are a supported portal workflow, not an object in the code:
  - `src/chatddx/store/catalog.py:Catalog.behind`
  - `catalog.thread.forked_from`
@@ -192,10 +192,10 @@ There is however an intended flow of data behind the pieces, which is described 
 
 #### Per (case, replicate)
 1. Load the trial, its skeleton, engine and CaseInput, then that case's appendices, all through Registry.get.
-2. Fetch the vignette from the source by its id. Nothing in the code does this yet; it's the runner's job.
-3. Check for drift: compare Fingerprint.of(raw vignette) with the fingerprint stored on the CaseInput. A mismatch is a warning. The code has the parts but no helper that does this check.
-4. Clean the text: normalize(vignette, trial.normalization). As written, only the vignette is cleaned, not the appendices.
-5. Join the appendices: skeleton.appendix_layout.join([appendix texts]).
+2. Fetch the vignette's raw bytes from its source by id (`Source.fetch`; sources are declared in the inventory).
+3. `prepare_case(case, raw, get, layout, normalization)` checks drift (a mismatch is the warning `case.drift`)
+4. cleans the vignette
+5. joins the appendices, and returns the fills together with the observed fingerprint for `RunItem.vignette`.
 6. Pick the model name from the engine: for a local engine it's engine.served_model_name, which is the engine's hash; for a remote engine it's engine.model.
 7. Pick the seed: trial.seeds[replicate].
 8. Render the request: render(skeleton, model=…, seed=…, fills={"case": …, "appendices": …}). This:
@@ -253,6 +253,7 @@ A finding (`src/chatddx/factors/base.py: Finding`) has a level (`warning` by def
 - `model.revision`, `engine.closure`, `scorer.revision`, and the pair rules for trials and judges (`vllm.temperature_clamped`, `vllm.tool_unconstrained`, `vllm.thinking_budget_refused`, `vllm.grammar_before_reasoning`, `schema.ref_unverified`): the lints in `docs/factors.md`.
 
 - `facts.missing`, `facts.reasoning_unmatched`, `facts.budget_refused`, `facts.output_refused` and `facts.output_note`.
+- `case.drift`: the vignette read at the source differs from the case's fingerprint (`prepare_case`, `check_run`).
 
 Structurally malformed input raises instead. Constructing a component, canary or record that breaks its own rules raises pydantic's `ValidationError`: for example flags the start-up script owns in `argv`, slots unsuitable for the purpose, a skeleton body at odds with its contract, runtime keys in a body, duplicate seeds or cases, a shuffle seed without shuffled order, or a stage log out of order. Problems that need other components or records to see raise `StructuralError`: a digest that doesn't match its bytes, an unknown kind or schema version, a missing or wrongly typed reference, a failed `cross_check`, a recipe whose prompt purpose differs from its own or whose passthrough overrides a managed key, and the run and score checks' own violations (items outside the trial, unplanned canary calls, a score of another run, views, items, judges or seeds that don't exist).
 
@@ -260,18 +261,6 @@ The one hard block is clearance: sending case-derived content to an engine that 
 
 ## Possible design issues
 
-**Case drift and canary drift are not implemented.** `RunItem.vignette` records the observed fingerprint, but nothing compares it with `CaseInput.vignette`, and nothing compares canary outputs between phases or runs.
+**Canary drift are not implemented:** nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
-- CHANGE in "Per (case, replicate)", steps 2–5: "2. Fetch the vignette's raw bytes from its source by id
-  (`Source.fetch`; sources are declared in the inventory). 3–5. `prepare_case(case, raw, get, layout,
-  normalization)` checks drift (a mismatch is the warning `case.drift`), cleans the vignette, joins the
-  appendices, and returns the fills together with the observed fingerprint for `RunItem.vignette`."
-  (`src/chatddx/factors/cases.py:81`, `src/chatddx/inventory/sources.py`)
-- CHANGE in "Possible design issues": "**Case drift and canary drift are not implemented.**" to "**Canary drift is
-  not implemented.**", and drop "`RunItem.vignette` records the observed fingerprint, but nothing compares it with
-  `CaseInput.vignette`, and". `check_run` now reports `case.drift` (`src/chatddx/ledger/ledger.py:362`).
-- ADD `case.drift` to "Findings and errors": "the vignette read at the source differs from the case's fingerprint
-  (`prepare_case`, `check_run`)."
-- CHANGE the glossary's **Inventory**: add "Vignette sources are `[source.<name>]` tables (a directory of files
-  today), sensitive unless declared otherwise." (`src/chatddx/inventory/inventory.py`)

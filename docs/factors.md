@@ -35,7 +35,13 @@ Note on `x-ref`: `RefTo` puts `x-ref`: [allowed kinds] on each reference field w
 - principal author: Clinicians
 - defined in: `cases.py:CaseInput`
 
-A case (kind `case`) names a vignette in the predefined source by source name and id (`SourceCase`), records the fingerprint of that vignette, and lists the appendices to append, in order. An import script supplies the vignette fingerprint, taken over the raw vignette as fetched. The vignette itself is sensitive, unstructured and never edited, and it is never stored: only its fingerprint is. The case's digest covers all three parts (source reference, fingerprint and appendix list), so the vignette is not its sole contributor, and the same source case with different appendices is a different case. Expectations are keyed by this digest, which lets appendices change the correct answer.
+A case (kind `case`) names a vignette in the predefined source by source name and id (`SourceCase`), records the fingerprint of that vignette, and lists the appendices to append, in order.
+
+An import script supplies the vignette fingerprint, taken over the raw vignette as fetched:
+Sources are declared in the inventory, and `Source.cases()` builds a case, with no appendices,
+for every vignette a source lists.
+
+The vignette itself is sensitive by default, unstructured and not edited or stored: only its fingerprint is. The case's digest covers all three parts (source reference, fingerprint and appendix list), so the vignette is not its sole contributor, and the same source case with different appendices is a different case. Expectations are keyed by this digest, which lets appendices change the correct answer.
 
 A changed vignette at the source has a new fingerprint. It therefore needs a new case, new appendices bound to the new fingerprint, and new expectations; whether a user or an automatic step re-binds them is open. Text cleanup is not part of the case: a trial chooses it (see "Trial").
 
@@ -258,7 +264,6 @@ the seed isn't sent, but the trial's seeds still count toward its hash, so two o
   content, which the clearance check may need.
 
 ### Misc
-- **Case drift is not checked.** The observed vignette fingerprint is recorded per item but never compared with the case's.
 - **Canary drift is not checked.** No function compares canary outputs between phases or between runs. The old code had `compare_canaries`.
 - **Judge engines are not verified by canaries** (reconciliation D5, option B, deferred).
 - **Skeleton provenance.** Should a skeleton only be accepted with a compilation record? Hand-written ones (e.g. judge prompts) are possible today.
@@ -276,9 +281,3 @@ the seed isn't sent, but the trial's seeds still count toward its hash, so two o
 - `Hardware` has no GPU count, so tensor-parallel engines can't be told apart by hardware (the old code had `gpu_count`).
 
 ## Proposed amendments
-- REMOVE from "Misc": "**Case drift is not checked.** …" and "No helper prepares a case, i.e. per-item steps 2–5 …".
-  `prepare_case` (`src/chatddx/factors/cases.py:81`) takes the raw bytes, so the factors do no IO, and checks
-  drift. `check_run` reports `case.drift` for recorded items (`src/chatddx/ledger/ledger.py:362`).
-- ADD to "Case", after "An import script supplies the vignette fingerprint, taken over the raw vignette as
-  fetched.": "Sources are declared in the inventory, and `Source.cases()` builds a case, with no appendices, for
-  every vignette a source lists." (`src/chatddx/inventory/sources.py`)

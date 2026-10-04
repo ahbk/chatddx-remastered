@@ -25,7 +25,7 @@ Threads move only when someone saves an edit; nothing propagates. The portal pro
 (`src/chatddx/store/catalog.py:Catalog.behind`).
 
 ## A note on the "evolution of configurations" workflow"
-Configurations and variations are a portal workflow, not a catalog object. A configuration is a set of pinned
+Configurations and variations are a portal workflow, not a catalog object. A configuration is a named set of pinned
 factors; a variation replaces one or more of them. Any digest can be run without a thread, and a variation worth
 keeping becomes an edit or a fork.
 
