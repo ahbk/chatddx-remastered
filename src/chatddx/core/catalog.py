@@ -1,15 +1,16 @@
+import re
 from collections.abc import Iterable
 from datetime import datetime
 from enum import StrEnum
 from typing import ClassVar, Literal, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, JsonValue, model_validator
 
 from chatddx.factors.base import Fingerprint
 from chatddx.factors.cases import SourceCase
 
-# src/chatddx/store/migrations/0014-t2-catalog-kinds.sql repeats these kinds.
+# src/chatddx/store/migrations/0021-t2-catalog-tools.sql repeats these kinds.
 THREAD_KINDS = frozenset(
     {
         "chunk.instructions",
@@ -19,6 +20,9 @@ THREAD_KINDS = frozenset(
         "chunk.sampling",
         "chunk.reasoning",
         "chunk.passthrough",
+        "chunk.translations",
+        "chunk.tools",
+        "tool",
         "skeleton",
         "trial",
         "judge",
@@ -35,7 +39,10 @@ THREAD_KINDS = frozenset(
 )
 
 
-# src/chatddx/store/migrations/0011-t2-catalog-checks.sql repeats these fields.
+# src/chatddx/store/migrations/0019-t2-catalog-name-removal.sql repeats these fields and the pattern.
+LANGUAGE = re.compile(r"^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$")
+
+
 class EntryField(StrEnum):
     NAME = "name"
     DESCRIPTION = "description"
@@ -43,6 +50,7 @@ class EntryField(StrEnum):
     OWNER = "owner"
     COLLABORATOR = "collaborator"
     DELETED = "deleted"
+    LANGUAGE = "language"
 
 
 Part = Literal["view", "resource"]
@@ -65,14 +73,19 @@ class Edit(_Frozen):
     thread: int
     digest: str
     compilation: str | None
+    based_on: int | None
     by: int
     at: datetime
 
 
-class Behind(_Frozen):
-    path: str
-    digest: str
+class Variation(_Frozen):
+    base: Edit
     head: Edit
+    varies: dict[str, tuple[JsonValue, JsonValue]]
+
+    @property
+    def moved(self) -> bool:
+        return self.head.id != self.base.id
 
 
 class Binding(_Frozen):
@@ -82,6 +95,34 @@ class Binding(_Frozen):
     vignette: Fingerprint
     by: int
     at: datetime
+
+
+class Behind(_Frozen):
+    path: str
+    digest: str
+    head: Edit | None = None
+    binding: Binding | None = None
+
+    @model_validator(mode="after")
+    def _one(self) -> Self:
+        if (self.head is None) == (self.binding is None):
+            raise ValueError("behind either a newer head or a newer binding")
+        return self
+
+
+class Survey(_Frozen):
+    unchanged: tuple[int, ...] = ()
+    changed: tuple[tuple[int, str, Fingerprint], ...] = ()
+    renamed: tuple[tuple[int, str, str], ...] = ()
+    new: tuple[str, ...] = ()
+    gone: tuple[int, ...] = ()
+
+
+class Repair(_Frozen):
+    binding: Binding
+    cases: dict[str, str]
+    appendices: dict[str, str]
+    edits: tuple[Edit, ...]
 
 
 class Subject(_Frozen):
@@ -107,9 +148,15 @@ class Entry(_Frozen):
 
     @model_validator(mode="after")
     def _shape(self) -> Self:
-        text = self.field in (EntryField.NAME, EntryField.DESCRIPTION, EntryField.TAG)
+        # A name is removed by an entry without a value, and the title takes over.
+        text = self.field in (
+            EntryField.DESCRIPTION,
+            EntryField.TAG,
+            EntryField.LANGUAGE,
+        ) or (self.field == EntryField.NAME and self.present)
         person = self.field in (EntryField.OWNER, EntryField.COLLABORATOR)
         removable = self.field in (
+            EntryField.NAME,
             EntryField.TAG,
             EntryField.COLLABORATOR,
             EntryField.DELETED,
@@ -118,8 +165,12 @@ class Entry(_Frozen):
             raise ValueError(f"wrong value or person for {self.field}")
         if not (self.present or removable):
             raise ValueError(f"{self.field} can't be removed, only replaced")
-        if self.field in (EntryField.NAME, EntryField.TAG) and not self.value:
+        if self.field in (EntryField.NAME, EntryField.TAG) and self.value == "":
             raise ValueError(f"{self.field} can't be empty")
+        if self.field == EntryField.LANGUAGE and not LANGUAGE.match(self.value or ""):
+            raise ValueError(
+                f"{self.value!r} is not a language tag such as 'sv' or 'pt-BR'"
+            )
         return self
 
 
@@ -130,10 +181,11 @@ class About(_Frozen):
     owner: int | None = None
     collaborators: frozenset[int] = frozenset()
     deleted: bool = False
+    language: str | None = None
 
     @classmethod
     def of(cls, entries: Iterable[Entry]) -> Self:
-        name = description = None
+        name = description = language = None
         owner = None
         tags: set[str] = set()
         collaborators: set[int] = set()
@@ -154,6 +206,8 @@ class About(_Frozen):
                     _toggle(collaborators, e.person, e.present)
                 case EntryField.DELETED:
                     deleted = e.present
+                case EntryField.LANGUAGE:
+                    language = e.value
         return cls(
             name=name,
             description=description,
@@ -161,6 +215,7 @@ class About(_Frozen):
             owner=owner,
             collaborators=frozenset(collaborators),
             deleted=deleted,
+            language=language,
         )
 
 

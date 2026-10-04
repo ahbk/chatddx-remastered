@@ -21,7 +21,13 @@ A run is written one row at a time as it happens.
 - defined in: `ledger.py:RunStarted`
 - suggested storage table: `ledger.run_stage` (stage `started`)
 
-`RunStarted` opens a run with the run id, the time, the rig's code version, the trial, the execution settings, the canary set and when canaries run (`verify_at`, by default at start and end). This row is the run's verification plan. It is declared before the first request and never changes, but it is not part of the trial's identity, so running exactly like run X means copying X's first row. The execution settings (`Execution`) are the order (case-major, replicate-major, or shuffled with a seed), concurrency, timeout and retries. Order and concurrency affect outputs only on engines that are not batch invariant: with batch invariance declared in the engine's `env`, re-runs may be bitwise identical, and otherwise the run falls in the best-effort tier. Timeouts and retries never change a successful output. Neither case drift (comparing the observed vignette fingerprint with the case's) nor canary drift (comparing canary outputs between phases or runs) is checked yet; see "Possible design issues".
+`RunStarted` opens a run with the run id, the time, the rig's code version, the trial, the execution settings, the canary set and when canaries run (`verify_at`, by default at start and end). This row is the run's verification plan. It is declared before the first request and never changes, but it is not part of the trial's identity, so running exactly like run X means copying X's first row.
+
+The execution settings (`Execution`) are the order (case-major, replicate-major, or shuffled with a seed), concurrency, timeout and retries. Order and concurrency affect outputs only on engines that are not batch invariant: with batch invariance declared in the engine's `env`, re-runs may be bitwise identical, and otherwise the run falls in the best-effort tier. Timeouts and retries never change a successful output.
+
+Case drift is checked: `check_run` reports `case.drift` when a run item's observed vignette fingerprint differs from its case's.
+
+Canary drift (comparing canary outputs between phases or runs) isn't checked yet.
 
 ### RunItem
 - principal author: none; written by the runner
@@ -29,6 +35,12 @@ A run is written one row at a time as it happens.
 - suggested storage table: `ledger.run_item`
 
 A run item is keyed by (case, replicate index), never repeating the engine or seed, and holds the vignette fingerprint observed at fetch time, for drift detection, and a `Call`.
+
+An item whose skeleton has tools may take tool rounds (`turns`). Each `Turn` holds the
+tools the runner ran for the previous response's calls (`ToolRun`: the call's id, the tool's name, start and end
+times, and the result sent back or an error) and the next `Call`. `RunItem.calls` lists the first call and every
+round's. Tool arguments are in the previous call's response; results are stored as sent, since they shaped the
+next request.
 
 ### CanaryCall
 - principal author: none; written by the runner
@@ -53,7 +65,9 @@ The seal is the sha256 over the canonical started row and the canonical item row
 
 A call records one exchange and is shared by run items, canary calls and judge calls. It holds the fingerprint of the wire body, the start and end times, the HTTP status, the number of attempts, any error, and the raw response. The response is stored without its `prompt_token_ids`: those are the token ids the engine actually read after applying its chat template, and since they encode the case text, only their fingerprint is kept (`fingerprint_prompt_tokens`). Comparing these fingerprints between runs of the same trial (`compare_prompt_tokens`) shows whether the engine read the same tokens, without storing case text.
 
-The request fingerprint (Call.request) is `fingerprint_request` taken over the body's canonical bytes.
+The request fingerprint (Call.request) is `fingerprint_request` taken over the body's canonical bytes,
+with its top-level keys sorted and nested key order kept, so two requests whose schemas list properties in
+a different order get different fingerprints. (`src/chatddx/ledger/ledger.py:107`)
 
 ### Run
 - principal author: none; assembled from stored rows
@@ -61,6 +75,12 @@ The request fingerprint (Call.request) is `fingerprint_request` taken over the b
 - suggested storage table: none
 
 `Run` reassembles a run's log from its rows and rejects stages out of order (`started` → `finished`) or rows from another run; `Run.finish()` produces the finished row. `check_run` compares the run with its trial. It raises for items the trial does not contain, duplicate items, and canary calls outside the plan (a phase not in `verify_at`, a position not in the set, or any canary call when no set is named). It warns when a finished run is missing items, when the engine returned a different model name than declared, when items have no prompt-token fingerprint, and when rows changed after sealing.
+
+It raises for rounds on a skeleton without tools, for more rounds than
+`max_rounds`, for a round whose tools don't match the previous response's calls (the answer tool aside), and for
+a result from a tool the skeleton doesn't have. It warns (`tools.unanswered`) when an item's last response still
+calls tools. Model attestation covers every call; an item lacks a prompt-token fingerprint if any of its calls
+does. `compare_prompt_tokens` compares first calls only, since later ones depend on what the tools returned.
 
 ## Scores
 A score is written the same way as a run.
@@ -101,6 +121,9 @@ Just as with `RunFinished`, the seal is the sha256 over the canonical started ro
 - suggested storage table: none
 
 `Score` reassembles a score's log the way `Run` does, and `Score.finish()` produces the finished row. `check_score` raises when the score belongs to another run, a view position doesn't exist, an item isn't in the run, or a judge call uses a judge the scorer's views don't name or a seed index out of range. It warns when rows changed after sealing.
+
+It warns (`view.unreachable`) when a view's output selector can't pick anything from answers that follow the run skeleton's output schema.
+Free text (a `text` contract without a schema) is reachable only by the empty selector.
 
 ## Compilation
 - principal author: none; written by the compiler

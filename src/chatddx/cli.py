@@ -1,11 +1,19 @@
 import argparse
 import getpass
 from collections.abc import Sequence
+from datetime import UTC, datetime
+from pathlib import Path
 
 import psycopg
 
 from chatddx.core import settings
 from chatddx.core.identity import Role
+from chatddx.core.rig import rig
+from chatddx.facts.facts import Facts
+from chatddx.inventory.inventory import Inventory
+from chatddx.inventory.sources import DirectorySource
+from chatddx.seed import load_cases, plan_factors, seed
+from chatddx.seed.plan import SAMPLE
 from chatddx.store.migrate import TOP_TIER, migrate, pending
 from chatddx.store.people import People
 
@@ -43,6 +51,36 @@ def _person_password(args: argparse.Namespace) -> None:
     print(f"password set for {args.login}")
 
 
+def _init_data(args: argparse.Namespace) -> None:
+    sample: Path = args.data
+    facts = Facts.load(*(args.facts or [sample / "facts.toml"]))
+    plan = plan_factors(sample / "factors.toml", facts, rig(), datetime.now(UTC))
+    cases = load_cases(sample / "cases.toml")
+    if args.world is not None:
+        source = Inventory.load(args.world).source(args.source)
+    elif args.vignettes.is_dir():
+        source = DirectorySource(name=args.source, path=args.vignettes.resolve())
+    else:
+        raise SystemExit(
+            f"--vignettes {args.vignettes}: give a directory of <id>.txt files, such as "
+            + "the old chatddx checkout's src/chatddx/data/cases"
+        )
+    if not set(cases) & set(source.ids()):
+        raise SystemExit(
+            f"none of the sample's {len(cases)} cases is in source {args.source!r}; "
+            + "is it the directory of the old chatddx checkout's vignettes?"
+        )
+    with psycopg.connect(settings.database()) as conn:
+        user = People(conn).find(args.user)
+        if user is None:
+            raise SystemExit(
+                f"no person with login {args.user!r}: add them with `chatddx person add`"
+            )
+        lines = seed(conn, plan, cases, source, user, giftbag=args.giftbag)
+    for line in lines:
+        print(line)
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="chatddx")
     commands = parser.add_subparsers(required=True)
@@ -72,6 +110,45 @@ def main(argv: Sequence[str] | None = None) -> None:
     password = person_commands.add_parser("password", help="set a person's password")
     _ = password.add_argument("login")
     password.set_defaults(run=_person_password)
+
+    init = commands.add_parser(
+        "init-data",
+        help="seed the sample data for the archive and share it with a person",
+    )
+    _ = init.add_argument("user", help="the login to share the archive with")
+    vignettes = init.add_mutually_exclusive_group(required=True)
+    _ = vignettes.add_argument(
+        "--world",
+        type=Path,
+        help="a World inventory whose [source.<name>] table locates the vignettes",
+    )
+    _ = vignettes.add_argument(
+        "--vignettes",
+        type=Path,
+        help="a directory of <id>.txt vignettes, in place of a World inventory",
+    )
+    _ = init.add_argument(
+        "--source",
+        default="sample",
+        help="the vignette source's name, in the World inventory and the cases (sample)",
+    )
+    _ = init.add_argument(
+        "--giftbag", action="store_true", help="also give the user forks of their own"
+    )
+    _ = init.add_argument(
+        "--data",
+        type=Path,
+        default=SAMPLE,
+        help="what to seed: a directory with factors.toml, cases.toml and facts.toml "
+        + "(the sample data in the package)",
+    )
+    _ = init.add_argument(
+        "--facts",
+        type=Path,
+        action="append",
+        help="model facts to write per-model chunks from (the sample's facts.toml)",
+    )
+    init.set_defaults(run=_init_data)
 
     args = parser.parse_args(argv)
     args.run(args)

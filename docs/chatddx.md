@@ -19,15 +19,26 @@ It must be possible to deliver the cage together with the results, for scientifi
 - **Cage:** the constrained environment a bundle enforces
 - **Digest:** the factor's identity and how it's referenced, an `sha256:<hex>` over the component's canonical bytes.
 - **Kind:** the discriminator of a component, e.g. `engine.local`, `chunk.prompt`.
-- **Canonical form:** sorted-key JSON with fields left out when equal to their default, plus the type's schema version.
+
+- **Canonical form:** JSON with field names sorted and fields left out when equal to their
+  default, plus the type's schema version. JSON data keeps its key order, because a schema's property order is part
+  of what a model reads; the keys of settings (`Settings`: bodies, `chat_template_kwargs`, `params`, and `env`) are
+  sorted, so equivalent settings share a digest.
+
 - **Chunk:** a factor authored in the portal that fills one part of a recipe (not to be confused with a slot).
 - **Recipe:** the chunks a skeleton was compiled from.
 - **Skeleton:** the frozen request.
 - **Slot:** a placeholder filled at send time.
-- **Segment:** a literal string or a slot.
+- **Insert:** a placeholder filled at compile time: `schema` in an output chunk's guidance,
+  filled with that output's schema, and `output_guidance` in the instructions or the prompt, filled with the output's
+  guidance. An insert's `before` and `after` text appear only when what it inserts isn't empty.
+  filled with that output's schema.
+- **Segment:** a literal string, a slot or an insert
 - **Purpose:** whether a prompt or skeleton is for `generation` or for a `judge`; it decides which slots are allowed.
 - **Contract:** how an output chunk constrains the answer: `native`, `tool` or `text`.
 - **Normalization:** the text-cleanup steps a trial applies to vignettes.
+- **Schema op:** a named, versioned rewrite an output chunk applies to its schema at
+  compile time, so the skeleton sends and shows the rewritten schema. Today the only one is `inline_refs@1`.
 - **Trial:** The smallest unit of an scientific intent (i.e. Experiment): skeleton + engine + cases + text-cleanup steps + seeds.
 - **Replicate:** one seed of a trial, identified by its index.
 - **Item key:** (case, replicate index), which identifies one request of a run.
@@ -46,7 +57,10 @@ It must be possible to deliver the cage together with the results, for scientifi
 - **World:** factor parameters outside of the orchestrator's direct control. (the vignette source, model files, the Nix closure, the chat-template file, the remote engine)
 - **Inventory:** ops-authored TOML files that say what the World holds and where: hosts and GPUs, engines and
   their endpoints, model file paths, chat-template files, Nix closures, vignette sources. It is mutable and not
-  content-addressed.
+  content-addressed. Vignette sources are `[source.<name>]` tables (a directory of files today, sensitive unless declared otherwise).
+- **Facts:** ops- or developer-authored knowledge about models (how each reasoning level is expressed or refused,
+  recommended sampling, output caveats, specs), typed in code, written in TOML and keyed by model name.
+  Not factors: they write and check literal chunks, and no digest depends on them.
 - **Manifest:** a document the rig writes for one consumer in the World, joining factors (what) with inventory entries (where).
 - **Rig:** the chatddx software that builds cages from factors, runs and scores inside them and records what happened.
 
@@ -70,19 +84,25 @@ These roles are distinct and not overlapping, a person may inhabit more than one
 - import scripts that fingerprint World inputs (model files, closure, chat template, vignettes) into factors.
 
 ### Intended evolution of configurations
-The researches will want to iterate and continuously refine configurations according to the following workflow.
+The researchers will want to iterate and continuously refine configurations according to the following workflow.
 1. Chunks are added by hand-edits
 2. Successful variations are saved as configurations proper
 3. Unsuccessful variations are deleted
 4. A configuration with several successful variations branch out
 5. Unsuccessful configurations are deleted
 
-A configuration is a set of pinned factors, and a variation is a configuration where one or more factors are replaced.
+A configuration is a set of pinned factors kept on a skeleton thread, and a variation replaces one or more of them.
+A variation being tried is just a digest; saved, it's a fork, which is a configuration of its own.
+Names are optional: an unnamed configuration is shown by its title, e.g. its base and what it varies (`docs/catalog.md`, "Titles").
 Variations allow controlled experiments without the combinatorial explosion; they are a supported portal workflow, not an object in the code:
  - `src/chatddx/store/catalog.py:Catalog.behind`
  - `catalog.thread.forked_from`
 
-"Delete" in this case is a `deleted` flag in the `catalog` layer since true deletions are blocked on database level (see tier 2 in `docs/store.md`).
+"Delete" in this case is a `deleted` flag in the `catalog` layer since true deletions are blocked on database level
+(see tier 2 in `docs/store.md`).
+
+`src/chatddx/store/catalog.py:Catalog.variation` and `Catalog.proposal` (what a fork varies,
+and re-applying it when its origin moves), and `catalog.edit.based_on`.
 
 ### On the table
 - The result from scorers needs to be aggregated and exported. Since python is well-suited for statistical analysis, processing the data into publishable results may become a requirement.
@@ -175,10 +195,10 @@ There is however an intended flow of data behind the pieces, which is described 
 
 #### Per (case, replicate)
 1. Load the trial, its skeleton, engine and CaseInput, then that case's appendices, all through Registry.get.
-2. Fetch the vignette from the source by its id. Nothing in the code does this yet; it's the runner's job.
-3. Check for drift: compare Fingerprint.of(raw vignette) with the fingerprint stored on the CaseInput. A mismatch is a warning. The code has the parts but no helper that does this check.
-4. Clean the text: normalize(vignette, trial.normalization). As written, only the vignette is cleaned, not the appendices.
-5. Join the appendices: skeleton.appendix_layout.join([appendix texts]).
+2. Fetch the vignette's raw bytes from its source by id (`Source.fetch`; sources are declared in the inventory).
+3. `prepare_case(case, raw, get, layout, normalization)` checks drift (a mismatch is the warning `case.drift`)
+4. cleans the vignette
+5. joins the appendices, and returns the fills together with the observed fingerprint for `RunItem.vignette`.
 6. Pick the model name from the engine: for a local engine it's engine.served_model_name, which is the engine's hash; for a remote engine it's engine.model.
 7. Pick the seed: trial.seeds[replicate].
 8. Render the request: render(skeleton, model=…, seed=…, fills={"case": …, "appendices": …}). This:
@@ -226,21 +246,14 @@ The "scored results" are just those ScoreItem rows. What aggregates them isn't n
 ## Findings and errors
 A finding (`src/chatddx/factors/base.py: Finding`) has a level (`warning` by default, or `info`), a code, a message and optionally the subject it concerns. Findings are how "warnings, not crashes" is implemented: anything declared that doesn't match what was observed, and anything risky, becomes a finding. The run and score checks return their findings, and a run's or score's findings are stored in its finished row. The codes are:
 
-- `attestation.model`: the engine returned a different model name than declared: the engine digest for a local engine, the requested model for a remote one (`check_run`).
-- `attestation.prompt_tokens`: some run items have no prompt-token fingerprint, for example because the engine didn't return token ids (`check_run`).
-- `attestation.prompt_tokens_drift`: an item read different prompt tokens than the same item in another run (`compare_prompt_tokens`).
-- `run.incomplete`: a finished run lacks some of the trial's items (`check_run`).
-- `ledger.seal`: a run's or score's rows no longer match the seal in its finished row (`check_run`, `check_score`).
-- `engine.chat_template` and `engine.chat_template_date`: the chat-template file doesn't match the engine's declared digest, or reads the current date (`check_chat_template`).
-- `bundle.recanonicalized`: the current code would serialize a bundled component differently from its stored bytes, which remain authoritative (`Bundle.load`).
-- `model.revision`, `engine.closure`, `scorer.revision` and `vllm.temperature_clamped`: the lints in `docs/factors.md`.
-
 Structurally malformed input raises instead. Constructing a component, canary or record that breaks its own rules raises pydantic's `ValidationError`: for example flags the start-up script owns in `argv`, slots unsuitable for the purpose, a skeleton body at odds with its contract, runtime keys in a body, duplicate seeds or cases, a shuffle seed without shuffled order, or a stage log out of order. Problems that need other components or records to see raise `StructuralError`: a digest that doesn't match its bytes, an unknown kind or schema version, a missing or wrongly typed reference, a failed `cross_check`, a recipe whose prompt purpose differs from its own or whose passthrough overrides a managed key, and the run and score checks' own violations (items outside the trial, unplanned canary calls, a score of another run, views, items, judges or seeds that don't exist).
 
 The one hard block is clearance: sending case-derived content to an engine that isn't cleared, judge engines included, must be refused. Clearance has a dedicated pipeline and the factors do not enforce it; the runner must.
 
+See `docs/findings.md` for a list of all findings and what they mean.
+
 ## Possible design issues
 
-**Case drift and canary drift are not implemented.** `RunItem.vignette` records the observed fingerprint, but nothing compares it with `CaseInput.vignette`, and nothing compares canary outputs between phases or runs.
+**Canary drift are not implemented:** nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments

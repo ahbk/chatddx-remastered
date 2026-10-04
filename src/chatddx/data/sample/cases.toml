@@ -1,0 +1,697 @@
+# The old inventory's cases (chatddx 7893656, src/chatddx/data/cases.toml), with the `# guessed`
+# markers dropped: the targets are treated as live data. Keys are the vignettes' file names at the
+# source, `targets` is each case's expectation (schemas/targets.json), and `tags` and `language` are
+# entries on its family.
+
+[case.DutchFall10w]
+tags = ["dutch-fall"]
+language = "en"
+targets.diagnosis.pattern = "biliary & (colic | stone*)"
+targets.warning.pattern = "dissection | cholangitis | cholecystitis | pancreatitis | perforat*"
+targets.disposition.pattern = "discharge* | home | outpatient | observation"
+
+[case.Dutchfall11w]
+tags = ["dutch-fall"]
+language = "en"
+targets.diagnosis.pattern = "aaa | (abdominal | aortic) & aneurysm | dissection"
+targets.warning.pattern = "rupture* | dissection | shock | aneurysm*"
+targets.disposition.pattern = "surg* | operat* | vascular | icu | intensive & care"
+
+[case.Dutchfall12w]
+tags = ["dutch-fall"]
+language = "en"
+targets.diagnosis.pattern = "pancreatitis"
+targets.warning.pattern = "necro* | organ & failure | shock | acute & coronary | myocardial & infarction"
+targets.disposition.pattern = "admit* | admission | hospital*"
+
+[case.Dutchfall13w]
+tags = ["dutch-fall"]
+language = "en"
+targets.diagnosis.pattern = "torsion | ovarian & torsion"
+targets.warning.pattern = "torsion | ischemi* | ischaemi* | necro* | rupture*"
+targets.disposition.pattern = "surg* | operat* | laparoscop* | gynecolog* | gynaecolog*"
+
+[case.Dutchfall14w]
+tags = ["dutch-fall"]
+language = "en"
+targets.diagnosis.pattern = "copd | (exacerbation | obstructive) & pulmonary"
+targets.warning.pattern = "hypoxi* | hypercapni* | respiratory & failure | pulmonary & embolism"
+targets.disposition.pattern = "admit* | admission | hospital*"
+
+[case.Dutchfall15w]
+tags = ["dutch-fall"]
+language = "en"
+targets.diagnosis.pattern = "gastroenteritis"
+targets.warning.pattern = "appendicitis | perforat* | peritonitis | sepsis | dehydrat*"
+targets.disposition.pattern = "discharge* | home | outpatient | observation"
+
+[case.Dutchfall16w]
+tags = ["dutch-fall"]
+language = "en"
+targets.diagnosis.pattern = "chf | (congestive | failure) & heart"
+targets.warning.pattern = "hypoxi* | respiratory & failure | pulmonary & (edema | oedema) | acute & coronary | myocardial & infarction"
+targets.disposition.pattern = "icu | intensive & care | ccu | coronary & care | admit* | admission | hospital*"
+
+[case.Dutchfall17w]
+tags = ["dutch-fall"]
+language = "en"
+targets.diagnosis.pattern = "liver & failure | cirrosis | cirrhosis"
+targets.warning.pattern = "bleed* | variceal | varices | peritonitis | encephalopath* | hepatorenal"
+targets.disposition.pattern = "admit* | admission | hospital*"
+
+[case.Dutchfall18w]
+tags = ["dutch-fall"]
+language = "en"
+targets.diagnosis.pattern = "pneumonia"
+targets.warning.pattern = "sepsis | septic | hypoxi* | respiratory & failure"
+targets.disposition.pattern = "admit* | admission | hospital*"
+
+[case.Dutchfall19w]
+tags = ["dutch-fall"]
+language = "en"
+targets.diagnosis.pattern = "copd | (exacerbation | obstructive) & pulmonary"
+targets.warning.pattern = "hypoxi* | hypercapni* | respiratory & failure | pulmonary & embolism"
+targets.disposition.pattern = "admit* | admission | hospital*"
+
+[case.Dutchfall1w]
+tags = ["dutch-fall"]
+language = "en"
+targets.diagnosis.pattern = "pneumonia"
+targets.warning.pattern = "pulmonary & embolism | pe | hypoxi* | sepsis"
+targets.disposition.pattern = "admit* | admission | hospital*"
+
+[case.Dutchfall20w]
+tags = ["dutch-fall"]
+language = "en"
+targets.diagnosis.pattern = "vasculitis"
+targets.warning.pattern = "renal | kidney | glomerulonephritis | hemorrhag* | haemorrhag* | sepsis"
+targets.disposition.pattern = "admit* | admission | hospital*"
+
+[case.Dutchfall21w]
+tags = ["dutch-fall"]
+language = "en"
+targets.diagnosis.pattern = "copd | (exacerbation | obstructive) & pulmonary"
+targets.warning.pattern = "hypoxi* | hypercapni* | respiratory & failure"
+targets.disposition.pattern = "admit* | admission | hospital* | icu | intensive & care"
+
+[case.Dutchfall22w]
+tags = ["dutch-fall"]
+language = "en"
+targets.diagnosis.pattern = "uti | urinary & infection* | cystitis | urosepsis"
+targets.warning.pattern = "sepsis | septic | urosepsis | pyelonephritis"
+targets.disposition.pattern = "admit* | admission | hospital*"
+
+[case.Dutchfall23w]
+tags = ["dutch-fall"]
+language = "en"
+targets.diagnosis.pattern = "copd | (exacerbation | obstructive) & pulmonary"
+targets.warning.pattern = "pulmonary & embolism | pe | dvt | deep & vein & thrombosis | hypoxi* | respiratory & failure"
+targets.disposition.pattern = "admit* | admission | hospital*"
+
+[case.Dutchfall24w]
+tags = ["dutch-fall"]
+language = "en"
+targets.diagnosis.pattern = "copd | (exacerbation | obstructive) & pulmonary"
+targets.warning.pattern = "respiratory & failure | hypercapni* | hypoxi* | sepsis | exhaust*"
+targets.disposition.pattern = "icu | intensive & care | high & dependency | hdu | niv"
+
+[case.Dutchfall25w]
+tags = ["dutch-fall"]
+language = "en"
+targets.diagnosis.pattern = "pancreatitis"
+targets.warning.pattern = "necro* | shock | organ & failure | bradycard* | cholangitis"
+targets.disposition.pattern = "admit* | admission | hospital* | icu | intensive & care"
+
+[case.Dutchfall26w]
+tags = ["dutch-fall"]
+language = "en"
+targets.diagnosis.pattern = "pneumonia"
+targets.warning.pattern = "pulmonary & embolism | pe | pneumothorax | sepsis"
+targets.disposition.pattern = "discharge* | home | outpatient"
+
+[case.Dutchfall27w]
+tags = ["dutch-fall"]
+language = "en"
+targets.diagnosis.pattern = "(renal | kidney) & (colic | stone*) | nephrolithiasis | urolithiasis"
+targets.warning.pattern = "sepsis | urosepsis | pyelonephritis | infect*"
+targets.disposition.pattern = "discharge* | home | outpatient"
+
+[case.Dutchfall28w]
+tags = ["dutch-fall"]
+language = "en"
+targets.diagnosis.pattern = "pneumonia"
+targets.warning.pattern = "sepsis | respiratory & failure | hypoxi* | hypercapni*"
+targets.disposition.pattern = "admit* | admission | hospital*"
+
+[case.Dutchfall29w]
+tags = ["dutch-fall"]
+language = "en"
+targets.diagnosis.pattern = "(renal | kidney) & (colic | stone*) | nephrolithiasis | urolithiasis"
+targets.warning.pattern = "pyelonephritis | urosepsis | sepsis | hydronephros* | kidney & injury"
+targets.disposition.pattern = "admit* | admission | hospital* | urolog*"
+
+[case.Dutchfall2w]
+tags = ["dutch-fall"]
+language = "en"
+targets.diagnosis.pattern = "(diverticular | gastrointestinal | (gastro & intestinal) | gi) & bleed*"
+targets.warning.pattern = "shock | hypovolem* | hemorrhag* | haemorrhag* | massive & bleed*"
+targets.disposition.pattern = "admit* | admission | hospital* | gastroenterolog* | colonoscop*"
+
+[case.Dutchfall30w]
+tags = ["dutch-fall"]
+language = "en"
+targets.diagnosis.pattern = "pneumonia"
+targets.warning.pattern = "sepsis | septic | respiratory & failure | hypoxi* | heart & failure"
+targets.disposition.pattern = "admit* | admission | hospital*"
+
+[case.Dutchfall3w]
+tags = ["dutch-fall"]
+language = "en"
+targets.diagnosis.pattern = "diverticulitis | (gastro & intestinal | gi) & inflammation"
+targets.warning.pattern = "perforat* | abscess | peritonitis | sepsis"
+targets.disposition.pattern = "admit* | admission | hospital*"
+
+[case.Dutchfall4w]
+tags = ["dutch-fall"]
+language = "en"
+targets.diagnosis.pattern = "pancreatitis"
+targets.warning.pattern = "necro* | cholangitis | shock | organ & failure | sepsis"
+targets.disposition.pattern = "admit* | admission | hospital*"
+
+[case.Dutchfall5w]
+tags = ["dutch-fall"]
+language = "en"
+targets.diagnosis.pattern = "uti | urinary & infection* | cystitis | urosepsis"
+targets.warning.pattern = "sepsis | septic | urosepsis | shock"
+targets.disposition.pattern = "icu | intensive & care | admit* | admission | hospital*"
+
+[case.Dutchfall6w]
+tags = ["dutch-fall"]
+language = "en"
+targets.diagnosis.pattern = "copd | (exacerbation | obstructive) & pulmonary"
+targets.warning.pattern = "hypoxi* | hypercapni* | respiratory & failure | sepsis"
+targets.disposition.pattern = "admit* | admission | hospital*"
+
+[case.Dutchfall7w]
+tags = ["dutch-fall"]
+language = "en"
+targets.diagnosis.pattern = "hernia"
+targets.warning.pattern = "incarcerat* | strangulat* | ischemi* | ischaemi* | perforat* | appendicitis"
+targets.disposition.pattern = "surg* | operat* | admit* | admission | hospital* | observation"
+
+[case.Dutchfall8w]
+tags = ["dutch-fall"]
+language = "en"
+targets.diagnosis.pattern = "chf | (congestive | failure) & heart"
+targets.warning.pattern = "pneumothorax | tamponade | pulmonary & embolism | pe"
+targets.disposition.pattern = "admit* | admission | hospital*"
+
+[case.Dutchfall9w]
+tags = ["dutch-fall"]
+language = "en"
+targets.diagnosis.pattern = "cholangitis | (obstructive & jaundice) | choledocholithiasis"
+targets.warning.pattern = "cholangitis | sepsis | septic"
+targets.disposition.pattern = "admit* | admission | hospital* | ercp"
+
+[case.casesfromedn1]
+tags = ["edn"]
+language = "sv"
+targets.diagnosis.pattern = "copd | (exacerbation | obstructive) & pulmonary"
+targets.warning.pattern = "respiratory & failure | hypercapni* | airway | intubat* | andningssvikt | intuber*"
+targets.disposition.pattern = "icu | intensive & care | iva | intensivvård*"
+
+[case.casesfromedn10]
+tags = ["edn"]
+language = "sv"
+targets.diagnosis.pattern = "scad | dissection | dissektion"
+targets.warning.pattern = "stemi | st & elevation | myocardial & infarction | dissection | hjärtinfarkt"
+targets.disposition.pattern = "cath* | pci | angiograph* | angiografi | ccu | coronary & care | hia | hjärtintensiv*"
+
+[case.casesfromedn11]
+tags = ["edn"]
+language = "sv"
+targets.diagnosis.pattern = "delirium | abstinens"
+targets.warning.pattern = "delirium & tremens | withdrawal | seizure* | dissection | abstinens | kramp*"
+targets.disposition.pattern = "icu | intensive & care | iva | intensivvård* | admit* | admission | hospital*"
+
+[case.casesfromedn12]
+tags = ["edn"]
+language = "sv"
+targets.diagnosis.pattern = "depression"
+targets.warning.pattern = "suicid* | självmord* | postpartum | psychos* | psykos"
+targets.disposition.pattern = "outpatient | primary & care | follow* | psychiatr* | vårdcentral* | öppenvård*"
+
+[case.casesfromedn13]
+tags = ["edn"]
+language = "sv"
+targets.diagnosis.pattern = "leptospirosis"
+targets.warning.pattern = "kidney & failure | renal & failure | kidney & injury | hemorrhag* | haemorrhag* | sepsis | meningit* | weil*"
+targets.disposition.pattern = "admit* | admission | hospital* | icu | intensive & care | infect*"
+
+[case.casesfromedn14]
+tags = ["edn"]
+language = "sv"
+targets.diagnosis.pattern = "ektopisk & graviditet | ektopisk"
+targets.warning.pattern = "rupture* | hemorrhag* | haemorrhag* | shock | hypovolem* | blödning | chock"
+targets.disposition.pattern = "surg* | operat* | laparo* | gyn* | kirurg* | operation"
+
+[case.casesfromedn15]
+tags = ["edn"]
+language = "sv"
+targets.diagnosis.pattern = "hematom | hematoma"
+targets.warning.pattern = "bleed* | hemorrhag* | haemorrhag* | blödning | anticoag*"
+targets.disposition.pattern = "discharge* | home | outpatient | observation | hemgång"
+
+[case.casesfromedn16]
+tags = ["edn"]
+language = "sv"
+targets.diagnosis.pattern = "tarmperforation | perforation"
+targets.warning.pattern = "perforat* | peritonitis | free & (air | gas) | sepsis | shock | fri & gas"
+targets.disposition.pattern = "surg* | operat* | laparotom* | kirurg* | operation"
+
+[case.casesfromedn17]
+tags = ["edn"]
+language = "sv"
+targets.diagnosis.pattern = "porfyri"
+targets.warning.pattern = "paralys* | respiratory & failure | seizure* | hyponatrem* | neuropath* | förlamning"
+targets.disposition.pattern = "admit* | admission | hospital* | inlägg* | vårdavdelning"
+
+[case.casesfromedn18]
+tags = ["edn"]
+language = "sv"
+targets.diagnosis.pattern = "malaria"
+targets.warning.pattern = "falciparum | severe & malaria | cerebral & malaria | allvarlig & malaria"
+targets.disposition.pattern = "admit* | admission | hospital* | infect* | infektion* | inlägg* | vårdavdelning"
+
+[case.casesfromedn19]
+tags = ["edn"]
+language = "sv"
+targets.diagnosis.pattern = "meningit*"
+targets.warning.pattern = "meningit* | encephalit* | sepsis | septic | herniat*"
+targets.disposition.pattern = "admit* | admission | hospital* | icu | intensive & care | iva | intensivvård* | infekt*"
+
+[case.casesfromedn2]
+tags = ["edn"]
+language = "sv"
+targets.diagnosis.pattern = "psychosis | psychotic | psykos | psykotisk"
+targets.warning.pattern = "encephalit* | autoimmune | nmda | suicid* | catatoni*"
+targets.disposition.pattern = "psychiatr* | psykiatri* | neurolog* | admit* | admission | hospital*"
+
+[case.casesfromedn20]
+tags = ["edn"]
+language = "sv"
+targets.diagnosis.pattern = "viral & meningit* | meningit*"
+targets.warning.pattern = "encephalit* | herpes | hsv | bacterial & meningit*"
+targets.disposition.pattern = "admit* | admission | hospital* | infect* | infekt* | inlägg* | vårdavdelning"
+
+[case.casesfromedn3]
+tags = ["edn"]
+language = "sv"
+targets.diagnosis.pattern = "psychosis | psychotic | psykos | psykotisk"
+targets.warning.pattern = "organic | delirium | encephalit* | tumo* | stroke | suicid*"
+targets.disposition.pattern = "psychiatr* | psykiatri* | involuntary | compulsory | tvångsvård* | lpt"
+
+[case.casesfromedn4]
+tags = ["edn"]
+language = "sv"
+targets.diagnosis.pattern = "sepsis | septic"
+targets.warning.pattern = "septic & shock | shock | sepsis | multi* & organ | hyperkal* | hypoglyc*"
+targets.disposition.pattern = "icu | intensive & care | iva | intensivvård*"
+
+[case.casesfromedn5]
+tags = ["edn"]
+language = "sv"
+targets.diagnosis.pattern = "acl | (cruciate | ligament) & (tear* | injur*)"
+targets.warning.pattern = "fracture* | dislocat* | popliteal | compartment & syndrome"
+targets.disposition.pattern = "discharge* | home | outpatient | orthop* | physio* | follow*"
+
+[case.casesfromedn6]
+tags = ["edn"]
+language = "sv"
+targets.diagnosis.pattern = "lungbleeding | bleeding | lungblödning | blödning"
+targets.warning.pattern = "hemoptys* | haemoptys* | massive | sepsis | pulmonary & embolism | lungblödning | blödning"
+targets.disposition.pattern = "admit* | admission | hospital* | inlägg* | vårdavdelning"
+
+[case.casesfromedn7]
+tags = ["edn"]
+language = "sv"
+targets.diagnosis.pattern = "epidural & abscess | abscess | compression | discitis | epiduralabscess"
+targets.warning.pattern = "cord & compression | compression | paralys* | cauda | sepsis | ryggmärgskompression"
+targets.disposition.pattern = "surg* | operat* | neurosurg* | decompress* | neurokirurg*"
+
+[case.casesfromedn8]
+tags = ["edn"]
+language = "sv"
+targets.diagnosis.pattern = "hjärntumör | tumör| brain & (tumour | tumor)"
+targets.warning.pattern = "intracranial & pressure | icp | herniat* | tumo* | hydroceph* | tumör"
+targets.disposition.pattern = "admit* | admission | hospital* | neurosurg* | neurokirurg* | neurolog* | inlägg* | vårdavdelning"
+
+[case.casesfromedn9]
+tags = ["edn"]
+language = "sv"
+targets.diagnosis.pattern = "ileus | tarmvred | obstruction | obstruktion"
+targets.warning.pattern = "ischemi* | ischaemi* | strangulat* | perforat* | volvulus | necro*"
+targets.disposition.pattern = "surg* | operat* | laparotom* | kirurg* | operation"
+
+[case.openxddx-case_1]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "acute & kidney & injury | aki | acute & kidney & failure | acute & renal & failure"
+targets.warning.pattern = "hyperkal* | dialys* | renal & failure | kidney & failure | uremi*"
+targets.disposition.pattern = "admit* | admission | hospital* | nephrolog*"
+
+[case.openxddx-case_10]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "myocardial & infarction | mi | acs | acute & coronary & syndrome"
+targets.warning.pattern = "tamponade | arrhythmi* | shock | contusion | aortic & injury"
+targets.disposition.pattern = "icu | intensive & care | ccu | telemetry | trauma | admit* | admission | hospital*"
+
+[case.openxddx-case_11]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "osteoarthritis | arthritis"
+targets.warning.pattern = "cirrhosis | cardiomyopath* | hepatocellular & carcinoma | liver"
+targets.disposition.pattern = "outpatient | follow* | referr* | rheumatolog* | hepatolog* | gastroenterolog*"
+
+[case.openxddx-case_12]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "endometriosis"
+targets.warning.pattern = "ectopic | torsion | rupture*"
+targets.disposition.pattern = "outpatient | follow* | referr* | gynecolog* | gynaecolog* | laparoscop* | fertility"
+
+[case.openxddx-case_13]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "tension & pneumothorax"
+targets.warning.pattern = "tension & pneumothorax | hemothorax | haemothorax | aortic & (rupture | injury) | shock"
+targets.disposition.pattern = "surg* | operat* | trauma | icu | intensive & care"
+
+[case.openxddx-case_14]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "physiological & jaundice | neonatal & jaundice"
+targets.warning.pattern = "kernicterus | bilirubin & encephalopath* | hemoly* | haemoly* | exchange & transfusion"
+targets.disposition.pattern = "phototherap* | nicu | neonatal & intensive | admit* | admission | hospital*"
+
+[case.openxddx-case_15]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "aortic & stenosis | valve & dysfunction"
+targets.warning.pattern = "heart & failure | endocardit* | dissection"
+targets.disposition.pattern = "outpatient | follow* | referr* | cardiolog* | echocardiogra*"
+
+[case.openxddx-case_16]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "personality & disorder | eips | borderline | emotional & instability & personality & disorder"
+targets.warning.pattern = "suicid* | self & harm"
+targets.disposition.pattern = "psychiatr* | dialectical | dbt"
+
+[case.openxddx-case_17]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "(liver & failure) | cirrosis | cirrhosis"
+targets.warning.pattern = "peritonitis | sbp | encephalopath* | sepsis | hepatorenal"
+targets.disposition.pattern = "admit* | admission | hospital* | icu | intensive & care"
+
+[case.openxddx-case_18]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "toxoplasma & gondi* | toxoplasmosis"
+targets.warning.pattern = "microcephal* | congenital & infection | zika | fetal & anomal*"
+targets.disposition.pattern = "outpatient | follow* | referr* | obstetric* | maternal & fetal | perinatolog*"
+
+[case.openxddx-case_19]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "stroke | cvl"
+targets.warning.pattern = "respiratory & failure | paralys* | botulism | airway"
+targets.disposition.pattern = "icu | intensive & care | admit* | admission | hospital*"
+
+[case.openxddx-case_2]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "pneumonia"
+targets.warning.pattern = "disseminat* | respiratory & failure | immunocompromis*"
+targets.disposition.pattern = "outpatient | home | discharge* | follow*"
+
+[case.openxddx-case_20]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "physiological & jaundice | neonatal & jaundice"
+targets.warning.pattern = "biliary & atresia | cirrhosis | liver & failure | cholesta*"
+targets.disposition.pattern = "surg* | kasai | referr* | admit* | admission"
+
+[case.openxddx-case_21]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "vascular & insufficiency | vascular & disease"
+targets.warning.pattern = "limb & ischemi* | critical & limb | gangren* | amputat*"
+targets.disposition.pattern = "outpatient | follow* | referr* | vascular"
+
+[case.openxddx-case_22]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "dementia | alzheimer"
+targets.warning.pattern = "tumo* | hydroceph* | safety | capacity"
+targets.disposition.pattern = "outpatient | follow* | referr* | neurolog* | memory & clinic"
+
+[case.openxddx-case_23]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "measles | rubeola"
+targets.warning.pattern = "encephalit* | pneumonia | superinfect* | secondary & infection | immunocompromis*"
+targets.disposition.pattern = "discharge* | home | outpatient | isolat*"
+
+[case.openxddx-case_24]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "takotsubo | cardiomyopathy"
+targets.warning.pattern = "cardiogenic & shock | shock | heart & failure | arrhythmi* | thromb*"
+targets.disposition.pattern = "admit* | admission | hospital* | ccu | coronary & care | cardiolog* | telemetry | icu"
+
+[case.openxddx-case_25]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "osteoarthritis | arthritis"
+targets.warning.pattern = "septic & arthritis | fracture* | infect*"
+targets.disposition.pattern = "outpatient | follow* | physio* | physical & therap* | rheumatolog* | home"
+
+[case.openxddx-case_26]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "testicular & torsion"
+targets.warning.pattern = "torsion | abscess | orchitis | infarct*"
+targets.disposition.pattern = "outpatient | home | discharge* | follow* | urolog*"
+
+[case.openxddx-case_27]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "gynecomastia | hormonal & imbalance"
+targets.warning.pattern = "tumo* | malignan* | cancer"
+targets.disposition.pattern = "reassur* | follow* | outpatient | home"
+
+[case.openxddx-case_28]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "cholecystitis"
+targets.warning.pattern = "sepsis | septic | perforat* | gangren* | empyema"
+targets.disposition.pattern = "admit* | admission | hospital* | cholecystostom* | palliat* | hospice"
+
+[case.openxddx-case_29]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "insulinoma"
+targets.warning.pattern = "hypoglyc* | seizure* | coma | factitious"
+targets.disposition.pattern = "admit* | admission | hospital* | observation | endocrinolog* | monitor*"
+
+[case.openxddx-case_3]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "osteoarthritis | arthritis"
+targets.warning.pattern = "septic & arthritis | infect*"
+targets.disposition.pattern = "outpatient | follow* | referr* | rheumatolog*"
+
+[case.openxddx-case_30]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "dysmenorrhea"
+targets.warning.pattern = "ectopic | pregnan* | pelvic & inflammatory | pid"
+targets.disposition.pattern = "outpatient | home | follow* | discharge*"
+
+[case.openxddx-case_31]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "hiv"
+targets.warning.pattern = "dengue | hemorrhag* | haemorrhag* | shock | meningit*"
+targets.disposition.pattern = "outpatient | follow* | referr* | infectious & disease* | infect*"
+
+[case.openxddx-case_32]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "hernia"
+targets.warning.pattern = "testicular & (tumo* | cancer) | malignan* | torsion"
+targets.disposition.pattern = "outpatient | follow* | referr* | urolog* | elective"
+
+[case.openxddx-case_33]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "gastroenteritis"
+targets.warning.pattern = "dehydrat* | hypovolem*"
+targets.disposition.pattern = "discharge* | home | outpatient"
+
+[case.openxddx-case_34]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "basal & cell & carcinoma | bcc"
+targets.warning.pattern = "squamous & cell & carcinoma | scc | malignan* | melanoma"
+targets.disposition.pattern = "outpatient | follow* | referr* | dermatolog* | excision"
+
+[case.openxddx-case_35]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "pneumonia"
+targets.warning.pattern = "sepsis | septic | respiratory & failure | empyema | necrotiz*"
+targets.disposition.pattern = "admit* | admission | hospital* | ward | icu | intensive & care"
+
+[case.openxddx-case_36]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "precocious & puberty"
+targets.warning.pattern = "abuse | fracture* | malignan* | tumo*"
+targets.disposition.pattern = "outpatient | follow* | referr* | endocrinolog*"
+
+[case.openxddx-case_37]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "(liver & failure) | cirrosis | cirrhosis"
+targets.warning.pattern = "encephalopath* | bleed* | variceal | sepsis | hypokal* | dehydrat*"
+targets.disposition.pattern = "admit* | admission | hospital* | ward"
+
+[case.openxddx-case_38]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "bleeding | hypovolemic & shock | postpartum & bleeding"
+targets.warning.pattern = "hypotens* | shock | fetal & distress | bradycard* | hemorrhag* | haemorrhag*"
+targets.disposition.pattern = "labor | labour | delivery | obstetric* | monitor*"
+
+[case.openxddx-case_39]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "parkinson | parkinson's & disease"
+targets.warning.pattern = "stroke | tumo* | demyelinat* | multiple & sclerosis"
+targets.disposition.pattern = "outpatient | follow* | referr* | neurolog* | mri"
+
+[case.openxddx-case_4]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "hirschsprung & disease | intestinal & disease"
+targets.warning.pattern = "volvulus | malrotation | enterocolitis | perforat* | shock | sepsis"
+targets.disposition.pattern = "nicu | neonatal & intensive | surg* | pediatric & surg* | paediatric & surg*"
+
+[case.openxddx-case_40]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "overdose | drug & use | intoxication"
+targets.warning.pattern = "respiratory & (failure | depression) | hypoventilat* | airway | overdose"
+targets.disposition.pattern = "icu | intensive & care | admit* | admission | hospital* | monitor*"
+
+[case.openxddx-case_41]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "myopathy"
+targets.warning.pattern = "respiratory & (failure | insufficiency) | aspirat* | feeding"
+targets.disposition.pattern = "admit* | admission | hospital* | referr* | neurolog*"
+
+[case.openxddx-case_42]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "thyroid & cyst* | benign & thyroid & nodule*"
+targets.warning.pattern = "malignan* | carcinoma | cancer | papillary"
+targets.disposition.pattern = "outpatient | follow* | referr* | biopsy | fna | endocrin* | surg*"
+
+[case.openxddx-case_44]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "(liver & failure) | cirrosis | cirrhosis"
+targets.warning.pattern = "liver & failure | hepatic & failure | encephalopath* | coagulopath* | fetal | hepatitis e"
+targets.disposition.pattern = "icu | intensive & care | admit* | admission | hospital* | transplant*"
+
+[case.openxddx-case_45]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "copd | ((exacerbation | obstructive) & pulmonary)"
+targets.warning.pattern = "lung & cancer | malignan* | hypoxi*"
+targets.disposition.pattern = "outpatient | follow* | referr* | home | pulmonolog* | pulmonary & rehab* | smoking & cessation"
+
+[case.openxddx-case_46]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "dermatitis"
+targets.warning.pattern = "lymphoma | malignan* | malabsor*"
+targets.disposition.pattern = "outpatient | follow* | referr* | dermatolog* | gastroenterolog* | gluten | diet*"
+
+[case.openxddx-case_47]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "gastroenteritis"
+targets.warning.pattern = "dehydrat* | hypovolem* | electrolyte*"
+targets.disposition.pattern = "discharge* | home | outpatient"
+
+[case.openxddx-case_48]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "hypocalcemia"
+targets.warning.pattern = "tetany | laryngospasm | seizure* | arrhythmi* | qt"
+targets.disposition.pattern = "admit* | admission | hospital* | monitor* | ward"
+
+[case.openxddx-case_49]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "gynecomastia | hormonal & imbalance"
+targets.warning.pattern = "tumo* | cancer | malignan* | leydig"
+targets.disposition.pattern = "outpatient | follow* | referr* | urolog* | ultrasound | orchiectom*"
+
+[case.openxddx-case_5]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "peripheral & artery & disease | arterial & insufficiency | peripheral & arterial & disease"
+targets.warning.pattern = "critical & limb | limb & ischemi* | gangren* | amputat* | ulcer*"
+targets.disposition.pattern = "outpatient | follow* | referr* | vascular | exercise"
+
+[case.openxddx-case_50]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "spontaneous & abortion | miscarriage"
+targets.warning.pattern = "hemorrhag* | haemorrhag* | bleed* | shock | sepsis | ectopic"
+targets.disposition.pattern = "home | discharge* | follow* | gynecolog* | gynaecolog* | obstetric* | evacuat* | curettage"
+
+[case.openxddx-case_6]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "hypertension"
+targets.warning.pattern = "hypokal* | arrhythmi* | hypertensive & (crisis | emergency | urgency)"
+targets.disposition.pattern = "outpatient | follow* | referr* | endocrinolog*"
+
+[case.openxddx-case_7]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "tardive & dyskinesia | dyskinesia"
+targets.warning.pattern = "neuroleptic & malignant | nms"
+targets.disposition.pattern = "psychiatr* | follow* | medication & review"
+
+[case.openxddx-case_8]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "hemolytic & uremic & syndrome | hus"
+targets.warning.pattern = "kidney & injury | renal & failure | anuri* | oliguri* | dialys* | seizure*"
+targets.disposition.pattern = "admit* | admission | hospital* | picu | (pediatric | paediatric) & intensive | nephrolog* | dialys*"
+
+[case.openxddx-case_9]
+tags = ["openxddx"]
+language = "en"
+targets.diagnosis.pattern = "hyperthyroidism | graves & disease"
+targets.warning.pattern = "heart & failure | cardiac & failure | arrhythmi* | tachyarrhythmi* | thyroid & storm"
+targets.disposition.pattern = "nicu | neonatal & intensive | admit* | admission | hospital*"

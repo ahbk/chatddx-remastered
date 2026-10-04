@@ -1,11 +1,20 @@
 from typing import Annotated, Literal, override
 
-from pydantic import Field, JsonValue
+from pydantic import AfterValidator, Field, JsonValue
 
-from .base import Code, Component, Digest, Frozen, JsonPointer, RefTo, Resolver
+from .base import (
+    Code,
+    Component,
+    Digest,
+    Frozen,
+    RefTo,
+    Resolver,
+    Settings,
+)
 from .cases import CaseInputRef
 from .engine import EngineRef
 from .request import Skeleton, SkeletonRef
+from .select import SplitOp, check_selector, select, split
 
 
 class ExpectationSchema(Component):
@@ -44,12 +53,24 @@ class Judge(Component):
 JudgeRef = Annotated[Digest, RefTo("judge")]
 
 
+# A JSON Pointer or a JSONPath query from the subset in select.py.
+Selector = Annotated[str, AfterValidator(check_selector)]
+
+
 class View(Frozen):
-    output: JsonPointer = ""
-    expectation: JsonPointer = ""
+    output: Selector = ""
+    expectation: Selector = ""
+    split: SplitOp | None = None
     metric: str
     judge: JudgeRef | None = None
-    params: dict[str, JsonValue] = Field(default_factory=dict)
+    params: Settings = Field(default_factory=dict)
+
+    def output_items(self, answer: JsonValue) -> list[JsonValue]:
+        items = select(answer, self.output)
+        return items if self.split is None else split(self.split, items)
+
+    def expectation_items(self, data: JsonValue) -> list[JsonValue]:
+        return select(data, self.expectation)
 
 
 class Scorer(Component):
@@ -58,7 +79,7 @@ class Scorer(Component):
     consumes: ExpectationSchemaRef
     views: tuple[View, ...] = Field(min_length=1)
     resources: tuple[str, ...] = ()
-    params: dict[str, JsonValue] = Field(default_factory=dict)
+    params: Settings = Field(default_factory=dict)
 
     @property
     def judges(self) -> tuple[str, ...]:

@@ -16,12 +16,21 @@ from chatddx.factors.base import (
     canonical_bytes,
     resolve,
     sha256_digest,
+    sorted_keys,
 )
 from chatddx.factors.bundle import Registry
-from chatddx.factors.cases import CaseInputRef
+from chatddx.factors.cases import CaseInput, CaseInputRef
 from chatddx.factors.engine import LocalEngine, RemoteEngine
-from chatddx.factors.request import Recipe, SkeletonRef
+from chatddx.factors.request import (
+    Recipe,
+    Skeleton,
+    SkeletonRef,
+    Tool,
+    ToolOutput,
+    tool_calls,
+)
 from chatddx.factors.scoring import Judge, JudgeRef, Scorer, Scoring, ScoringRef
+from chatddx.factors.select import reaches
 from chatddx.factors.trial import (
     CanarySet,
     CanarySetRef,
@@ -51,8 +60,7 @@ class Record(Frozen):
             dict[str, JsonValue],
             self.model_dump(mode="json", context={"canonical": True}),
         )
-        doc["v"] = type(self).schema_version
-        return doc
+        return sorted_keys({**doc, "v": type(self).schema_version})
 
     @property
     def canonical(self) -> bytes:
@@ -107,7 +115,24 @@ def fingerprint_prompt_tokens(
 def fingerprint_request(
     body: dict[str, JsonValue], key: tuple[str, bytes] | None = None
 ) -> Fingerprint:
-    return Fingerprint.of(canonical_bytes(body), key)
+    return Fingerprint.of(canonical_bytes(sorted_keys(body)), key)
+
+
+# One tool the runner ran for a tool call in a response. A call naming no tool of the
+# skeleton is answered with an error and no result.
+class ToolRun(Frozen):
+    id: str
+    name: str
+    started_at: UtcDatetime
+    finished_at: UtcDatetime
+    result: str | None = None
+    error: str | None = None
+
+
+# A tool round: the tools run for the previous response's calls, and the next call.
+class Turn(Frozen):
+    tools: tuple[ToolRun, ...] = Field(min_length=1)
+    call: Call
 
 
 class ItemKey(Frozen):
@@ -150,6 +175,11 @@ class RunItem(Record):
     key: ItemKey
     vignette: Fingerprint
     call: Call
+    turns: tuple[Turn, ...] = ()
+
+    @property
+    def calls(self) -> tuple[Call, ...]:
+        return (self.call, *(t.call for t in self.turns))
 
 
 class CanaryCall(Record):
@@ -167,7 +197,7 @@ def _seal(started: Record, **rows: Iterable[Record]) -> str:
         for name, group in rows.items()
     }
     doc["started"] = started.canonical_doc()
-    return sha256_digest(canonical_bytes(doc))
+    return sha256_digest(canonical_bytes(sorted_keys(doc)))
 
 
 class Run(Frozen):
@@ -354,12 +384,24 @@ def check_run(run: Run, registry: Registry) -> list[Finding]:
         findings.append(
             Finding(code="run.incomplete", message=f"{len(missing)} items missing")
         )
+    for item in run.items:
+        case = resolve(registry.get, item.key.case, CaseInput)
+        if item.vignette != case.vignette:
+            findings.append(
+                Finding(
+                    code="case.drift",
+                    message="the vignette read differs from the case's",
+                    subject=str(item.key),
+                )
+            )
+    skeleton = resolve(registry.get, trial.skeleton, Skeleton)
+    for item in run.items:
+        findings.extend(_rounds(item, skeleton, registry))
     engine = registry.get(trial.engine)
     assert isinstance(engine, LocalEngine | RemoteEngine)
     want = engine.served_model_name if isinstance(engine, LocalEngine) else engine.model
     for item in run.items:
-        got = item.call.returned_model
-        if got is not None and got != want:
+        for got in {c.returned_model for c in item.calls} - {None, want}:
             findings.append(
                 Finding(
                     code="attestation.model",
@@ -367,7 +409,9 @@ def check_run(run: Run, registry: Registry) -> list[Finding]:
                     subject=str(item.key),
                 )
             )
-    if unfingerprinted := sum(1 for i in run.items if i.call.prompt_tokens is None):
+    if unfingerprinted := sum(
+        1 for i in run.items if any(c.prompt_tokens is None for c in i.calls)
+    ):
         findings.append(
             Finding(
                 code="attestation.prompt_tokens",
@@ -375,6 +419,46 @@ def check_run(run: Run, registry: Registry) -> list[Finding]:
             )
         )
     return findings
+
+
+def _rounds(item: RunItem, skeleton: Skeleton, registry: Registry) -> list[Finding]:
+    if item.turns and not skeleton.tools:
+        raise StructuralError(f"{item.key}: tool rounds, but the skeleton has no tools")
+    if not skeleton.tools:
+        return []
+    assert skeleton.max_rounds is not None
+    if len(item.turns) > skeleton.max_rounds:
+        raise StructuralError(f"{item.key}: more than {skeleton.max_rounds} rounds")
+    names = {resolve(registry.get, t, Tool).name for t in skeleton.tools}
+    answer = (
+        skeleton.contract.name if isinstance(skeleton.contract, ToolOutput) else None
+    )
+
+    def pending(call: Call) -> set[tuple[str, str]]:
+        return {
+            (c.id, c.name) for c in tool_calls(call.response or {}) if c.name != answer
+        }
+
+    previous = item.call
+    for turn in item.turns:
+        for r in turn.tools:
+            if r.name not in names and (r.result is not None or r.error is None):
+                raise StructuralError(f"{item.key}: no tool named {r.name!r}")
+        if {(r.id, r.name) for r in turn.tools} != pending(previous):
+            raise StructuralError(
+                f"{item.key}: a round runs tools for calls the response didn't make"
+            )
+        previous = turn.call
+    if left := sorted({name for _, name in pending(previous)}):
+        return [
+            Finding(
+                code="tools.unanswered",
+                message=f"the last response still calls {', '.join(left)} after "
+                + f"{len(item.turns)} of {skeleton.max_rounds} rounds",
+                subject=str(item.key),
+            )
+        ]
+    return []
 
 
 def compare_prompt_tokens(a: Run, b: Run) -> list[Finding]:
@@ -399,6 +483,18 @@ def check_score(score: Score, run: Run, registry: Registry) -> list[Finding]:
     scoring = resolve(registry.get, started.scoring, Scoring)
     scorer = resolve(registry.get, scoring.scorer, Scorer)
     judges = {j: resolve(registry.get, j, Judge) for j in scorer.judges}
+    trial = resolve(registry.get, run.started.trial, Trial)
+    schema = resolve(registry.get, trial.skeleton, Skeleton).output_schema
+    findings = [
+        Finding(
+            code="view.unreachable",
+            message=f"view {i}'s output selector {view.output!r} reaches nothing in "
+            + "the run's output schema",
+            subject=scoring.scorer,
+        )
+        for i, view in enumerate(scorer.views)
+        if not reaches(schema, view.output)
+    ]
     run_keys = {i.key for i in run.items}
     for item in score.items:
         if item.view >= len(scorer.views):
@@ -411,4 +507,4 @@ def check_score(score: Score, run: Run, registry: Registry) -> list[Finding]:
                 raise StructuralError(f"judge {jc.judge} is not part of the scoring")
             if jc.seed_index >= len(judge.seeds):
                 raise StructuralError(f"judge seed index {jc.seed_index} out of range")
-    return _sealed(score, str(started.score))
+    return findings + _sealed(score, str(started.score))

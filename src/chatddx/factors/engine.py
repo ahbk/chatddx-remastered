@@ -2,14 +2,27 @@ import hashlib
 import re
 from typing import Annotated, Literal
 
-from pydantic import Field, HttpUrl, field_validator
+from pydantic import AfterValidator, Field, HttpUrl, field_validator
 
-from .base import Component, Digest, Finding, Frozen, RefTo, Sha256Hex
+from .base import Component, Digest, Finding, Frozen, RefTo, Sha256Hex, sorted_keys
 
 # Flags the start-up script derives from the manifest itself; argv may not set them.
 OWNED_FLAGS = frozenset(
     {"--model", "--served-model-name", "--chat-template", "--tokenizer", "--revision"}
 )
+# Flags that pull arguments from elsewhere: `--config FILE` reads a YAML file the digest
+# doesn't cover, and `--config=FILE` is accepted but silently ignored (vLLM 0.24).
+UNPINNED_FLAGS = frozenset({"--config"})
+
+
+# vLLM reads "_" as "-" in a flag's name, up to its first "." (FlexibleArgumentParser).
+def flag_names(argv: tuple[str, ...]) -> frozenset[str]:
+    names: set[str] = set()
+    for arg in argv:
+        if arg.startswith("--"):
+            name, dot, rest = arg.split("=", 1)[0].partition(".")
+            names.add(name.replace("_", "-") + dot + rest)
+    return frozenset(names)
 
 
 class FileDigest(Frozen):
@@ -55,14 +68,21 @@ class LocalEngine(Component):
     model: ModelRef
     chat_template: FileDigest
     argv: tuple[str, ...] = ()
-    env: dict[str, str] = Field(default_factory=dict)
+    env: Annotated[dict[str, str], AfterValidator(sorted_keys)] = Field(
+        default_factory=dict
+    )
 
     @field_validator("argv")
     @classmethod
     def _no_owned_flags(cls, argv: tuple[str, ...]) -> tuple[str, ...]:
-        owned = {a.split("=", 1)[0] for a in argv} & OWNED_FLAGS
+        owned = flag_names(argv) & OWNED_FLAGS
         if owned:
             raise ValueError(f"argv may not set {sorted(owned)}")
+        if unpinned := flag_names(argv) & UNPINNED_FLAGS:
+            raise ValueError(
+                f"argv may not use {sorted(unpinned)}: its arguments belong in argv, "
+                + "where the digest pins them"
+            )
         return argv
 
     @property

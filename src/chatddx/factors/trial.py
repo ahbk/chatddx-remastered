@@ -5,7 +5,7 @@ from typing import Annotated, Literal, override
 
 from pydantic import Field, JsonValue, field_validator, model_validator
 
-from .base import Component, Digest, Frozen, RefTo, Resolver
+from .base import Component, Digest, Frozen, RefTo, Resolver, Settings
 from .cases import CaseInputRef, NormalizeOp
 from .engine import EngineRef
 from .request import RUNTIME_KEYS, Skeleton, SkeletonRef
@@ -47,7 +47,7 @@ TrialRef = Annotated[Digest, RefTo("trial")]
 
 class Canary(Frozen):
     messages: tuple[dict[str, JsonValue], ...] = Field(min_length=1)
-    body: dict[str, JsonValue] = Field(default_factory=dict)
+    body: Settings = Field(default_factory=dict)
     seed: int | None = None
 
     @field_validator("body")

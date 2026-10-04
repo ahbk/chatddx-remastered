@@ -5,13 +5,23 @@ import pytest
 from psycopg import errors, sql
 from pydantic import ValidationError
 
-from chatddx.core.catalog import THREAD_KINDS, About, Entry, EntryField, Subject
+from chatddx.core.catalog import THREAD_KINDS, About, Entry, EntryField, Subject, Survey
 from chatddx.core.identity import Person
 from chatddx.factors.base import Component, StructuralError, iter_refs, resolve
 from chatddx.factors.bundle import Registry
 from chatddx.factors.cases import Appendix, CaseInput, SourceCase
-from chatddx.factors.request import compile_request
-from chatddx.factors.scoring import Judge, Scoring
+from chatddx.factors.lint import lint
+from chatddx.factors.request import (
+    Insert,
+    NativeOutput,
+    Output,
+    Recipe,
+    Sampling,
+    Translations,
+    compile_request,
+    texts,
+)
+from chatddx.factors.scoring import Expectation, Judge, Scoring
 from chatddx.factors.test.sample import NOW, RIG, fp, generation_recipe, world
 from chatddx.ledger.ledger import Compilation, RunStarted, ScoreStarted
 from chatddx.store import Catalog, People, Store
@@ -29,7 +39,10 @@ def stored_world(
 
 
 def compiled(store: Store, reg: Registry, *instructions: str) -> Compilation:
-    recipe = generation_recipe(reg, *instructions)
+    return compiled_recipe(store, reg, generation_recipe(reg, *instructions))
+
+
+def compiled_recipe(store: Store, reg: Registry, recipe: Recipe) -> Compilation:
     skeleton = reg.add(compile_request(recipe, reg.get))
     _ = store.add(reg, [*(s.digest for s in iter_refs(recipe)), skeleton])
     compilation = Compilation(recipe=recipe, skeleton=skeleton, compiler=RIG, at=NOW)
@@ -99,6 +112,93 @@ def test_forks(conn: Connection) -> None:
         _ = catalog.create(ids["trial"], alice.id, forked_from=origin.id)
 
 
+def test_variations_are_reapplied_on_request(conn: Connection) -> None:
+    catalog, store, reg, _, alice = stored_world(conn)
+    base = generation_recipe(reg)
+    shown = reg.add(
+        Output(
+            contract=NativeOutput(),
+            json_schema={"type": "object"},
+            guidance=("Answer with JSON matching:\n\n", Insert(insert="schema")),
+        )
+    )
+    plan = compiled_recipe(store, reg, base)
+    plan_shown = compiled_recipe(store, reg, base.model_copy(update={"output": shown}))
+    origin = catalog.create(plan.skeleton, alice.id, compilation=plan.digest)
+    fork = catalog.create(
+        plan_shown.skeleton,
+        alice.id,
+        compilation=plan_shown.digest,
+        forked_from=origin.id,
+    )
+    assert catalog.recipe(origin.thread) == base
+    assert catalog.variation(origin.thread) is None
+    variation = catalog.variation(fork.thread)
+    assert variation is not None
+    assert (variation.base, variation.head, variation.moved) == (origin, origin, False)
+    assert variation.varies == {"/recipe/output": (base.output, shown)}
+    assert catalog.proposal(fork.thread) is None
+
+    greedy = reg.add(Sampling(temperature=0))
+    _ = store.add(reg, [greedy])
+    moved_recipe = base.model_copy(update={"sampling": greedy})
+    moved = compiled_recipe(store, reg, moved_recipe)
+    head = catalog.edit(
+        origin.thread, moved.skeleton, alice.id, compilation=moved.digest
+    )
+    variation = catalog.variation(fork.thread)
+    assert variation is not None
+    assert (variation.base, variation.head, variation.moved) == (origin, head, True)
+    proposal = catalog.proposal(fork.thread)
+    assert proposal == moved_recipe.model_copy(update={"output": shown})
+
+    assert isinstance(proposal, Recipe)
+    accepted = compiled_recipe(store, reg, proposal)
+    with pytest.raises(ValueError, match="origin"):
+        _ = catalog.edit(fork.thread, accepted.skeleton, alice.id, based_on=fork.id)
+    reapplied = catalog.edit(
+        fork.thread,
+        accepted.skeleton,
+        alice.id,
+        compilation=accepted.digest,
+        based_on=head.id,
+    )
+    assert reapplied.based_on == head.id
+    variation = catalog.variation(fork.thread)
+    assert variation is not None
+    assert (variation.base, variation.moved) == (head, False)
+    assert variation.varies == {"/recipe/output": (base.output, shown)}
+    assert catalog.proposal(fork.thread) is None
+
+    with pytest.raises(errors.RaiseException, match="origin"), conn.transaction():
+        _ = conn.execute(
+            """
+            INSERT INTO catalog.edit (thread, kind, digest, by, based_on)
+            VALUES (%s, 'skeleton', %s, %s, %s)
+            """,
+            (fork.thread, accepted.skeleton, alice.id, fork.id),
+        )
+
+
+def test_chunk_variations(conn: Connection) -> None:
+    catalog, store, reg, _, alice = stored_world(conn)
+    recommended, longer, cooler = (
+        reg.add(Sampling(temperature=0.6, top_p=0.95)),
+        reg.add(Sampling(temperature=0.6, top_p=0.95, max_output_tokens=4096)),
+        reg.add(Sampling(temperature=0.7, top_p=0.95)),
+    )
+    _ = store.add(reg, [recommended, longer, cooler])
+    origin = catalog.create(recommended, alice.id)
+    fork = catalog.create(longer, alice.id, forked_from=origin.id)
+    variation = catalog.variation(fork.thread)
+    assert variation is not None
+    assert variation.varies == {"/max_output_tokens": (None, 4096)}
+    _ = catalog.edit(origin.thread, cooler, alice.id)
+    assert catalog.proposal(fork.thread) == Sampling(
+        temperature=0.7, top_p=0.95, max_output_tokens=4096
+    )
+
+
 def test_threads_behind_are_proposed_not_moved(conn: Connection) -> None:
     catalog, store, reg, ids, alice = stored_world(conn)
     v1 = compiled(store, reg)
@@ -112,6 +212,7 @@ def test_threads_behind_are_proposed_not_moved(conn: Connection) -> None:
 
     _ = catalog.edit(chunk.thread, instructions(v2), alice.id)
     [behind] = catalog.behind(skeleton.thread)
+    assert behind.head is not None
     assert (behind.path, behind.digest, behind.head.digest) == (
         "/recipe/instructions",
         instructions(v1),
@@ -186,6 +287,110 @@ def test_entries(conn: Connection) -> None:
         )
 
 
+def test_names_are_optional_and_removable(conn: Connection) -> None:
+    catalog, _, _, ids, alice = stored_world(conn)
+    named = catalog.create(ids["trial"], alice.id, name="baseline")
+    subject = Subject(thread=named.thread)
+    assert catalog.about(subject).name == "baseline"
+    assert (
+        catalog.about(Subject(thread=catalog.create(ids["engine"], alice.id).thread))
+        == About()
+    )
+    with pytest.raises(ValidationError):
+        _ = catalog.create(ids["trial"], alice.id, name="")
+    catalog.note(subject, Entry(field=EntryField.NAME, present=False), alice.id)
+    assert catalog.about(subject).name is None
+    catalog.note(subject, Entry(field=EntryField.NAME, value="again"), alice.id)
+    assert catalog.about(subject).name == "again"
+    for field, value, present in (
+        ("name", "x", False),
+        ("name", None, True),
+        ("tag", None, True),
+        ("language", None, True),
+    ):
+        with pytest.raises(errors.CheckViolation), conn.transaction():
+            _ = conn.execute(
+                """
+                INSERT INTO catalog.entry (thread, field, value, present, by)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (named.thread, field, value, present, alice.id),
+            )
+
+
+def test_titles_fall_back_to_what_a_thread_holds(conn: Connection) -> None:
+    catalog, store, reg, ids, alice = stored_world(conn)
+    base = generation_recipe(reg)
+    plan = compiled_recipe(store, reg, base)
+    origin = catalog.create(plan.skeleton, alice.id, compilation=plan.digest)
+    unnamed = catalog.title(origin.thread)
+    assert unnamed.startswith('"You are an emergency physician." · ')
+    assert catalog.title_of(plan.skeleton) == unnamed
+
+    def name(thread: int, value: str) -> None:
+        catalog.note(
+            Subject(thread=thread), Entry(field=EntryField.NAME, value=value), alice.id
+        )
+
+    for part, value in (
+        (base.instructions, "ddx"),
+        (base.prompt, "case"),
+        (base.output, "management-plan"),
+        (base.sampling, "recommended"),
+        (base.reasoning, "off"),
+    ):
+        assert part is not None
+        name(catalog.create(part, alice.id).thread, value)
+    assert catalog.title(origin.thread) == (
+        "ddx · case · management-plan · recommended · off"
+    )
+    name(origin.thread, "plan")
+    assert catalog.title(origin.thread) == "plan"
+
+    shown = reg.add(Output(contract=NativeOutput(), json_schema={"title": "Plan"}))
+    plan_shown = compiled_recipe(store, reg, base.model_copy(update={"output": shown}))
+    fork = catalog.create(
+        plan_shown.skeleton,
+        alice.id,
+        compilation=plan_shown.digest,
+        forked_from=origin.id,
+    )
+    assert catalog.title(fork.thread) == "plan, output: native output: Plan"
+    name(catalog.create(shown, alice.id).thread, "management-plan-shown")
+    assert catalog.title(fork.thread) == "plan, output: management-plan-shown"
+    same = catalog.create(plan.skeleton, alice.id, forked_from=origin.id)
+    assert catalog.title(same.thread) == "a fork of plan"
+
+    greedy = reg.add(Sampling(temperature=0))
+    moved = compiled_recipe(store, reg, base.model_copy(update={"sampling": greedy}))
+    _ = catalog.edit(origin.thread, moved.skeleton, alice.id, compilation=moved.digest)
+    assert catalog.title_of(moved.skeleton) == "plan"
+    assert catalog.title_of(plan.skeleton) == "a fork of plan"
+    catalog.note(Subject(thread=same.thread), Entry(field=EntryField.DELETED), alice.id)
+    assert catalog.title_of(plan.skeleton) == "plan (earlier)"
+
+    trial = catalog.title_of(ids["trial"])
+    assert trial.endswith(" on google/gemma-3-12b-it on vllm 0.24.0, 1 case, 2 seeds")
+    assert catalog.title_of(ids["case"]) == "registry/c1 with 1 appendix"
+    family = catalog.adopt(ids["case"], alice.id)
+    catalog.note(
+        Subject(family=family),
+        Entry(field=EntryField.NAME, value="chest pain"),
+        alice.id,
+    )
+    assert catalog.title_of(ids["case"]) == "chest pain"
+    scoring = resolve(reg.get, ids["scoring"], Scoring)
+    expectation = catalog.create(scoring.expectations[0], alice.id)
+    assert catalog.title(expectation.thread) == "expectation for chest pain"
+
+    cool = reg.add(Sampling(temperature=0.5))
+    _ = store.add(reg, [cool])
+    cooled = catalog.create(cool, alice.id, name="cool")
+    _ = catalog.edit(cooled.thread, greedy, alice.id)
+    assert catalog.title_of(cool) == "cool (earlier)"
+    assert catalog.title_of(greedy) == "cool"
+
+
 def test_families(conn: Connection) -> None:
     catalog, store, reg, ids, alice = stored_world(conn)
     family = catalog.adopt(ids["case"], alice.id)
@@ -252,23 +457,183 @@ def test_behind_looks_through_cases(conn: Connection) -> None:
     ]
 
 
+def test_renamed_vignettes_are_repaired(conn: Connection) -> None:
+    catalog, store, reg, ids, alice = stored_world(conn)
+    case = resolve(reg.get, ids["case"], CaseInput)
+    [appendix] = case.appendices
+    source = case.case.source
+    family = catalog.adopt(ids["case"], alice.id)
+    name = Entry(field=EntryField.NAME, value="chest pain")
+    catalog.note(Subject(family=family), name, alice.id)
+    trial = catalog.create(ids["trial"], alice.id)
+    expectation = resolve(reg.get, ids["scoring"], Scoring).expectations[0]
+    expected = catalog.create(expectation, alice.id)
+    appended = catalog.create(appendix, alice.id)
+
+    assert catalog.survey(source, {"c1": case.vignette}) == Survey(unchanged=(family,))
+    survey = catalog.survey(source, {"c1-renamed": case.vignette, "c9": fp("new")})
+    assert (survey.renamed, survey.new) == (((family, "c1", "c1-renamed"),), ("c9",))
+    assert catalog.survey(source, {}).gone == (family,)
+
+    repair = catalog.repair(family, alice.id, id="c1-renamed")
+    renamed = SourceCase(source=source, id="c1-renamed")
+    assert (repair.binding.case, repair.binding.vignette) == (renamed, case.vignette)
+    rebound = resolve(store.get, repair.cases[ids["case"]], CaseInput)
+    assert (rebound.case, rebound.vignette) == (renamed, case.vignette)
+    assert rebound.appendices == (repair.appendices[appendix],)
+    new_appendix = resolve(store.get, repair.appendices[appendix], Appendix)
+    assert (new_appendix.case, new_appendix.text) == (renamed, "Troponin 80 ng/L.")
+    assert catalog.head(appended.thread).digest == repair.appendices[appendix]
+    rekeyed = resolve(store.get, catalog.head(expected.thread).digest, Expectation)
+    assert rekeyed.case == repair.cases[ids["case"]]
+    assert {e.thread for e in repair.edits} == {appended.thread, expected.thread}
+    assert catalog.family(repair.cases[ids["case"]]) == catalog.family(ids["case"])
+    assert catalog.about(Subject(family=family)).name == "chest pain"
+    assert catalog.survey(source, {"c1-renamed": case.vignette}).unchanged == (family,)
+    assert [(b.path, b.digest, b.binding) for b in catalog.behind(trial.thread)] == [
+        ("/cases/0", ids["case"], repair.binding),
+        ("/cases/0/appendices/0", appendix, None),
+    ]
+    assert catalog.behind(expected.thread) == []
+
+
+def test_changed_vignettes_are_repaired(conn: Connection) -> None:
+    catalog, store, reg, ids, alice = stored_world(conn)
+    case = resolve(reg.get, ids["case"], CaseInput)
+    source = case.case.source
+    family = catalog.adopt(ids["case"], alice.id)
+    expectation = resolve(reg.get, ids["scoring"], Scoring).expectations[0]
+    expected = catalog.create(expectation, alice.id)
+    edited = fp("edited at the source")
+    survey = catalog.survey(source, {"c1": edited})
+    assert survey == Survey(changed=((family, "c1", edited),))
+
+    with pytest.raises(ValueError, match="one of the id or the vignette"):
+        _ = catalog.repair(family, alice.id)
+    with pytest.raises(ValueError, match="one of the id or the vignette"):
+        _ = catalog.repair(family, alice.id, id="c2", vignette=edited)
+    with pytest.raises(ValueError, match="one of the id or the vignette"):
+        _ = catalog.repair(family, alice.id, id="c1")
+    repair = catalog.repair(family, alice.id, vignette=edited)
+    rebound = resolve(store.get, repair.cases[ids["case"]], CaseInput)
+    assert (rebound.case, rebound.vignette) == (case.case, edited)
+    assert catalog.head(expected.thread).digest == expectation
+    assert repair.edits == ()
+    assert [
+        (b.path, b.digest, b.binding)
+        for b in catalog.behind(expected.thread)
+        if b.binding is not None
+    ] == [("/case", ids["case"], repair.binding)]
+
+    with (
+        pytest.raises(errors.RaiseException, match="keep the id or the vignette"),
+        conn.transaction(),
+    ):
+        _ = conn.execute(
+            """
+                INSERT INTO catalog.binding (family, source, source_id, vignette, by)
+                VALUES (%s, %s, 'elsewhere', %s::jsonb, %s)
+                """,
+            (family, source, '{"hex": "' + "0" * 64 + '"}', alice.id),
+        )
+
+
 @pytest.mark.parametrize(
     "entry",
     [
         {"field": "name"},
         {"field": "name", "value": ""},
         {"field": "name", "value": "x", "present": False},
+        {"field": "name", "value": None, "present": True},
         {"field": "owner", "value": "alice"},
         {"field": "owner", "person": 1, "present": False},
         {"field": "collaborator"},
         {"field": "tag", "value": "x", "person": 1},
         {"field": "deleted", "value": "yes"},
         {"field": "colour", "value": "red"},
+        {"field": "language", "value": "Swedish"},
+        {"field": "language", "value": "sv_SE"},
+        {"field": "language", "value": ""},
+        {"field": "language", "value": "sv", "present": False},
     ],
 )
 def test_entry_shapes(entry: dict[str, Any]) -> None:
     with pytest.raises(ValidationError):
         _ = Entry.model_validate(entry)
+
+
+def test_cases_have_a_language(conn: Connection) -> None:
+    catalog, _, _, ids, alice = stored_world(conn)
+    family = Subject(family=catalog.adopt(ids["case"], alice.id))
+    assert catalog.about(family).language is None
+    for language in ("en", "sv", "pt-BR"):
+        catalog.note(family, Entry(field=EntryField.LANGUAGE, value=language), alice.id)
+    assert catalog.about(family).language == "pt-BR"
+    with pytest.raises(errors.CheckViolation), conn.transaction():
+        _ = conn.execute(
+            """
+            INSERT INTO catalog.entry (family, field, value, by)
+            VALUES (%s, 'language', 'Swedish', %s)
+            """,
+            (family.family, alice.id),
+        )
+
+
+def test_languages_come_from_labels(conn: Connection) -> None:
+    catalog, store, reg, ids, alice = stored_world(conn)
+    base = generation_recipe(reg)
+    plan = compiled_recipe(store, reg, base)
+
+    def label(digest: str, language: str) -> int:
+        thread = catalog.create(digest, alice.id).thread
+        catalog.note(
+            Subject(thread=thread),
+            Entry(field=EntryField.LANGUAGE, value=language),
+            alice.id,
+        )
+        return thread
+
+    assert set(texts(base, reg.get)) == {"instructions", "prompt", "output"}
+    assert catalog.language_of(plan.skeleton) is None
+    assert base.instructions is not None
+    _ = label(base.instructions, "en")
+    _ = label(base.prompt, "en")
+    assert catalog.language_of(plan.skeleton) is None
+    _ = label(base.output, "en")
+    assert catalog.language_of(plan.skeleton) == "en"
+    assert catalog.language_of(ids["trial"]) == "en"
+    conflicting = label(base.output, "sv")
+    assert catalog.language_of(base.output) is None
+    assert catalog.language_of(plan.skeleton) is None
+    catalog.note(Subject(thread=conflicting), Entry(field=EntryField.DELETED), alice.id)
+    assert catalog.language_of(plan.skeleton) == "en"
+
+    needed = [t for part in texts(base, reg.get).values() for t in part]
+    swedish = reg.add(Translations(entries={t: f"[sv] {t}" for t in needed}))
+    translated = compiled_recipe(
+        store, reg, base.model_copy(update={"translations": swedish})
+    )
+    assert catalog.language_of(translated.skeleton) is None
+    _ = label(swedish, "sv")
+    assert catalog.language_of(translated.skeleton) == "sv"
+
+    hand_written = resolve(reg.get, ids["judge"], Judge).skeleton
+    assert catalog.language_of(hand_written) is None
+    _ = label(hand_written, "en")
+    assert catalog.language_of(hand_written) == "en"
+
+    scoring = resolve(reg.get, ids["scoring"], Scoring)
+    assert catalog.language_of(ids["case"]) is None
+    family = catalog.adopt(ids["case"], alice.id)
+    catalog.note(
+        Subject(family=family), Entry(field=EntryField.LANGUAGE, value="sv"), alice.id
+    )
+    assert catalog.language_of(ids["case"]) == "sv"
+    assert catalog.language_of(scoring.expectations[0]) == "sv"
+    findings = lint(reg, [ids["trial"]], languages=catalog.language_of)
+    assert [(f.code, f.message) for f in findings] == [
+        ("language.mixed", "the request is en, but 1 of 1 cases is sv")
+    ]
 
 
 def test_subject_is_one_thing() -> None:

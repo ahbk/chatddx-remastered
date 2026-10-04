@@ -78,6 +78,10 @@ behind. A fork doesn't make anything behind, since it doesn't contain the digest
 Not implemented: storing what caused an edit (option B3). It can be derived by diffing consecutive edits' references,
 and a nullable `implied_by` column can be added later.
 
+Implemented later, for variations (G9 in `agents/wip-sample-data.md`): a nullable `catalog.edit.based_on`. It names
+the origin edit a fork was re-applied onto, so `Catalog.variation` and `Catalog.proposal` compare a fork with the
+right base. It's narrower than `implied_by`: it only says what a fork is based on, not why an edit was made.
+
 ### 5. What names and labels attach to
 Implemented (was a take):
 - **Names, tags, descriptions, owner, collaborators, delete flags** are entries in one log, `catalog.entry`, on a
@@ -129,10 +133,9 @@ the binding log allows them, because each repair keeps one half of the binding a
 - Detection: the import script's listing of a source (id → fingerprint) compared with current bindings, or the
   case-drift check (`docs/factors.md`, "Misc", not implemented).
 
-Not implemented, waiting on the repair helpers:
-- appending bindings (no API yet) and the "share the id or the fingerprint" trigger;
-- `behind` doesn't report a case whose binding isn't current. That can only happen after a repair, and matters for
-  cases without appendices, which `behind` can't otherwise flag.
+Implemented later (G13 in `agents/wip-sample-data.md`): `Catalog.survey` for detection, `Catalog.repair`, the
+"keep the id or the vignette" trigger (`0018-t2-catalog-bindings.sql`), and `behind` reporting cases whose family
+has a newer binding (`Behind.binding`).
 
 ## Implemented
 - `src/chatddx/core/catalog.py`: `THREAD_KINDS`, `EntryField`, `Entry` (shape rules), `Subject`, `About.of`,
@@ -156,7 +159,10 @@ Everywhere, or only pickers, while runs that used it stay visible. A portal deci
 `behind` give it what it needs.
 
 ### 2. Known gaps
-- SQL allows a thread without edits; `Catalog.create` writes both in one transaction.
+- Names are optional and unnamed threads are shown by `Catalog.title` (G17 in `agents/wip-sample-data.md`). A
+  title is rebuilt from mutable names, and costs a query per reference it visits.
+- SQL allows a thread without edits; `Catalog.create` writes both in one transaction. A deferred constraint
+  trigger, as `0003` uses for reference rows, could close this at tier 2.
 - A skeleton edit may omit its compilation even when one exists; nothing can require it.
 - `about()` of a subject with no entries, or no such subject, is an empty `About`.
 - Two concurrent `adopt` calls for the same vignette can create two families; nothing makes current bindings unique.

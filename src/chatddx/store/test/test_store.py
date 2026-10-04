@@ -1,13 +1,15 @@
+import json
 from uuid import uuid4
 
 import pytest
 from psycopg import errors
 from psycopg.pq import TransactionStatus
 
-from chatddx.factors.base import StructuralError
+from chatddx.factors.base import StructuralError, resolve
 from chatddx.factors.bundle import Registry
+from chatddx.factors.cases import CaseInput
 from chatddx.factors.engine import LocalEngine
-from chatddx.factors.request import Recipe
+from chatddx.factors.request import Recipe, Skeleton
 from chatddx.factors.test.sample import NOW, RIG, fp, world
 from chatddx.factors.trial import Trial
 from chatddx.ledger.ledger import (
@@ -55,6 +57,7 @@ def test_migrations_apply_up_to_a_tier(empty: Connection) -> None:
         "0006-t0-identity-auth",
         "0009-t0-catalog",
         "0012-t0-catalog-families",
+        "0015-t0-catalog-based-on",
     ]
     assert empty.info.transaction_status == TransactionStatus.IDLE
     assert migrate(empty, tier=0) == []
@@ -74,6 +77,12 @@ def test_migrations_apply_up_to_a_tier(empty: Connection) -> None:
         "0011-t2-catalog-checks",
         "0013-t2-catalog-families",
         "0014-t2-catalog-kinds",
+        "0016-t2-catalog-based-on",
+        "0017-t2-catalog-language",
+        "0018-t2-catalog-bindings",
+        "0019-t2-catalog-name-removal",
+        "0020-t2-catalog-translations",
+        "0021-t2-catalog-tools",
     ]
     with pytest.raises(errors.RaiseException, match="insert-only"):
         _ = empty.execute("TRUNCATE factor.component CASCADE")
@@ -85,6 +94,10 @@ def test_components_roundtrip(conn: Connection) -> None:
     loaded = store.load(roots)
     assert loaded.bundle(roots, RIG) == reg.bundle(roots, RIG)
     assert store.get(ids["trial"]) == reg.get(ids["trial"])
+    skeleton = resolve(reg.get, ids["trial"], Trial).skeleton
+    stored = resolve(store.get, skeleton, Skeleton)
+    authored = resolve(reg.get, skeleton, Skeleton)
+    assert json.dumps(stored.output_schema) == json.dumps(authored.output_schema)
     assert store.add(reg, [ids["trial"]])
     missing = "sha256:" + "f" * 64
     with pytest.raises(StructuralError, match="not in the store"):
@@ -144,7 +157,7 @@ def test_run_and_score_roundtrip(conn: Connection) -> None:
         RunItem(
             run=run_id,
             key=ItemKey(case=ids["case"], replicate=r),
-            vignette=fp("v"),
+            vignette=resolve(reg.get, ids["case"], CaseInput).vignette,
             call=call(served),
         )
         for r in range(2)
