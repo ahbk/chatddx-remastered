@@ -154,17 +154,30 @@ def test_init_data_command(
     cases.mkdir()
     for id in CASES:
         _ = (cases / f"{id}.txt").write_text(f"The vignette of {id}.")
-    inventory = tmp_path / "inventory.toml"
-    _ = inventory.write_text('[source.sample]\npath = "cases"\n')
+    world = tmp_path / "world.toml"
+    _ = world.write_text('[source.sample]\npath = "cases"\n')
     with pytest.raises(SystemExit, match="no person with login 'alice'"):
-        main(["init-data", "alice", "--inventory", str(inventory)])
+        main(["init-data", "alice", "--world", str(world)])
     main(["person", "add", "alice", "Alice"])
     _ = capsys.readouterr()
-    main(["init-data", "alice", "--inventory", str(inventory), "--giftbag"])
+    main(["init-data", "alice", "--world", str(world), "--giftbag"])
     out = capsys.readouterr().out.splitlines()
-    assert "[archive chunk.prompt] case: created" in " ".join(out[:1])
+    assert out[0].startswith("[archive chunk.prompt] case: created")
     assert any(line.startswith("[giftbag skeleton] plan (") for line in out)
     with connect(db) as conn:
         assert conn.execute("SELECT count(*) FROM catalog.family").fetchone() == (
             len(CASES),
         )
+
+    main(["init-data", "alice", "--vignettes", str(cases)])
+    out = capsys.readouterr().out.splitlines()
+    assert {
+        line.split(": ")[1].split(" ")[0] for line in out if line.startswith("[archive")
+    } == {"validated"}
+    with pytest.raises(SystemExit, match="a directory of <id>.txt files"):
+        main(["init-data", "alice", "--vignettes", str(SAMPLE / "cases.toml")])
+    with pytest.raises(SystemExit, match="none of the sample's 99 cases"):
+        main(["init-data", "alice", "--vignettes", str(SAMPLE)])
+    for neither_or_both in ([], ["--world", str(world), "--vignettes", str(cases)]):
+        with pytest.raises(SystemExit):
+            main(["init-data", "alice", *neither_or_both])

@@ -179,8 +179,8 @@ tier-2 triggers).
 ## Proposed amendments
 
 ### init-data
-- **Command**, append: "`chatddx init-data USER --inventory PATH [--source NAME] [--giftbag] [--sample DIR]
-  [--facts PATH …]` connects as `DB_USER` and seeds the sample data in one transaction (`docs/chatddx.md`,
+- **Command**, append: "`chatddx init-data USER (--vignettes DIR | --world FILE) [--source NAME] [--giftbag]
+  [--data DIR] [--facts PATH …]` connects as `DB_USER` and seeds the sample data in one transaction (`docs/chatddx.md`,
   "Sample data"). It prints one line per record: created, validated, updated, skipped, missing, needs repair,
   forked or kept."
 - **Store API**, `Catalog`: add `find(kind, name, owner=)`, `forks(thread)`, `expectations_of(case)`.

@@ -650,7 +650,12 @@ tags = ["ddx"]
 - One scorer per output shape (`plan`, `diagnoses`, `free-text`, `raw`), with the old view names as labels.
 
 ### The command
-- **Done**: `chatddx init-data USER --inventory PATH [--giftbag]`.
+- **Done**: `chatddx init-data USER (--vignettes DIR | --world FILE) [--giftbag] [--data DIR]`.
+  - Flags renamed after first use (user's call):
+    - the old `--inventory` (what to seed) is `--data`;
+    - the World inventory is `--world`, so "inventory" isn't read in its old sense;
+    - `--vignettes DIR` skips the World file for a plain directory.
+    A path holding none of the sample's cases is refused up front, with a hint.
   - Decided:
     - the sample data lives in the repo (`src/chatddx/data/sample/`), with the vignettes named by the World
       inventory;

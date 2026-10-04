@@ -266,10 +266,16 @@ See `docs/findings.md` for a list of all findings and what they mean.
   - `cases.toml`: each case's tags, language and targets;
   - `schemas/`: the output schemas and the hand-written targets schema.
 
-  The vignettes aren't in it: they're a fake-sensitive source the World inventory names.
+  The vignettes aren't in it: they're a fake-sensitive source, located by a World inventory or given as a
+  directory.
 
-  `chatddx init-data USER --inventory PATH [--giftbag]` seeds it for the `archive` person, created if missing, and
-  shares it with USER, who must exist (`chatddx person add`).
+  `chatddx init-data USER (--vignettes DIR | --world FILE) [--giftbag] [--data DIR]` seeds it for the `archive`
+  person, created if missing, and shares it with USER, who must exist (`chatddx person add`).
+  - **Inputs:** `--data` is what gets seeded (the old command's `--inventory`), the package's sample data by
+    default. The vignettes come from `--vignettes`, a directory of `<id>.txt` files such as the old checkout's
+    `src/chatddx/data/cases`, or from `--world`, a World inventory whose `[source.<name>]` table locates them.
+    `--source` names the source (`sample`), which the cases are keyed by. A path that holds none of the sample's
+    cases is refused before anything is written.
   - **Chunks and recipes:** each record becomes a thread named after it and owned by the archive. Recipes are
     compiled, and their compilations recorded. A model-dependent chunk (`from_facts`, such as `recommended`
     sampling) is written from each model's facts, so the recipes using it come once per model, named
