@@ -92,6 +92,8 @@ migrations:
 - `0016-t2-catalog-based-on.sql`
 - `0017-t2-catalog-language.sql`
 - `0018-t2-catalog-bindings.sql`
+- `0019-t2-catalog-name-removal.sql`
+- `0020-t2-catalog-translations.sql`
 
 Endowes:
 - CHECKs that digests match canonical text, that `doc` and every key column match
@@ -111,6 +113,10 @@ Endowes:
 - `language` to the entry fields
 - `0017` replaces `0011`'s entry shape check with the named `entry_shape_check`, which checks language tags against the same pattern
 - a trigger that refuses a binding that keeps neither the previous binding's (source, id) nor its vignette.
+- `0019` lets a `name` entry be removed (no value, `present` false), and rules out NULL
+  values for names, tags and languages, which `0017`'s shape check let through because a check that is NULL
+  passes.
+- `0020` adds `chunk.translations` to the thread kinds.
 
 ## Roles and connections
 Settings: `chatddx.core.settings.database(admin=False)`, from `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_ADMIN`
@@ -148,8 +154,8 @@ migrations up to the tier (default 2) and prints each one; `--dry-run` only list
 - `People` (`src/chatddx/store/people.py`): `add`, `get`, `find`, `update`, `set_password`,
   `authenticate`, `open_session`, `session`, `close_session`, `purge_sessions`.
 - `Catalog` (`src/chatddx/store/catalog.py`): `create`, `edit`, `thread`, `history`, `head`,
-  `heads`, `containing`, `behind`, `note`, `about`, `label`, `labels`, `recipe`, `variation`, `proposal`.
-  `survey` and `repair`.
+  `heads`, `containing`, `behind`, `note`, `about`, `label`, `labels`, `recipe`, `variation`, `proposal`,
+  `title`, `title_of`, `survey`, `repair` and `language_of`.
 - `Catalog.adopt`, `Catalog.family`, `Catalog.bindings`.
 
 ## Tests
@@ -169,15 +175,3 @@ tier-2 triggers).
   `Store.load`); a future ORM or view must not rebuild them from `doc`." (`src/chatddx/factors/base.py:46`)
 
 ## Proposed amendments
-
-### G17: name removal
-- **Migrations, tier 2**, add `0019-t2-catalog-name-removal.sql`.
-- **Endowes**, add: "`0019` lets a `name` entry be removed (no value, `present` false), and rules out NULL
-  values for names, tags and languages, which `0017`'s shape check let through because a check that is NULL
-  passes."
-- **Store API**, `Catalog`: add `title` and `title_of`, and `create`'s optional `name`.
-
-### G18: translations
-- **Migrations, tier 2**, add `0020-t2-catalog-translations.sql`.
-- **Endowes**, add: "`0020` adds `chunk.translations` to the thread kinds."
-- **Store API**, `Catalog`: add `language_of`.

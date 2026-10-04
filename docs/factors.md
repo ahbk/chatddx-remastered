@@ -21,7 +21,7 @@ Simply stated, if it doesn't affect output or scoring, it's not a factor, some e
 ## In depth
 In the code, A factor is immutable and identified by its digest. They reference eachother by this digest, forming a graph. Each reference is typed (`Annotated[Digest, RefTo(kind, …)]`). From these types, `Registry.check` derives the graph and checks that every reference exists and has an allowed kind. Rules that span components, such as "a trial must use a generation skeleton", are `cross_check` hooks run by the same check.
 
-The kinds are `model`, `engine.local`, `engine.remote`, the seven `chunk.*` kinds, `skeleton`, `appendix`, `case`, `trial`, `expectation_schema`, `expectation`, `scorer`, `judge`, `scoring` and `canary_set`.
+The kinds are `model`, `engine.local`, `engine.remote`, the eight `chunk.*` kinds, `skeleton`, `appendix`, `case`, `trial`, `expectation_schema`, `expectation`, `scorer`, `judge`, `scoring` and `canary_set`.
 
 The suggested storage is one table for all kinds, `factor.component` (`digest`, `kind`, `v`, `canonical`, `doc`), plus `factor.component_ref` (`src`, `path`, `dst`, `kinds`), which holds one row per typed reference so that every reference gets a foreign key, including references inside lists and references that allow several kinds.
 
@@ -135,11 +135,34 @@ A reasoning chunk (kind `chunk.reasoning`) holds the reasoning effort (`none` to
 
 A passthrough chunk (kind `chunk.passthrough`) holds engine-specific body keys. It may not set runtime keys or output keys, and compilation fails if it sets a key another chunk also produces.
 
+#### Translations
+- principal author: Researchers (translators)
+- defined in: `request.py:Translations`
+
+Translations (kind `chunk.translations`) map source texts to translations, the way gettext does: each entry is
+a text exactly as a chunk brings it, whitespace included, and its translation. A recipe may reference one
+(`Recipe.translations`), and compilation then passes every text the recipe brings through it: the instructions,
+the few-shot messages, the prompt's literal segments, the output's guidance, the `before` and `after` of
+inserts, a tool contract's description, the appendix layout, and the `title` and `description` strings of the
+output schema. Property names and `enum`, `const`, `default` and `examples` are never translated, so the
+answer's structure and its scoring don't change. Whitespace-only texts pass through. A text without a
+translation fails the compilation, which lists every missing text: nothing is guessed and nothing mixes.
+`texts(recipe, get)` lists, per part, what a translation needs.
+
+Translations carry no language. A request's language is implicit in its text, and no language tag reaches the
+model; the labels are catalog entries (`docs/catalog.md`). The skeleton is literal translated text, and its
+compilation records the translations it read.
+
 #### Recipe
 - principal author: Researchers
 - defined in: `request.py:Recipe`
 
-A recipe is not a component. It holds a purpose, an appendix layout, required references to a prompt, an output and a sampling chunk, and optional references to instructions, few-shot, reasoning and passthrough chunks. `compile_request` turns a recipe into a skeleton and fails on missing or wrongly typed chunks. The recipe is kept only in the `Compilation` record, next to the compiler version (see "Compilation"). Because a trial references the skeleton rather than the recipe, the compiler's code is not a factor.
+A recipe is not a component. It holds a purpose, an appendix layout, required references to a prompt,
+an output and a sampling chunk, and optional references to instructions, few-shot, reasoning, passthrough and translations chunks.
+
+`compile_request` turns a recipe into a skeleton and fails on missing or wrongly typed chunks.
+The recipe is kept only in the `Compilation` record, next to the compiler version (see "Compilation").
+Because a trial references the skeleton rather than the recipe, the compiler's code is not a factor.
 
 #### Skeleton
 - principal author: none; normally produced by the compiler (`compile_request`)
@@ -244,6 +267,11 @@ Engines that aren't vLLM 0.24 (remote engines and other versions) get `schema.re
 `tool` schema has `$ref`: the engine isn't known to resolve it, and `inline_refs@1` removes it. Flags are read as
 vLLM reads them, with `_` and `-` alike in their names.
 
+`lint(…, languages=)` takes a function from a digest to its language, normally `Catalog.language_of`.
+With it, a trial gets `language.mixed` when some of its cases are in another language than its request,
+and `language.unknown` (info) when the request's language, or some cases', is unknown.
+Judges aren't checked.
+
 See the `docs/findings.md:Linting`.
 
 ## Possible design issues
@@ -278,30 +306,3 @@ the seed isn't sent, but the trial's seeds still count toward its hash, so two o
 - `Hardware` has no GPU count, so tensor-parallel engines can't be told apart by hardware (the old code had `gpu_count`).
 
 ## Proposed amendments
-
-### G18: translations, and one language per trial
-- **In depth**, "the seven `chunk.*` kinds" → "the eight `chunk.*` kinds".
-- **Request**, new chunk section after Passthrough:
-  "#### Translations
-  - principal author: Researchers (translators)
-  - defined in: `request.py:Translations`
-
-  Translations (kind `chunk.translations`) map source texts to translations, the way gettext does: each entry is
-  a text exactly as a chunk brings it, whitespace included, and its translation. A recipe may reference one
-  (`Recipe.translations`), and compilation then passes every text the recipe brings through it: the instructions,
-  the few-shot messages, the prompt's literal segments, the output's guidance, the `before` and `after` of
-  inserts, a tool contract's description, the appendix layout, and the `title` and `description` strings of the
-  output schema. Property names and `enum`, `const`, `default` and `examples` are never translated, so the
-  answer's structure and its scoring don't change. Whitespace-only texts pass through. A text without a
-  translation fails the compilation, which lists every missing text: nothing is guessed and nothing mixes.
-  `texts(recipe, get)` lists, per part, what a translation needs.
-
-  Translations carry no language. A request's language is implicit in its text, and no language tag reaches the
-  model; the labels are catalog entries (`docs/catalog.md`). The skeleton is literal translated text, and its
-  compilation records the translations it read."
-- **Recipe**, "optional references to instructions, few-shot, reasoning and passthrough chunks" → "optional
-  references to instructions, few-shot, reasoning, passthrough and translations chunks".
-- **Linting**, new paragraph: "`lint(…, languages=)` takes a function from a digest to its language, normally
-  `Catalog.language_of`. With it, a trial gets `language.mixed` when some of its cases are in another language
-  than its request, and `language.unknown` (info) when the request's language, or some cases', is unknown.
-  Judges aren't checked." (`src/chatddx/factors/lint.py:_languages`)

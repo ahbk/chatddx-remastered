@@ -11,11 +11,11 @@ and a sequence of edits, each pointing at one digest of that kind; its head is t
 `Catalog.behind` looks through cases, which have no threads: a trial's or expectation's
 case is behind when one of its appendices has a newer head (`src/chatddx/store/catalog.py:Catalog.behind`).
 
-every kind has threads except `case`, including the ones ops and developers author
+Every kind has threads except `case`, including the ones ops and developers author
 (models, engines, expectation schemas, canary sets), so threads are where names attach for everything but cases
 (`src/chatddx/core/catalog.py:THREAD_KINDS`, `src/chatddx/store/migrations/0014-t2-catalog-kinds.sql`).
 
-## Recipies
+## Recipes
 Recipes are skeleton threads. A skeleton edit names the compilation that produced its skeleton, which holds the
 recipe (`catalog.edit.compilation`); a hand-written skeleton's edits name none.
 
@@ -24,10 +24,11 @@ Threads move only when someone saves an edit; nothing propagates. The portal pro
 `Catalog.behind(thread)`: the head's references, the recipe's included, whose own thread has a newer head
 (`src/chatddx/store/catalog.py:Catalog.behind`).
 
-## A note on the "evolution of configurations" workflow"
-Configurations and variations are a portal workflow, not a catalog object. A configuration is a named set of pinned
-factors; a variation replaces one or more of them. Any digest can be run without a thread, and a variation worth
-keeping becomes an edit or a fork.
+## A note on the "Evolution of configurations" workflow
+Configurations and variations are a portal workflow, not a catalog object. See `docs/chatddx.md:Evolution of configurations`.
+
+Configurations are organized by their lineage (forks and `based_on`), the recipe parts they use,
+their entries (tags, owner, collaborators, description) and their runs, not by their names, which are optional.
 
 A variation kept as a fork remembers what it varies:
   - `Catalog.recipe(thread)` reads a skeleton thread's recipe from its head's compilation.
@@ -42,6 +43,26 @@ A variation kept as a fork remembers what it varies:
 Names, descriptions, tags, a language, the owner, collaborators and the deleted flag are entries on a thread, a family, a
 run or a score (`catalog.entry`). The latest entry wins per field, per tag and per collaborator, so deleting
 is reversible (`src/chatddx/core/catalog.py:Entry`, `About.of`). A run's owner is who started it.
+
+A name is only for people: nothing looks a thread up by it, so none is required, and names needn't be unique.
+`Catalog.create(…, name=)` writes the thread, its first edit and its name in one transaction.
+A name is removed by a `name` entry without a value, and the title takes over (`src/chatddx/core/catalog.py:Entry`).
+
+## Titles
+Anything unnamed is shown by a title, built when asked and never stored
+(`src/chatddx/store/catalog.py:Catalog.title`, `Catalog.title_of`, `src/chatddx/core/titles.py`).
+
+`title(thread)` is the thread's name; else, for a fork, its base's title and what it varies (`plan, output:
+management-plan-shown`), or `a fork of …` when nothing varies; else what its head holds. `title_of(digest)`
+works for any digest, threaded or not, so a run of an unsaved variation can be shown too. It prefers a live
+thread whose head the digest is, named first; then a named thread that held it earlier (`plan (earlier)`); then
+deleted threads the same way; then what it holds.
+
+A case is shown by its family's name. What a component holds is described per kind: a configuration by its
+recipe's parts (`ddx · case · management-plan · recommended · off`), a chunk by its values or the opening words
+of its text, an engine by its model and runtime, a trial by its skeleton, engine and counts, and anything else
+by its kind and a short digest. Titles change when the names they're built from change, so an export for
+publication should freeze the titles it uses.
 
 ## Labels
 Labels for a scorer's views and resources key on (scorer digest, part, position) (`catalog.label`); the portal
@@ -75,53 +96,20 @@ The following helpers assist re-mapping changes in vignette sources:
   so cases without appendices are flagged too.
 - Consecutive bindings must keep the id or the vignette (tier 2).
 
-A case's language is a `language` entry on its family. It holds a language tag such as `sv` or `pt-BR`; it can
-be replaced but not removed, and the latest one wins (`About.language`). It describes the vignette and never
-reaches a request.
+Languages are `language` entries: on a family, the language its vignette is written in; on a chunk thread, the
+language its texts are written in; on a translations thread, the language it translates into. Each holds a
+language tag such as `sv` or `pt-BR`; it can be replaced but not removed, and the latest one wins
+(`About.language`). No tag ever reaches a request: what's sent is in a language, it isn't told one.
+
+`Catalog.language_of(digest)` reads any component's language from these labels: a case's from its family, an
+expectation's from its case, a trial's from its skeleton, and a compiled skeleton's from its recipe: the
+translations' label when it has translations, else the label its text-bearing chunks (instructions, few-shot,
+prompt, output) agree on. A hand-written skeleton, a chunk or a translations chunk takes the label of the live
+threads that hold it, when they agree. Unlabelled or disagreeing gives none. Lints use it to check that a trial
+is in one language (`docs/factors.md`, "Linting").
+
+Vignettes are never translated: a case runs in the language it was written in, so the request follows the case
+(a Swedish case runs under a Swedish-translated configuration), and comparing languages means comparing case
+sets."
 
 ## Proposed amendments
-
-### G17: names are optional, titles fill in
-- **A note on the "evolution of configurations" workflow**, replace "A configuration is a named set of pinned
-  factors; a variation replaces one or more of them." with "A configuration is a set of pinned factors kept on a
-  skeleton thread; a variation replaces one or more of them. Configurations are organized by their lineage (forks
-  and `based_on`), the recipe parts they use, their entries (tags, owner, collaborators, description) and their
-  runs, not by their names, which are optional."
-- **Names** (the paragraph starting "Names, descriptions, tags…"), append: "A name is only for people: nothing
-  looks a thread up by it, so none is required, and names needn't be unique. `Catalog.create(…, name=)` writes the
-  thread, its first edit and its name in one transaction. A name is removed by a `name` entry without a value, and
-  the title takes over (`src/chatddx/core/catalog.py:Entry`)."
-- New section **Titles**: "Anything unnamed is shown by a title, built when asked and never stored
-  (`src/chatddx/store/catalog.py:Catalog.title`, `Catalog.title_of`, `src/chatddx/core/titles.py`).
-  `title(thread)` is the thread's name; else, for a fork, its base's title and what it varies (`plan, output:
-  management-plan-shown`), or `a fork of …` when nothing varies; else what its head holds. `title_of(digest)`
-  works for any digest, threaded or not, so a run of an unsaved variation can be shown too. It prefers a live
-  thread whose head the digest is, named first; then a named thread that held it earlier (`plan (earlier)`); then
-  deleted threads the same way; then what it holds. A case is shown by its family's name. What a component holds
-  is described per kind: a configuration by its recipe's parts (`ddx · case · management-plan · recommended ·
-  off`), a chunk by its values or the opening words of its text, an engine by its model and runtime, a trial by
-  its skeleton, engine and counts, and anything else by its kind and a short digest. Titles change when the names
-  they're built from change, so an export for publication should freeze the titles it uses."
-- Cleanup noticed while reading:
-  - "## Recipies" → "## Recipes".
-  - "every kind has threads except `case`…" starts with a lowercase letter.
-  - The heading `## A note on the "evolution of configurations" workflow"` and the section's last line, after
-    "on request.", each end with a stray quote mark.
-
-### G18: languages are labels
-- **Cases**, replace the paragraph "A case's language is a `language` entry on its family…" with:
-  "Languages are `language` entries: on a family, the language its vignette is written in; on a chunk thread, the
-  language its texts are written in; on a translations thread, the language it translates into. Each holds a
-  language tag such as `sv` or `pt-BR`; it can be replaced but not removed, and the latest one wins
-  (`About.language`). No tag ever reaches a request: what's sent is in a language, it isn't told one.
-
-  `Catalog.language_of(digest)` reads any component's language from these labels: a case's from its family, an
-  expectation's from its case, a trial's from its skeleton, and a compiled skeleton's from its recipe: the
-  translations' label when it has translations, else the label its text-bearing chunks (instructions, few-shot,
-  prompt, output) agree on. A hand-written skeleton, a chunk or a translations chunk takes the label of the live
-  threads that hold it, when they agree. Unlabelled or disagreeing gives none. Lints use it to check that a trial
-  is in one language (`docs/factors.md`, "Linting").
-
-  Vignettes are never translated: a case runs in the language it was written in, so the request follows the case
-  (a Swedish case runs under a Swedish-translated configuration), and comparing languages means comparing case
-  sets."

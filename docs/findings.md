@@ -75,11 +75,11 @@ Nothing is reported when it turns reasoning off.
 
 - `facts.output_note`:
 
-## Proposed amendments
+- `language.mixed`:
+some of a trial's cases are in another language than its request (`lint`, with `languages=`).
 
-### G18: language findings
-Under **Factors**:
-- `language.mixed`: some of a trial's cases are in another language than its request (`lint`, with
-  `languages=`).
-- `language.unknown` (info): the request's language, or some of a trial's cases', is unknown, because a label
-  is missing or the labels disagree (`lint`, with `languages=`).
+- `language.unknown` (info):
+the request's language, or some of a trial's cases', is unknown, because a label is missing or
+the labels disagree (`lint`, with `languages=`).
+
+## Proposed amendments
