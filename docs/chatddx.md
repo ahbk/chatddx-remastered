@@ -256,3 +256,12 @@ See `docs/findings.md` for a list of all findings and what they mean.
 ## Proposed amendments
 
 ### G14: expectation lints
+
+### G17: configurations needn't be named
+- **Intended evolution of configurations**, replace "A configuration is a named set of pinned factors, and a
+  variation is a configuration where one or more factors are replaced." with "A configuration is a set of pinned
+  factors kept on a skeleton thread, and a variation replaces one or more of them. A variation being tried is just
+  a digest; saved, it's a fork, which is a configuration of its own. Names are optional: an unnamed configuration
+  is shown by its title, e.g. its base and what it varies (`docs/catalog.md`, "Titles")."
+- Same section, cleanup: the line ending in `catalog.edit.based_on` has a lone `"` before its full stop, and "The researches"
+  should be "The researchers".

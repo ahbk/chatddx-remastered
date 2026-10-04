@@ -159,9 +159,10 @@ Everywhere, or only pickers, while runs that used it stay visible. A portal deci
 `behind` give it what it needs.
 
 ### 2. Known gaps
-- Configurations are named (`docs/catalog.md`), but `Catalog.create` takes no name, so configuration threads and
-  saved variations can stay unnamed: G17 in `agents/wip-sample-data.md`.
-- SQL allows a thread without edits; `Catalog.create` writes both in one transaction.
+- Names are optional and unnamed threads are shown by `Catalog.title` (G17 in `agents/wip-sample-data.md`). A
+  title is rebuilt from mutable names, and costs a query per reference it visits.
+- SQL allows a thread without edits; `Catalog.create` writes both in one transaction. A deferred constraint
+  trigger, as `0003` uses for reference rows, could close this at tier 2.
 - A skeleton edit may omit its compilation even when one exists; nothing can require it.
 - `about()` of a subject with no entries, or no such subject, is an empty `About`.
 - Two concurrent `adopt` calls for the same vignette can create two families; nothing makes current bindings unique.

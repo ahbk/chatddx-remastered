@@ -284,6 +284,110 @@ def test_entries(conn: Connection) -> None:
         )
 
 
+def test_names_are_optional_and_removable(conn: Connection) -> None:
+    catalog, _, _, ids, alice = stored_world(conn)
+    named = catalog.create(ids["trial"], alice.id, name="baseline")
+    subject = Subject(thread=named.thread)
+    assert catalog.about(subject).name == "baseline"
+    assert (
+        catalog.about(Subject(thread=catalog.create(ids["engine"], alice.id).thread))
+        == About()
+    )
+    with pytest.raises(ValidationError):
+        _ = catalog.create(ids["trial"], alice.id, name="")
+    catalog.note(subject, Entry(field=EntryField.NAME, present=False), alice.id)
+    assert catalog.about(subject).name is None
+    catalog.note(subject, Entry(field=EntryField.NAME, value="again"), alice.id)
+    assert catalog.about(subject).name == "again"
+    for field, value, present in (
+        ("name", "x", False),
+        ("name", None, True),
+        ("tag", None, True),
+        ("language", None, True),
+    ):
+        with pytest.raises(errors.CheckViolation), conn.transaction():
+            _ = conn.execute(
+                """
+                INSERT INTO catalog.entry (thread, field, value, present, by)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (named.thread, field, value, present, alice.id),
+            )
+
+
+def test_titles_fall_back_to_what_a_thread_holds(conn: Connection) -> None:
+    catalog, store, reg, ids, alice = stored_world(conn)
+    base = generation_recipe(reg)
+    plan = compiled_recipe(store, reg, base)
+    origin = catalog.create(plan.skeleton, alice.id, compilation=plan.digest)
+    unnamed = catalog.title(origin.thread)
+    assert unnamed.startswith('"You are an emergency physician." · ')
+    assert catalog.title_of(plan.skeleton) == unnamed
+
+    def name(thread: int, value: str) -> None:
+        catalog.note(
+            Subject(thread=thread), Entry(field=EntryField.NAME, value=value), alice.id
+        )
+
+    for part, value in (
+        (base.instructions, "ddx"),
+        (base.prompt, "case"),
+        (base.output, "management-plan"),
+        (base.sampling, "recommended"),
+        (base.reasoning, "off"),
+    ):
+        assert part is not None
+        name(catalog.create(part, alice.id).thread, value)
+    assert catalog.title(origin.thread) == (
+        "ddx · case · management-plan · recommended · off"
+    )
+    name(origin.thread, "plan")
+    assert catalog.title(origin.thread) == "plan"
+
+    shown = reg.add(Output(contract=NativeOutput(), json_schema={"title": "Plan"}))
+    plan_shown = compiled_recipe(store, reg, base.model_copy(update={"output": shown}))
+    fork = catalog.create(
+        plan_shown.skeleton,
+        alice.id,
+        compilation=plan_shown.digest,
+        forked_from=origin.id,
+    )
+    assert catalog.title(fork.thread) == "plan, output: native output: Plan"
+    name(catalog.create(shown, alice.id).thread, "management-plan-shown")
+    assert catalog.title(fork.thread) == "plan, output: management-plan-shown"
+    same = catalog.create(plan.skeleton, alice.id, forked_from=origin.id)
+    assert catalog.title(same.thread) == "a fork of plan"
+
+    greedy = reg.add(Sampling(temperature=0))
+    moved = compiled_recipe(store, reg, base.model_copy(update={"sampling": greedy}))
+    _ = catalog.edit(origin.thread, moved.skeleton, alice.id, compilation=moved.digest)
+    assert catalog.title_of(moved.skeleton) == "plan"
+    assert catalog.title_of(plan.skeleton) == "a fork of plan"
+    catalog.note(Subject(thread=same.thread), Entry(field=EntryField.DELETED), alice.id)
+    assert catalog.title_of(plan.skeleton) == "plan (earlier)"
+
+    trial = catalog.title_of(ids["trial"])
+    assert trial.endswith(" on google/gemma-3-12b-it on vllm 0.24.0, 1 case, 2 seeds")
+    assert catalog.title_of(ids["case"]) == "registry/c1 with 1 appendix"
+    family = catalog.adopt(ids["case"], alice.id)
+    catalog.note(
+        Subject(family=family),
+        Entry(field=EntryField.NAME, value="chest pain"),
+        alice.id,
+    )
+    assert catalog.title_of(ids["case"]) == "chest pain"
+    scoring = resolve(reg.get, ids["scoring"], Scoring)
+    expectation = catalog.create(scoring.expectations[0], alice.id)
+    assert catalog.title(expectation.thread) == "expectation for chest pain"
+
+    cool = reg.add(Sampling(temperature=0.5))
+    _ = store.add(reg, [cool])
+    cooled = catalog.create(cool, alice.id, name="cool")
+    _ = catalog.edit(cooled.thread, greedy, alice.id)
+    assert catalog.title_of(cool) == "cool (earlier)"
+    assert catalog.title_of(greedy) == "cool"
+
+
 def test_families(conn: Connection) -> None:
     catalog, store, reg, ids, alice = stored_world(conn)
     family = catalog.adopt(ids["case"], alice.id)
@@ -437,6 +541,7 @@ def test_changed_vignettes_are_repaired(conn: Connection) -> None:
         {"field": "name"},
         {"field": "name", "value": ""},
         {"field": "name", "value": "x", "present": False},
+        {"field": "name", "value": None, "present": True},
         {"field": "owner", "value": "alice"},
         {"field": "owner", "person": 1, "present": False},
         {"field": "collaborator"},

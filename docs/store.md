@@ -169,3 +169,10 @@ tier-2 triggers).
   `Store.load`); a future ORM or view must not rebuild them from `doc`." (`src/chatddx/factors/base.py:46`)
 
 ## Proposed amendments
+
+### G17: name removal
+- **Migrations, tier 2**, add `0019-t2-catalog-name-removal.sql`.
+- **Endowes**, add: "`0019` lets a `name` entry be removed (no value, `present` false), and rules out NULL
+  values for names, tags and languages, which `0017`'s shape check let through because a check that is NULL
+  passes."
+- **Store API**, `Catalog`: add `title` and `title_of`, and `create`'s optional `name`.

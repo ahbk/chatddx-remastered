@@ -420,6 +420,35 @@ tags = ["ddx"]
   - The database can't require a name entry, just as it can't require a thread's first edit (`docs/store.md`,
     "Known gaps"); Python would enforce it.
   - Also to decide: what an unsaved variation is called in the docs, if "variation" now implies a name.
+  - **Fixed** the other way round: names are optional everywhere, and an unnamed thing is shown by a title.
+    - Why: in the old code a branch *was* (owner, name) (`repo/queries.py:head_of`, `_head`), so committing a
+      closure had to auto-name every unbranched trail (`repo/names.py:closure_branch_name`). In remastered a
+      thread is its id and a name is a replaceable entry; nothing looks a name up. Requiring names would cost UX,
+      and an auto-namer would store a copy of facts the catalog already has.
+    - `Catalog.create(…, name=)` is optional, for the loader: thread, first edit and name in one transaction.
+    - A name can be removed: an `Entry(field=NAME, present=False)` without a value. Migration
+      `0019-t2-catalog-name-removal` mirrors it, and also rules out NULL names, tags and languages, which `0017`
+      let through (a CHECK that is NULL passes).
+    - `Catalog.title(thread)`: the name; else a fork's base title and what it varies (`plan, output:
+      management-plan-shown`, the old `plan-shown` spelled out), or `a fork of plan`; else what the head holds.
+    - `Catalog.title_of(digest)` works without a thread, so a run of an unsaved variation can be shown: a live
+      head (named first), then a named thread that held it earlier (`plan (earlier)`), then deleted threads, then
+      what it holds. A case is shown by its family's name.
+    - `core/titles.py:describe` per kind: a recipe by its parts (`ddx · case · management-plan · recommended ·
+      off` when the chunks are named), chunks by their values or opening words, engines by model and runtime,
+      trials by skeleton, engine and counts, else kind and a short digest. Pure, so the portal can reuse it.
+    - Uniqueness is moot: names are labels. The loader matches names within its own file.
+    - The docs' tension is resolved by wording: a variation being tried is a digest; saved, it's a fork.
+    - Still open:
+      - Titles are rebuilt from mutable names, so an export for publication should freeze them.
+      - "Every configuration using output X" (organizing by recipe parts) needs a reverse query not written yet.
+      - A `title_of` call issues a query per reference it visits; fine for single titles, not for long listings.
+      - The database still allows a thread without edits. A deferred constraint trigger, as `0003` uses for
+        reference rows, could close it at tier 2.
+    - Proposed amendments: `docs/catalog.md` (configurations note, names, new Titles section), `docs/chatddx.md`
+      (Intended evolution of configurations), `docs/store.md` (0019, Store API).
+    - Tests: `test_names_are_optional_and_removable`, `test_titles_fall_back_to_what_a_thread_holds`,
+      `src/chatddx/core/test/test_titles.py`.
 
 ### Language
 - **G18. One language per trial.** [maybe fix remastered] (follows G12)

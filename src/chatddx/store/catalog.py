@@ -18,6 +18,7 @@ from chatddx.core.catalog import (
     Thread,
     Variation,
 )
+from chatddx.core.titles import describe, describe_change, describe_recipe
 from chatddx.factors.base import (
     Component,
     Fingerprint,
@@ -28,7 +29,7 @@ from chatddx.factors.base import (
 )
 from chatddx.factors.bundle import Registry
 from chatddx.factors.cases import Appendix, CaseInput, SourceCase
-from chatddx.factors.request import Recipe
+from chatddx.factors.request import Recipe, Skeleton
 from chatddx.factors.scoring import Expectation, Scorer
 from chatddx.ledger.ledger import Compilation
 
@@ -93,7 +94,9 @@ class Catalog:
         *,
         compilation: str | None = None,
         forked_from: int | None = None,
+        name: str | None = None,
     ) -> Edit:
+        named = None if name is None else Entry(field=EntryField.NAME, value=name)
         with self._conn.transaction():
             row = self._conn.execute(
                 "SELECT kind FROM factor.component WHERE digest = %s", (digest,)
@@ -112,7 +115,10 @@ class Catalog:
                 (kind, forked_from, by),
             ).fetchone()
             assert row is not None
-            return self.edit(row[0], digest, by, compilation=compilation)
+            edit = self.edit(row[0], digest, by, compilation=compilation)
+            if named is not None:
+                self.note(Subject(thread=edit.thread), named, by)
+            return edit
 
     def edit(
         self,
@@ -260,6 +266,50 @@ class Catalog:
             else:
                 doc[path[1:]] = after
         return parse_component(canonical_bytes(doc))
+
+    def title(self, thread: int) -> str:
+        name = self.about(Subject(thread=thread)).name
+        if name is not None:
+            return name
+        variation = self.variation(thread)
+        if variation is not None:
+            base = self.title(variation.base.thread)
+            changes = [
+                describe_change(path, after, self.title_of)
+                for path, (_, after) in variation.varies.items()
+            ]
+            return ", ".join([base, *changes]) if changes else f"a fork of {base}"
+        head = self.head(thread)
+        return self._derive(head.digest, head.compilation)
+
+    def title_of(self, digest: str) -> str:
+        if self._kind(digest) == "case":
+            family = self.family(digest)
+            if family is not None and (name := self.about(Subject(family=family)).name):
+                return name
+            return self._derive(digest)
+        rows = self._conn.execute(
+            f"""
+            SELECT DISTINCT t.id, x.id = e.id, {_DELETED}
+            FROM catalog.edit x JOIN catalog.thread t ON t.id = x.thread {_HEAD}
+            WHERE x.digest = %s
+            ORDER BY 3, 2 DESC, 1
+            """,
+            (digest,),
+        ).fetchall()
+        for deleted in (False, True):
+            threads = [(t, head) for t, head, d in rows if d == deleted]
+            names = {t: self.about(Subject(thread=t)).name for t, _ in threads}
+            for t, head in threads:
+                if head and names[t] is not None:
+                    return str(names[t])
+            for t, head in threads:
+                if head:
+                    return self.title(t)
+            for t, _ in threads:
+                if names[t] is not None:
+                    return f"{names[t]} (earlier)"
+        return self._derive(digest)
 
     def adopt(self, case: str, by: int) -> int:
         with self._conn.transaction():
@@ -507,6 +557,22 @@ class Catalog:
         ).fetchone()
         assert row is not None
         return Compilation.parse(str(row[0])).recipe
+
+    def _derive(self, digest: str, compilation: str | None = None) -> str:
+        component = Store(self._conn).get(digest)
+        if isinstance(component, Skeleton):
+            row = self._conn.execute(
+                """
+                SELECT payload FROM factor.compilation
+                WHERE skeleton = %s AND (digest = %s OR %s::text IS NULL)
+                ORDER BY digest LIMIT 1
+                """,
+                (digest, compilation, compilation),
+            ).fetchone()
+            if row is not None:
+                recipe = Compilation.parse(str(row[0])).recipe
+                return describe_recipe(recipe, self.title_of)
+        return describe(component, self.title_of)
 
     def _shape(self, edit: Edit, by_recipe: bool) -> dict[str, JsonValue]:
         if by_recipe:

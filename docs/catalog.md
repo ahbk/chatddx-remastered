@@ -80,3 +80,30 @@ be replaced but not removed, and the latest one wins (`About.language`). It desc
 reaches a request.
 
 ## Proposed amendments
+
+### G17: names are optional, titles fill in
+- **A note on the "evolution of configurations" workflow**, replace "A configuration is a named set of pinned
+  factors; a variation replaces one or more of them." with "A configuration is a set of pinned factors kept on a
+  skeleton thread; a variation replaces one or more of them. Configurations are organized by their lineage (forks
+  and `based_on`), the recipe parts they use, their entries (tags, owner, collaborators, description) and their
+  runs, not by their names, which are optional."
+- **Names** (the paragraph starting "Names, descriptions, tags…"), append: "A name is only for people: nothing
+  looks a thread up by it, so none is required, and names needn't be unique. `Catalog.create(…, name=)` writes the
+  thread, its first edit and its name in one transaction. A name is removed by a `name` entry without a value, and
+  the title takes over (`src/chatddx/core/catalog.py:Entry`)."
+- New section **Titles**: "Anything unnamed is shown by a title, built when asked and never stored
+  (`src/chatddx/store/catalog.py:Catalog.title`, `Catalog.title_of`, `src/chatddx/core/titles.py`).
+  `title(thread)` is the thread's name; else, for a fork, its base's title and what it varies (`plan, output:
+  management-plan-shown`), or `a fork of …` when nothing varies; else what its head holds. `title_of(digest)`
+  works for any digest, threaded or not, so a run of an unsaved variation can be shown too. It prefers a live
+  thread whose head the digest is, named first; then a named thread that held it earlier (`plan (earlier)`); then
+  deleted threads the same way; then what it holds. A case is shown by its family's name. What a component holds
+  is described per kind: a configuration by its recipe's parts (`ddx · case · management-plan · recommended ·
+  off`), a chunk by its values or the opening words of its text, an engine by its model and runtime, a trial by
+  its skeleton, engine and counts, and anything else by its kind and a short digest. Titles change when the names
+  they're built from change, so an export for publication should freeze the titles it uses."
+- Cleanup noticed while reading:
+  - "## Recipies" → "## Recipes".
+  - "every kind has threads except `case`…" starts with a lowercase letter.
+  - The heading `## A note on the "evolution of configurations" workflow"` and the section's last line, after
+    "on request.", each end with a stray quote mark.

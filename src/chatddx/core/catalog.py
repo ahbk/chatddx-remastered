@@ -36,7 +36,7 @@ THREAD_KINDS = frozenset(
 )
 
 
-# src/chatddx/store/migrations/0017-t2-catalog-language.sql repeats these fields and the pattern.
+# src/chatddx/store/migrations/0019-t2-catalog-name-removal.sql repeats these fields and the pattern.
 LANGUAGE = re.compile(r"^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$")
 
 
@@ -145,14 +145,15 @@ class Entry(_Frozen):
 
     @model_validator(mode="after")
     def _shape(self) -> Self:
+        # A name is removed by an entry without a value, and the title takes over.
         text = self.field in (
-            EntryField.NAME,
             EntryField.DESCRIPTION,
             EntryField.TAG,
             EntryField.LANGUAGE,
-        )
+        ) or (self.field == EntryField.NAME and self.present)
         person = self.field in (EntryField.OWNER, EntryField.COLLABORATOR)
         removable = self.field in (
+            EntryField.NAME,
             EntryField.TAG,
             EntryField.COLLABORATOR,
             EntryField.DELETED,
@@ -161,7 +162,7 @@ class Entry(_Frozen):
             raise ValueError(f"wrong value or person for {self.field}")
         if not (self.present or removable):
             raise ValueError(f"{self.field} can't be removed, only replaced")
-        if self.field in (EntryField.NAME, EntryField.TAG) and not self.value:
+        if self.field in (EntryField.NAME, EntryField.TAG) and self.value == "":
             raise ValueError(f"{self.field} can't be empty")
         if self.field == EntryField.LANGUAGE and not LANGUAGE.match(self.value or ""):
             raise ValueError(
