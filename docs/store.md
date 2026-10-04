@@ -89,7 +89,8 @@ migrations:
 - `0011-t2-catalog-checks.sql`
 - `0013-t2-catalog-families.sql`
 - `0014-t2-catalog-kinds.sql`
-- `0016-t2-catalog-based-on.sql` (a trigger that keeps `based_on` in the origin thread, repeated in `Catalog.edit`).
+- `0016-t2-catalog-based-on.sql`
+- `0017-t2-catalog-language.sql`
 
 Endowes:
 - CHECKs that digests match canonical text, that `doc` and every key column match
@@ -105,6 +106,9 @@ Endowes:
   entry shapes, label positions, and insert-only triggers reusing `factor.refuse_change()`.
 - insert-only triggers for `catalog.family` and `catalog.binding`.
 - `0014-t2-catalog-kinds.sql`: replaces the thread-kind check so that every kind but `case` has threads.
+- a trigger that keeps `based_on` in the origin thread, repeated in `Catalog.edit`
+- `language` to the entry fields
+- `0017` replaces `0011`'s entry shape check with the named `entry_shape_check`, which checks language tags against the same pattern
 
 ## Roles and connections
 Settings: `chatddx.core.settings.database(admin=False)`, from `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_ADMIN`
@@ -162,6 +166,3 @@ tier-2 triggers).
   `Store.load`); a future ORM or view must not rebuild them from `doc`." (`src/chatddx/factors/base.py:46`)
 
 ## Proposed amendments
-- ADD to "Tier 2" migrations: `0017-t2-catalog-language.sql`. It adds `language` to the entry fields, and replaces
-  0011's entry shape check (found by its definition, since its name was generated) with the named
-  `entry_shape_check`, which checks language tags against the same pattern as `src/chatddx/core/catalog.py:40`.

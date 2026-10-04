@@ -39,7 +39,7 @@ A variation kept as a fork remembers what it varies:
   - Accepting a proposal is an ordinary edit of the fork, with `based_on` naming the origin edit it was re-applied
     onto. Nothing propagates by itself: this is the old `extends`, on request."
 
-Names, descriptions, tags, the owner, collaborators and the deleted flag are entries on a thread, a family, a
+Names, descriptions, tags, a language, the owner, collaborators and the deleted flag are entries on a thread, a family, a
 run or a score (`catalog.entry`). The latest entry wins per field, per tag and per collaborator, so deleting
 is reversible (`src/chatddx/core/catalog.py:Entry`, `About.of`). A run's owner is who started it.
 
@@ -60,9 +60,8 @@ binding, (source, id) or the fingerprint, identifies the family. It appends a bi
 new edits on their threads, and builds the new cases. When both change, the vignette is a new family. Repair
 helpers are not implemented.
 
+A case's language is a `language` entry on its family. It holds a language tag such as `sv` or `pt-BR`; it can
+be replaced but not removed, and the latest one wins (`About.language`). It describes the vignette and never
+reaches a request.
+
 ## Proposed amendments
-- CHANGE "Names, descriptions, tags, the owner, collaborators and the deleted flag are entries" to "Names,
-  descriptions, tags, a language, the owner, collaborators and the deleted flag are entries". ADD to "Cases":
-  "A case's language is a `language` entry on its family. It holds a language tag such as `sv` or `pt-BR`; it can
-  be replaced but not removed, and the latest one wins (`About.language`). It describes the vignette and never
-  reaches a request." (`src/chatddx/core/catalog.py:40`, `:50`, `:158`)

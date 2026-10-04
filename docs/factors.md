@@ -12,7 +12,7 @@ The factors provide the basic building blocks for chatddx's rig: An environment 
 Simply stated, if it doesn't affect output or scoring, it's not a factor, some examples follow:
 - records and observations: These are specified in `ledger.md`.
 - people, roles, authentication and authorization: These are specified in `identity.md`.
-- names, labels, tags, descriptions, authors, owners, collaborators, version history: These are specified in the `catalog.md`.
+- names, labels, language, tags, descriptions, authors, owners, collaborators, version history: These are specified in the `catalog.md`.
 - sensitivity and vetting parameters: These are specified in `clearance.md`.
 - knowledge about models (reasoning levels, recommended sampling, output caveats, specs):
   these are model facts (`src/chatddx/facts/facts.py`, material in `agents/wip-facts.md` until a `facts.md`
@@ -281,5 +281,3 @@ the seed isn't sent, but the trial's seeds still count toward its hash, so two o
 - `Hardware` has no GPU count, so tensor-parallel engines can't be told apart by hardware (the old code had `gpu_count`).
 
 ## Proposed amendments
-- CHANGE in "Not factors": "names, labels, tags, descriptions, authors, owners, collaborators, version history" to
-  "names, labels, tags, descriptions, a case's language, authors, owners, collaborators, version history".
