@@ -244,7 +244,7 @@ A finding (`src/chatddx/factors/base.py: Finding`) has a level (`warning` by def
 - `ledger.seal`: a run's or score's rows no longer match the seal in its finished row (`check_run`, `check_score`).
 - `engine.chat_template` and `engine.chat_template_date`: the chat-template file doesn't match the engine's declared digest, or reads the current date (`check_chat_template`).
 - `bundle.recanonicalized`: the current code would serialize a bundled component differently from its stored bytes, which remain authoritative (`Bundle.load`).
-- `model.revision`, `engine.closure`, `scorer.revision` and `vllm.temperature_clamped`: the lints in `docs/factors.md`.
+- `model.revision`, `engine.closure`, `scorer.revision`, and the pair rules for trials and judges (`vllm.temperature_clamped`, `vllm.tool_unconstrained`, `vllm.thinking_budget_refused`, `vllm.grammar_before_reasoning`, `schema.ref_unverified`): the lints in `docs/factors.md`.
 
 Structurally malformed input raises instead. Constructing a component, canary or record that breaks its own rules raises pydantic's `ValidationError`: for example flags the start-up script owns in `argv`, slots unsuitable for the purpose, a skeleton body at odds with its contract, runtime keys in a body, duplicate seeds or cases, a shuffle seed without shuffled order, or a stage log out of order. Problems that need other components or records to see raise `StructuralError`: a digest that doesn't match its bytes, an unknown kind or schema version, a missing or wrongly typed reference, a failed `cross_check`, a recipe whose prompt purpose differs from its own or whose passthrough overrides a managed key, and the run and score checks' own violations (items outside the trial, unplanned canary calls, a score of another run, views, items, judges or seeds that don't exist).
 
@@ -255,8 +255,3 @@ The one hard block is clearance: sending case-derived content to an engine that 
 **Case drift and canary drift are not implemented.** `RunItem.vignette` records the observed fingerprint, but nothing compares it with `CaseInput.vignette`, and nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
-- CHANGE in "Findings and errors": "`model.revision`, `engine.closure`, `scorer.revision` and
-  `vllm.temperature_clamped`: the lints in `docs/factors.md`." to "`model.revision`, `engine.closure`,
-  `scorer.revision`, and the pair rules for trials and judges (`vllm.temperature_clamped`, `vllm.tool_unconstrained`,
-  `vllm.thinking_budget_refused`, `vllm.grammar_before_reasoning`, `schema.ref_unverified`): the lints in
-  `docs/factors.md`." (`src/chatddx/factors/lint.py`)

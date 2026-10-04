@@ -160,7 +160,11 @@ A model artifact (kind `model`) pins a model by its repo, a revision (linted unl
 - principal author: Ops
 - defined in: `engine.py:LocalEngine`
 
-A local engine (kind `engine.local`) is a vLLM server we run. It declares its hardware (GPU, compute capability, VRAM, driver) and runtime (`vllm`, its version, the Nix closure path), references a model artifact, and requires the digest of its chat-template file. Its raw `argv` and `env` are passed to vLLM, except the flags the start-up script owns (`--model`, `--served-model-name`, `--chat-template`, `--tokenizer`, `--revision`), which they may not set. Knowledge that changes between vLLM versions lives in lints rather than in these fields, and batch invariance is declared through `env` (for example `VLLM_BATCH_INVARIANT=1`). The served model name is the engine's digest, so every response names the cage it came from. `check_chat_template` warns when the template file doesn't match the declared digest or reads the current date. Hardware and runtime are part of the engine rather than components of their own. They can therefore not be listed, picked or reused as standalone rows, for example in the portal or as Postgres foreign keys; the same GPU or closure is repeated in every engine that uses it, and asking which engines share a closure means scanning engines instead of following a reference.
+A local engine (kind `engine.local`) is a vLLM server we run. It declares its hardware (GPU, compute capability, VRAM, driver) and runtime (`vllm`, its version, the Nix closure path), references a model artifact, and requires the digest of its chat-template file. Its raw `argv` and `env` are passed to vLLM, except the flags the start-up script owns (`--model`, `--served-model-name`, `--chat-template`, `--tokenizer`, `--revision`), which they may not set, whether spelled with dashes or underscores, since vLLM reads both.
+
+Knowledge that changes between vLLM versions lives in lints rather than in these fields, and batch invariance is declared through `env` (for example `VLLM_BATCH_INVARIANT=1`). The served model name is the engine's digest, so every response names the cage it came from. `check_chat_template` warns when the template file doesn't match the declared digest or reads the current date. Hardware and runtime are part of the engine rather than components of their own.
+
+They can therefore not be listed, picked or reused as standalone rows, for example in the portal or as Postgres foreign keys; the same GPU or closure is repeated in every engine that uses it, and asking which engines share a closure means scanning engines instead of following a reference.
 
 #### Remote engine
 - principal author: Ops
@@ -211,7 +215,9 @@ A scoring (kind `scoring`) is what a score applies: a scorer plus the expectatio
 A canary set (kind `canary_set`) is a list of fixed, non-sensitive probe requests. Each canary holds literal messages, body keys (no runtime keys) and an optional seed. A run names the canary set it uses (see `docs/ledger.md:RunStarted`). Canary sets are components because canary drift is detected by comparing the same set across runs (not implemented yet).
 
 ## Linting
-Lints (`lint.py`) warn about settings that are valid but risky. They are plain functions over a registry, run on demand; nothing in the factor components stores their findings. Keeping them out of the data layer means knowledge that changes between vLLM releases can change without touching any factor. `lint(registry, digests)` applies one rule per kind. A model artifact whose revision is not a 40-character commit gets `model.revision`, because a branch or tag can move. A local engine whose closure is not a Nix store path gets `engine.closure`. A scorer whose code has no revision gets `scorer.revision`. A trial on a local vLLM 0.24 engine whose skeleton sets a temperature between 0 and 0.01 gets `vllm.temperature_clamped`, because vLLM 0.24 raises such temperatures to 0.01 (an unverified assumption, see "Possible design issues"). This last rule is the only one keyed by the declared runtime version.
+Lints (`lint.py`) warn about settings that are valid but risky. They are plain functions over a registry, run on demand; nothing in the factor components stores their findings. Keeping them out of the data layer means knowledge that changes between vLLM releases can change without touching any factor. `lint(registry, digests)` applies one rule per kind. A model artifact whose revision is not a 40-character commit gets `model.revision`, because a branch or tag can move. A local engine whose closure is not a Nix store path gets `engine.closure`. A scorer whose code has no revision gets `scorer.revision`.
+
+A trial on a local vLLM 0.24 engine whose skeleton sets a temperature between 0 and 0.01 gets `vllm.temperature_clamped`, because vLLM 0.24 raises such temperatures to 0.01 (an unverified assumption, see "Possible design issues"). This last rule is the only one keyed by the declared runtime version.
 
 ## Possible design issues
 
@@ -247,23 +253,3 @@ the seed isn't sent, but the trial's seeds still count toward its hash, so two o
 - `Hardware` has no GPU count, so tensor-parallel engines can't be told apart by hardware (the old code had `gpu_count`).
 
 ## Proposed amendments
-- CHANGE in "Linting", from "A trial on a local vLLM 0.24 engine …" to the end of the paragraph, to: "A trial or a
-  judge pairs a skeleton with an engine, and both get the same pair rules. Five are keyed by the declared runtime,
-  vLLM 0.24 (`docs/vllm.md`):
-  - `vllm.temperature_clamped`: the skeleton sets a temperature between 0 and 0.01, which vLLM 0.24 raises to 0.01.
-  - `vllm.tool_unconstrained`: a `tool` contract without `--enable-auto-tool-choice` and `--tool-call-parser` in
-    the engine's argv goes out unconstrained.
-  - `vllm.thinking_budget_refused`: `thinking_token_budget` without `--reasoning-parser` or `--reasoning-config` is
-    refused.
-  - `vllm.grammar_before_reasoning`: a `native` contract, or a constrained `tool` one, without `--reasoning-parser`
-    is constrained from the first token, so the model can't reason first. It's a warning when the skeleton asks
-    for reasoning (`reasoning_effort`, `thinking_token_budget`, `enable_thinking: true`), and `info` when it leaves
-    reasoning to the model. Nothing is reported when it turns reasoning off.
-
-  Engines that aren't vLLM 0.24 (remote engines and other versions) get `schema.ref_unverified` when a `native` or
-  `tool` schema has `$ref`: the engine isn't known to resolve it, and `inline_refs@1` removes it. Flags are read as
-  vLLM reads them, with `_` and `-` alike in their names." (`src/chatddx/factors/lint.py:67`, `:128`,
-  `src/chatddx/factors/engine.py:16`). This also drops "(an unverified assumption, …)": `docs/vllm.md` assumption 2
-  verifies it.
-- CHANGE in "Local engine": "which they may not set" to "which they may not set, whether spelled with dashes or
-  underscores, since vLLM reads both" (`src/chatddx/factors/engine.py:16`).
