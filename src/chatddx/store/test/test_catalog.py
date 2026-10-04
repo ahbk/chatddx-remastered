@@ -361,11 +361,32 @@ def test_behind_looks_through_cases(conn: Connection) -> None:
         {"field": "tag", "value": "x", "person": 1},
         {"field": "deleted", "value": "yes"},
         {"field": "colour", "value": "red"},
+        {"field": "language", "value": "Swedish"},
+        {"field": "language", "value": "sv_SE"},
+        {"field": "language", "value": ""},
+        {"field": "language", "value": "sv", "present": False},
     ],
 )
 def test_entry_shapes(entry: dict[str, Any]) -> None:
     with pytest.raises(ValidationError):
         _ = Entry.model_validate(entry)
+
+
+def test_cases_have_a_language(conn: Connection) -> None:
+    catalog, _, _, ids, alice = stored_world(conn)
+    family = Subject(family=catalog.adopt(ids["case"], alice.id))
+    assert catalog.about(family).language is None
+    for language in ("en", "sv", "pt-BR"):
+        catalog.note(family, Entry(field=EntryField.LANGUAGE, value=language), alice.id)
+    assert catalog.about(family).language == "pt-BR"
+    with pytest.raises(errors.CheckViolation), conn.transaction():
+        _ = conn.execute(
+            """
+            INSERT INTO catalog.entry (family, field, value, by)
+            VALUES (%s, 'language', 'Swedish', %s)
+            """,
+            (family.family, alice.id),
+        )
 
 
 def test_subject_is_one_thing() -> None:

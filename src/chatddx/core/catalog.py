@@ -1,3 +1,4 @@
+import re
 from collections.abc import Iterable
 from datetime import datetime
 from enum import StrEnum
@@ -35,7 +36,10 @@ THREAD_KINDS = frozenset(
 )
 
 
-# src/chatddx/store/migrations/0011-t2-catalog-checks.sql repeats these fields.
+# src/chatddx/store/migrations/0017-t2-catalog-language.sql repeats these fields and the pattern.
+LANGUAGE = re.compile(r"^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$")
+
+
 class EntryField(StrEnum):
     NAME = "name"
     DESCRIPTION = "description"
@@ -43,6 +47,7 @@ class EntryField(StrEnum):
     OWNER = "owner"
     COLLABORATOR = "collaborator"
     DELETED = "deleted"
+    LANGUAGE = "language"
 
 
 Part = Literal["view", "resource"]
@@ -118,7 +123,12 @@ class Entry(_Frozen):
 
     @model_validator(mode="after")
     def _shape(self) -> Self:
-        text = self.field in (EntryField.NAME, EntryField.DESCRIPTION, EntryField.TAG)
+        text = self.field in (
+            EntryField.NAME,
+            EntryField.DESCRIPTION,
+            EntryField.TAG,
+            EntryField.LANGUAGE,
+        )
         person = self.field in (EntryField.OWNER, EntryField.COLLABORATOR)
         removable = self.field in (
             EntryField.TAG,
@@ -131,6 +141,10 @@ class Entry(_Frozen):
             raise ValueError(f"{self.field} can't be removed, only replaced")
         if self.field in (EntryField.NAME, EntryField.TAG) and not self.value:
             raise ValueError(f"{self.field} can't be empty")
+        if self.field == EntryField.LANGUAGE and not LANGUAGE.match(self.value or ""):
+            raise ValueError(
+                f"{self.value!r} is not a language tag such as 'sv' or 'pt-BR'"
+            )
         return self
 
 
@@ -141,10 +155,11 @@ class About(_Frozen):
     owner: int | None = None
     collaborators: frozenset[int] = frozenset()
     deleted: bool = False
+    language: str | None = None
 
     @classmethod
     def of(cls, entries: Iterable[Entry]) -> Self:
-        name = description = None
+        name = description = language = None
         owner = None
         tags: set[str] = set()
         collaborators: set[int] = set()
@@ -165,6 +180,8 @@ class About(_Frozen):
                     _toggle(collaborators, e.person, e.present)
                 case EntryField.DELETED:
                     deleted = e.present
+                case EntryField.LANGUAGE:
+                    language = e.value
         return cls(
             name=name,
             description=description,
@@ -172,6 +189,7 @@ class About(_Frozen):
             owner=owner,
             collaborators=frozenset(collaborators),
             deleted=deleted,
+            language=language,
         )
 
 

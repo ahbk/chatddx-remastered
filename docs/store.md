@@ -162,3 +162,6 @@ tier-2 triggers).
   `Store.load`); a future ORM or view must not rebuild them from `doc`." (`src/chatddx/factors/base.py:46`)
 
 ## Proposed amendments
+- ADD to "Tier 2" migrations: `0017-t2-catalog-language.sql`. It adds `language` to the entry fields, and replaces
+  0011's entry shape check (found by its definition, since its name was generated) with the named
+  `entry_shape_check`, which checks language tags against the same pattern as `src/chatddx/core/catalog.py:40`.

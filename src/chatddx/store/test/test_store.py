@@ -78,6 +78,7 @@ def test_migrations_apply_up_to_a_tier(empty: Connection) -> None:
         "0013-t2-catalog-families",
         "0014-t2-catalog-kinds",
         "0016-t2-catalog-based-on",
+        "0017-t2-catalog-language",
     ]
     with pytest.raises(errors.RaiseException, match="insert-only"):
         _ = empty.execute("TRUNCATE factor.component CASCADE")

@@ -343,6 +343,17 @@ tags = ["ddx"]
 - **G12. Case language.** [maybe fix remastered] (old D5)
   - `language` (79 en, 20 sv) has no home. A case's family carries only name, description, tags, owner,
     collaborators and deleted.
+  - **Fixed** as a typed catalog entry, not the tag convention first suggested (`lang:sv`), so results can be split
+    by language reliably.
+    - In the old code the field was descriptive only: the portal displayed it, tracked changes to it and filtered
+      by it. It never reached a prompt or a scorer, so it's catalog, not a factor.
+    - `EntryField.LANGUAGE` holds a language tag (`^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$`, e.g. `sv`, `pt-BR`). It can
+      be replaced but not removed, and `About.language` folds the latest.
+    - Migration `0017-t2-catalog-language` mirrors the field and pattern. It also gives 0011's shape check a name
+      (`entry_shape_check`), and was checked on an already migrated database.
+    - Sample data, when the loader exists: a `language` entry on each case's family (79 `en`, 20 `sv`).
+    - Proposed amendments: `docs/catalog.md`, `docs/store.md`, `docs/factors.md`.
+    - Tests: `test_cases_have_a_language`, and the language cases in `test_entry_shapes`.
 - **G13. Repairs.** [maybe fix remastered] (old D3, D4)
   - 13d317d holds both repair cases: a renamed vignette file (`DutchFall10w.txt` → `Dutchfall10w.txt`) and changed
     content (comments appended to `Dutchfall11w.txt` and `casesfromedn1.txt`).
@@ -351,6 +362,24 @@ tags = ["ddx"]
 - **G14. Expectation data isn't validated.** [maybe fix remastered]
   - By design the factors don't check `Expectation.data` against its schema; the scorer does. Hand-edited sample
     data has no check before it lands, and scorers are deferred.
+
+### Catalog
+- **G17. Configurations are named, but nothing names them.** [maybe fix remastered] (found after `docs/catalog.md`
+  and `docs/chatddx.md` became "a configuration is a *named* set of pinned factors")
+  - `Catalog.create(digest, by, compilation=, forked_from=)` takes no name, and nothing ever requires a `name`
+    entry on a thread. A configuration's skeleton thread, or a saved variation (a fork), can stay unnamed forever,
+    and `heads(kind)` lists them next to named ones. Only removing a name is already ruled out
+    (`Entry._shape`).
+  - The docs have their own tension: "a variation is a configuration" (so, named), while "any digest can be run
+    without a thread", so a variation being tried has no name until it's saved.
+  - Options:
+    - (a) `Catalog.create(…, name=)`, required for the kinds that stand for configurations (`skeleton`, perhaps
+      `trial`): the thread, its first edit and its name are written in one transaction.
+    - (b) The same, required for every thread kind, since threads are where names attach for everything but cases.
+    - (c) Leave creation open, and have the portal, listings and `heads` treat unnamed threads as drafts.
+  - The database can't require a name entry, just as it can't require a thread's first edit (`docs/store.md`,
+    "Known gaps"); Python would enforce it.
+  - Also to decide: what an unsaved variation is called in the docs, if "variation" now implies a name.
 
 ## Parked with the deferred work
 

@@ -281,3 +281,5 @@ the seed isn't sent, but the trial's seeds still count toward its hash, so two o
 - `Hardware` has no GPU count, so tensor-parallel engines can't be told apart by hardware (the old code had `gpu_count`).
 
 ## Proposed amendments
+- CHANGE in "Not factors": "names, labels, tags, descriptions, authors, owners, collaborators, version history" to
+  "names, labels, tags, descriptions, a case's language, authors, owners, collaborators, version history".

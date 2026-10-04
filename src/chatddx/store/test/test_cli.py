@@ -43,6 +43,7 @@ def test_migrate_command(
         "applied 0013-t2-catalog-families",
         "applied 0014-t2-catalog-kinds",
         "applied 0016-t2-catalog-based-on",
+        "applied 0017-t2-catalog-language",
     ]
     with pytest.raises(SystemExit):
         main(["migrate", "--tier", "3"])

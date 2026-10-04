@@ -61,3 +61,8 @@ new edits on their threads, and builds the new cases. When both change, the vign
 helpers are not implemented.
 
 ## Proposed amendments
+- CHANGE "Names, descriptions, tags, the owner, collaborators and the deleted flag are entries" to "Names,
+  descriptions, tags, a language, the owner, collaborators and the deleted flag are entries". ADD to "Cases":
+  "A case's language is a `language` entry on its family. It holds a language tag such as `sv` or `pt-BR`; it can
+  be replaced but not removed, and the latest one wins (`About.language`). It describes the vignette and never
+  reaches a request." (`src/chatddx/core/catalog.py:40`, `:50`, `:158`)
