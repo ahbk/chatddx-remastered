@@ -53,6 +53,12 @@ def sorted_keys[V](mapping: dict[str, V]) -> dict[str, V]:
     return dict(sorted(mapping.items()))
 
 
+def distinct[T](values: tuple[T, ...]) -> tuple[T, ...]:
+    if len(set(values)) != len(values):
+        raise ValueError("duplicates are not allowed")
+    return values
+
+
 # A settings mapping's keys name options whose order means nothing, so equivalent
 # settings share a digest; their values are JSON data and keep their order.
 Settings = Annotated[dict[str, JsonValue], AfterValidator(sorted_keys)]

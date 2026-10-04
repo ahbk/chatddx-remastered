@@ -19,7 +19,7 @@ Simply stated, if it doesn't affect output or scoring, it's not a factor, some e
   exists). They produce and check literal chunks at authoring, and no digest depends on them.
 
 ## In depth
-In the code, a factor is immutable and identified by its digest. They reference each other by this digest, forming a graph. Each reference is typed (`Annotated[Digest, RefTo(kind, …)]`). From these types, `Registry.check` derives the graph and checks that every reference exists and has an allowed kind. Rules that span components, such as "a trial must use a generation skeleton", are `cross_check` hooks run by the same check.
+In the code, a factor is immutable and identified by its digest. They reference each other by this digest, forming a graph. Each reference is typed (`Annotated[Digest, RefTo(kind, …)]`). From these types, `Registry.check` derives the graph and checks that every reference exists and has an allowed kind. Rules that span components, such as "a trial must use a generation skeleton", are `cross_check` hooks run by the same check, for each component whose own references hold.
 
 The kinds are `model`, `engine.local`, `engine.remote`, the nine `chunk.*` kinds, `skeleton`, `appendix`, `case`, `trial`, `expectation_schema`, `expectation`, `scorer`, `judge`, `scoring`, `canary_set` and `tool`.
 
@@ -213,6 +213,8 @@ A skeleton (kind `skeleton`) is the frozen request, and the only component norma
 Its validation repeats the chunks' rules: slots must suit the purpose, greedy sampling is canonicalized,
 a `native` contract needs `response_format` and no tools, a `tool` contract needs exactly one tool of
 the declared name and description plus `tool_choice`, and a `text` contract may set no output keys.
+The body's `tools` must be a list of functions with names, and a `native` or `tool` contract's schema must be an
+object, at `response_format.json_schema.schema` or in the answer tool's `parameters`.
 
 For `native` and `tool`, the output schema is read from the body rather than stored twice.
 
@@ -269,7 +271,7 @@ A remote engine (kind `engine.remote`) is an API we don't control. It declares o
 - principal author: Researchers
 - defined in: `trial.py:Trial`
 
-A trial (kind `trial`) is a scientific intent: a generation skeleton, an engine, the cases, the text-cleanup steps and the seeds. Cases and seeds are listed without duplicates. The seeds are explicit and user-defined; the portal can propose random 31-bit ones (`suggest_seeds`), which users are free to override. Each seed defines one replicate, identified by its index. Text cleanup is an ordered list of operations from a closed set in which each name pins one behavior (`newlines.lf@1`, `unicode.nfc@1`, `strip@1`, `blank_lines.collapse@1`; a changed behavior gets a new name), and it applies to the vignette only. Execution settings (order, concurrency, timeout, retries) are not part of the trial, so re-running a trial means a new run of the same digest. With greedy sampling no seed is sent, but the seeds still count toward the trial's digest (see "Possible design issues").
+A trial (kind `trial`) is a scientific intent: a generation skeleton, an engine, the cases, the text-cleanup steps and the seeds. Cases and seeds are listed without duplicates. The seeds are explicit and user-defined; the portal can propose distinct random 31-bit ones (`suggest_seeds`), which users are free to override. Each seed defines one replicate, identified by its index. Text cleanup is an ordered list of operations from a closed set in which each name pins one behavior (`newlines.lf@1`, `unicode.nfc@1`, `strip@1`, `blank_lines.collapse@1`; a changed behavior gets a new name), and it applies to the vignette only. Execution settings (order, concurrency, timeout, retries) are not part of the trial, so re-running a trial means a new run of the same digest. With greedy sampling no seed is sent, but the seeds still count toward the trial's digest (see "Possible design issues").
 
 ### Expectation schema
 - principal author: Developers
@@ -313,7 +315,7 @@ way (`src/chatddx/factors/select.py`).
 - principal author: Researchers
 - defined in: `scoring.py:Judge`
 
-A judge (kind `judge`) is an LLM used as a metric: a judge-purpose skeleton, an engine and its own seeds. A judge skeleton must contain the `completion` slot and may use `expectation`, `case` and `appendices`. Judge requests go through the same rendering as generation requests, once per seed, and are recorded per score item (see `docs/ledger.md:JudgeCall`). Their scores are best-effort reproducible. Because a judge prompt can contain case text, judge engines fall under the same clearance hard block as generation engines.
+A judge (kind `judge`) is an LLM used as a metric: a judge-purpose skeleton, an engine and its own seeds, listed without duplicates. A judge skeleton must contain the `completion` slot and may use `expectation`, `case` and `appendices`. Judge requests go through the same rendering as generation requests, once per seed, and are recorded per score item (see `docs/ledger.md:JudgeCall`). Their scores are best-effort reproducible. Because a judge prompt can contain case text, judge engines fall under the same clearance hard block as generation engines.
 
 ### Scoring
 - principal author: Researchers
@@ -386,6 +388,12 @@ the seed isn't sent, but the trial's seeds still count toward its hash, so two o
   digest (`engine.py:RemoteEngine`), so moving the same API to a new host makes a new engine. In both cases `Call`
   (`src/chatddx/ledger/ledger.py`) records no URL, so the ledger can't show which endpoint received case-derived
   content, which the clearance check may need.
+
+### Owned flags can slip past the argv check
+  `LocalEngine.argv` refuses the owned flags by their full names only (`engine.py:flag_names`), so two kinds of
+  argument pass anyway: a bare argument such as `("google/gemma",)`, which `vllm serve` reads as the model if argv
+  follows it, and abbreviations such as `--served-model x` or `--chat-templ t`, which Python's argparse expands by
+  default. Whether vLLM 0.24's `FlexibleArgumentParser` accepts abbreviations is unverified.
 
 ### Misc
 - **Canary drift is not checked.** No function compares canary outputs between phases or between runs. The old code had `compare_canaries`.

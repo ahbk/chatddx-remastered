@@ -21,6 +21,7 @@ from .base import (
     Resolver,
     Settings,
     StructuralError,
+    distinct,
     resolve,
     sorted_keys,
 )
@@ -241,14 +242,7 @@ class Output(Component):
     contract: OutputContract
     json_schema: dict[str, JsonValue] | None = None
     guidance: Text | None = None
-    schema_ops: tuple[SchemaOp, ...] = ()
-
-    @field_validator("schema_ops")
-    @classmethod
-    def _unique_ops(cls, ops: tuple[SchemaOp, ...]) -> tuple[SchemaOp, ...]:
-        if len(set(ops)) != len(ops):
-            raise ValueError("duplicates are not allowed")
-        return ops
+    schema_ops: Annotated[tuple[SchemaOp, ...], AfterValidator(distinct)] = ()
 
     @model_validator(mode="after")
     def _schema_placement(self) -> "Output":
@@ -498,6 +492,13 @@ class Skeleton(Component):
             case TextOutput():
                 if keys:
                     raise ValueError("text contract may not constrain the output")
+        match self.contract, self.output_schema:
+            case (TextOutput(), _) | (_, dict()):
+                pass
+            case _:
+                raise ValueError(
+                    f"{self.contract.kind} contract needs its schema as an object"
+                )
         return self
 
     @override
@@ -517,7 +518,11 @@ class Skeleton(Component):
     def output_schema(self) -> JsonValue:
         match self.contract:
             case NativeOutput():
-                return _get(self.body, "response_format", "json_schema", "schema")
+                match self.body.get("response_format"):
+                    case {"type": "json_schema", "json_schema": {"schema": schema}}:
+                        return schema
+                    case _:
+                        return None
             case ToolOutput(name=name):
                 function = _tool_function(self.body, name)
                 return None if function is None else function.get("parameters")
@@ -528,23 +533,22 @@ class Skeleton(Component):
 SkeletonRef = Annotated[Digest, RefTo("skeleton")]
 
 
-def _get(doc: JsonValue, *path: str | int) -> JsonValue:
-    for p in path:
-        match doc, p:
-            case list(), int():
-                doc = doc[p]
-            case dict(), str():
-                doc = doc[p]
-            case _:
-                raise KeyError(p)
-    return doc
+def _tool_name(tool: JsonValue) -> str:
+    match tool:
+        case {"function": {"name": str() as name}}:
+            return name
+        case _:
+            raise ValueError(f"a tool needs a function with a name, not {tool!r}")
 
 
 def _tool_names(body: Mapping[str, JsonValue]) -> list[str]:
-    tools = body.get("tools")
-    if not isinstance(tools, list):
-        return []
-    return [str(_get(t, "function", "name")) for t in tools]
+    match body.get("tools"):
+        case None:
+            return []
+        case list() as tools:
+            return [_tool_name(t) for t in tools]
+        case _:
+            raise ValueError("tools must be a list")
 
 
 def _tool_function(

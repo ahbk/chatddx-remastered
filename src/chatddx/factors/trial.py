@@ -3,9 +3,9 @@ import secrets
 from collections.abc import Sequence
 from typing import Annotated, Literal, override
 
-from pydantic import Field, JsonValue, field_validator, model_validator
+from pydantic import AfterValidator, Field, JsonValue, field_validator, model_validator
 
-from .base import Component, Digest, Frozen, RefTo, Resolver, Settings
+from .base import Component, Digest, Frozen, RefTo, Resolver, Settings, distinct
 from .cases import CaseInputRef, NormalizeOp
 from .engine import EngineRef
 from .request import RUNTIME_KEYS, Skeleton, SkeletonRef
@@ -17,16 +17,11 @@ class Trial(Component):
     kind: Literal["trial"] = "trial"
     skeleton: SkeletonRef
     engine: EngineRef
-    cases: tuple[CaseInputRef, ...] = Field(min_length=1)
+    cases: Annotated[tuple[CaseInputRef, ...], AfterValidator(distinct)] = Field(
+        min_length=1
+    )
     normalization: tuple[NormalizeOp, ...] = ()
-    seeds: tuple[int, ...] = Field(min_length=1)
-
-    @field_validator("cases", "seeds")
-    @classmethod
-    def _unique[T](cls, values: tuple[T, ...]) -> tuple[T, ...]:
-        if len(set(values)) != len(values):
-            raise ValueError("duplicates are not allowed")
-        return values
+    seeds: Annotated[tuple[int, ...], AfterValidator(distinct)] = Field(min_length=1)
 
     @override
     def cross_check(self, get: Resolver) -> list[str]:
@@ -39,7 +34,7 @@ class Trial(Component):
 
 def suggest_seeds(n: int) -> tuple[int, ...]:
     # 31 bits keeps seeds within a signed 32-bit int, which some servers require.
-    return tuple(secrets.randbits(31) for _ in range(n))
+    return tuple(secrets.SystemRandom().sample(range(2**31), n))
 
 
 TrialRef = Annotated[Digest, RefTo("trial")]

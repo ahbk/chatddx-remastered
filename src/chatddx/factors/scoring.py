@@ -10,6 +10,7 @@ from .base import (
     RefTo,
     Resolver,
     Settings,
+    distinct,
 )
 from .cases import CaseInputRef
 from .engine import EngineRef
@@ -39,7 +40,7 @@ class Judge(Component):
     kind: Literal["judge"] = "judge"
     skeleton: SkeletonRef
     engine: EngineRef
-    seeds: tuple[int, ...] = Field(min_length=1)
+    seeds: Annotated[tuple[int, ...], AfterValidator(distinct)] = Field(min_length=1)
 
     @override
     def cross_check(self, get: Resolver) -> list[str]:

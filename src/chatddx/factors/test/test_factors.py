@@ -430,6 +430,49 @@ def test_skeleton_structure_is_enforced() -> None:
         )
 
 
+def test_malformed_skeleton_bodies_are_validation_errors() -> None:
+    user = Message(role="user", content=(Slot(slot="case"),))
+    with pytest.raises(ValidationError, match="needs a function with a name"):
+        _ = Skeleton(
+            messages=(user,),
+            body={"tools": [{"type": "function"}], "tool_choice": "required"},
+            contract=ToolOutput(name="a"),
+        )
+    with pytest.raises(ValidationError, match="tools must be a list"):
+        _ = Skeleton(
+            messages=(user,),
+            body={"tools": {"name": "a"}, "tool_choice": "required"},
+            contract=ToolOutput(name="a"),
+        )
+    with pytest.raises(ValidationError, match="native contract needs its schema"):
+        _ = Skeleton(
+            messages=(user,),
+            body={"response_format": {"type": "json_object"}},
+            contract=NativeOutput(),
+        )
+    with pytest.raises(ValidationError, match="tool contract needs its schema"):
+        _ = Skeleton(
+            messages=(user,),
+            body={
+                "tools": [{"type": "function", "function": {"name": "a"}}],
+                "tool_choice": {"type": "function", "function": {"name": "a"}},
+            },
+            contract=ToolOutput(name="a"),
+        )
+
+
+def test_seeds_are_distinct() -> None:
+    with pytest.raises(ValidationError, match="duplicates"):
+        _ = Judge(skeleton="sha256:" + SHA, engine="sha256:" + SHA, seeds=(1, 1))
+    with pytest.raises(ValidationError, match="duplicates"):
+        _ = Trial(
+            skeleton="sha256:" + SHA,
+            engine="sha256:" + SHA,
+            cases=("sha256:" + SHA,),
+            seeds=(1, 1),
+        )
+
+
 def test_schema_ops_inline_refs(reg: Registry) -> None:
     authored: dict[str, JsonValue] = {
         "type": "object",
@@ -872,6 +915,28 @@ def test_cross_checks(reg: Registry) -> None:
     _ = reg.add(ci)
     with pytest.raises(StructuralError, match="bound to another case"):
         reg.check([ci.digest])
+
+
+def test_each_component_is_checked_on_its_own(reg: Registry) -> None:
+    dangling = reg.add(
+        Judge(skeleton="sha256:" + SHA, engine="sha256:" + SHA, seeds=(1,))
+    )
+    other = reg.add(
+        Appendix(
+            case=SourceCase(source="registry", id="c2"), vignette=fp("v"), text="x"
+        )
+    )
+    misbound = reg.add(
+        CaseInput(
+            case=SourceCase(source="registry", id="c1"),
+            vignette=fp("v"),
+            appendices=(other,),
+        )
+    )
+    with pytest.raises(StructuralError) as raised:
+        reg.check([dangling, misbound])
+    assert "is missing" in str(raised.value)
+    assert "bound to another case" in str(raised.value)
 
 
 def test_prepare_case(reg: Registry) -> None:
