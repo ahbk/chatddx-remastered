@@ -38,9 +38,6 @@ Factors are "linted" in one sweep by passing a registry (of factors) to `lint(re
 - `vllm.temperature_clamped`:
 the skeleton sets a temperature between 0 and 0.01, which vLLM 0.24 raises to 0.01.
 
-- `vllm.tool_unconstrained`:
-a `tool` contract without `--enable-auto-tool-choice` and `--tool-call-parser` in the engine's argv goes out unconstrained.
-
 - `vllm.thinking_budget_refused`:
 `thinking_token_budget` without `--reasoning-parser` or `--reasoning-config` is refused.
 
@@ -50,6 +47,16 @@ a `native` contract, or a constrained `tool` one, without `--reasoning-parser` i
 so the model can't reason first. It's a warning when the skeleton asks for reasoning
 (`reasoning_effort`, `thinking_token_budget`, `enable_thinking: true`), and `info` when it leaves reasoning to the model.
 Nothing is reported when it turns reasoning off.
+
+- `vllm.tools_refused`:
+a body with tools on an engine without `--enable-auto-tool-choice` and `--tool-call-parser`;
+vLLM 0.24 refuses it, or sends it unconstrained for harmony and Mistral models.
+
+- `vllm.native_tools_uncallable`: a `native` contract with tools; on vLLM 0.24 the schema constrains the whole
+  answer, so no tool can be called.
+
+- `tools.unanswered`: an item's last response still calls tools, after its rounds ran out or the run stopped
+  (`check_run`).
 
 - `model.revision`:
 
@@ -83,12 +90,3 @@ the request's language, or some of a trial's cases', is unknown, because a label
 the labels disagree (`lint`, with `languages=`).
 
 ## Proposed amendments
-
-### G8: tool findings
-- `vllm.tool_unconstrained` → `vllm.tools_refused`: a body with tools on an engine without
-  `--enable-auto-tool-choice` and `--tool-call-parser`; vLLM 0.24 refuses it, or sends it unconstrained for
-  harmony and Mistral models.
-- `vllm.native_tools_uncallable`: a `native` contract with tools; on vLLM 0.24 the schema constrains the whole
-  answer, so no tool can be called.
-- `tools.unanswered`: an item's last response still calls tools, after its rounds ran out or the run stopped
-  (`check_run`).

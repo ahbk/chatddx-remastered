@@ -11,10 +11,10 @@ Nothing enforces it yet: the runner's hard block needs the clearance pipeline (`
 
 ### Completions derived from vignettes
 
-## Proposed amendments
+## Tools
+A tool's arguments are written by the model from the case, so a tool that sends them
+off the host (a web search) sends case-derived content to a third party, and falls under the hard block like an
+engine. The clearance pipeline has to clear tools by their code (`Tool.code`, `entry_point`), with the endpoints
+they reach; nothing declares those yet.
 
-### G8: tools
-- New section **Tools**: "A tool's arguments are written by the model from the case, so a tool that sends them
-  off the host (a web search) sends case-derived content to a third party, and falls under the hard block like an
-  engine. The clearance pipeline has to clear tools by their code (`Tool.code`, `entry_point`), with the endpoints
-  they reach; nothing declares those yet."
+## Proposed amendments

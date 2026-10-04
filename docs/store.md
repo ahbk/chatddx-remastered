@@ -94,6 +94,7 @@ migrations:
 - `0018-t2-catalog-bindings.sql`
 - `0019-t2-catalog-name-removal.sql`
 - `0020-t2-catalog-translations.sql`
+- `0021-t2-catalog-tools.sql`
 
 Endowes:
 - CHECKs that digests match canonical text, that `doc` and every key column match
@@ -117,6 +118,7 @@ Endowes:
   values for names, tags and languages, which `0017`'s shape check let through because a check that is NULL
   passes.
 - `0020` adds `chunk.translations` to the thread kinds.
+- `0021` adds `chunk.tools` and `tool` to the thread kinds.
 
 ## Roles and connections
 Settings: `chatddx.core.settings.database(admin=False)`, from `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_ADMIN`
@@ -175,7 +177,3 @@ tier-2 triggers).
   `Store.load`); a future ORM or view must not rebuild them from `doc`." (`src/chatddx/factors/base.py:46`)
 
 ## Proposed amendments
-
-### G8: tools
-- **Migrations, tier 2**, add `0021-t2-catalog-tools.sql`.
-- **Endowes**, add: "`0021` adds `chunk.tools` and `tool` to the thread kinds."
