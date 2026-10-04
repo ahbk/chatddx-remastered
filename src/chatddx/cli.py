@@ -1,11 +1,18 @@
 import argparse
 import getpass
 from collections.abc import Sequence
+from datetime import UTC, datetime
+from pathlib import Path
 
 import psycopg
 
 from chatddx.core import settings
 from chatddx.core.identity import Role
+from chatddx.core.rig import rig
+from chatddx.facts.facts import Facts
+from chatddx.inventory.inventory import Inventory
+from chatddx.seed import load_cases, plan_factors, seed
+from chatddx.seed.plan import SAMPLE
 from chatddx.store.migrate import TOP_TIER, migrate, pending
 from chatddx.store.people import People
 
@@ -43,6 +50,23 @@ def _person_password(args: argparse.Namespace) -> None:
     print(f"password set for {args.login}")
 
 
+def _init_data(args: argparse.Namespace) -> None:
+    sample: Path = args.sample
+    facts = Facts.load(*(args.facts or [sample / "facts.toml"]))
+    plan = plan_factors(sample / "factors.toml", facts, rig(), datetime.now(UTC))
+    cases = load_cases(sample / "cases.toml")
+    source = Inventory.load(args.inventory).source(args.source)
+    with psycopg.connect(settings.database()) as conn:
+        user = People(conn).find(args.user)
+        if user is None:
+            raise SystemExit(
+                f"no person with login {args.user!r}: add them with `chatddx person add`"
+            )
+        lines = seed(conn, plan, cases, source, user, giftbag=args.giftbag)
+    for line in lines:
+        print(line)
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="chatddx")
     commands = parser.add_subparsers(required=True)
@@ -72,6 +96,34 @@ def main(argv: Sequence[str] | None = None) -> None:
     password = person_commands.add_parser("password", help="set a person's password")
     _ = password.add_argument("login")
     password.set_defaults(run=_person_password)
+
+    init = commands.add_parser(
+        "init-data",
+        help="seed the sample data for the archive and share it with a person",
+    )
+    _ = init.add_argument("user", help="the login to share the archive with")
+    _ = init.add_argument(
+        "--inventory",
+        type=Path,
+        required=True,
+        help="the World inventory naming the vignette source",
+    )
+    _ = init.add_argument(
+        "--source", default="sample", help="the inventory's vignette source (sample)"
+    )
+    _ = init.add_argument(
+        "--giftbag", action="store_true", help="also give the user forks of their own"
+    )
+    _ = init.add_argument(
+        "--sample", type=Path, default=SAMPLE, help="the sample data's directory"
+    )
+    _ = init.add_argument(
+        "--facts",
+        type=Path,
+        action="append",
+        help="model facts to write per-model chunks from (the sample's facts.toml)",
+    )
+    init.set_defaults(run=_init_data)
 
     args = parser.parse_args(argv)
     args.run(args)

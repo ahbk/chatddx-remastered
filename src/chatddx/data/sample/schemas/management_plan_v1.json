@@ -1,0 +1,172 @@
+{
+  "$defs": {
+    "IndividualDiagnosis": {
+      "properties": {
+        "diagnosis": {
+          "description": "Diagnosis name (ONE word if possible).",
+          "title": "Diagnosis",
+          "type": "string"
+        },
+        "probability": {
+          "description": "The assessed likelihood of this condition.",
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ],
+          "title": "Probability",
+          "type": "string"
+        },
+        "critical": {
+          "description": "Whether this is a high-stakes, life-threatening emergency condition.",
+          "title": "Critical",
+          "type": "boolean"
+        },
+        "short_rationale": {
+          "description": "One sentence on why this diagnosis is considered based on history/exam findings, including relevant key negatives.",
+          "title": "Short Rationale",
+          "type": "string"
+        }
+      },
+      "required": [
+        "diagnosis",
+        "probability",
+        "critical",
+        "short_rationale"
+      ],
+      "title": "IndividualDiagnosis",
+      "type": "object"
+    },
+    "WorkupItem": {
+      "properties": {
+        "type": {
+          "enum": [
+            "Lab",
+            "Radiology",
+            "Physiology",
+            "Other"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "investigations": {
+          "description": "List of specific diagnostic investigations (e.g. ['CBC/CRP', 'Point-of-care Ultrasound']).",
+          "items": {
+            "type": "string"
+          },
+          "title": "Investigations",
+          "type": "array"
+        },
+        "priority": {
+          "enum": [
+            "urgent",
+            "prompt",
+            "elective"
+          ],
+          "title": "Priority",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "investigations",
+        "priority"
+      ],
+      "title": "WorkupItem",
+      "type": "object"
+    },
+    "EmpiricalTreatmentItem": {
+      "properties": {
+        "indication": {
+          "description": "The specific suspected condition prompting this intervention (e.g., 'If suspecting Sepsis').",
+          "title": "Indication",
+          "type": "string"
+        },
+        "treatment": {
+          "description": "Specific treatment intervention with dosages if relevant (e.g., 'Ceftriaxone 2g IV').",
+          "title": "Treatment",
+          "type": "string"
+        },
+        "important": {
+          "description": "Any key contraindications, warning signs, or monitoring parameters.",
+          "title": "Important Warnings",
+          "type": "string"
+        }
+      },
+      "required": [
+        "indication",
+        "treatment",
+        "important"
+      ],
+      "title": "EmpiricalTreatmentItem",
+      "type": "object"
+    },
+    "ManagementSection": {
+      "properties": {
+        "workup": {
+          "items": {
+            "$ref": "#/$defs/WorkupItem"
+          },
+          "title": "Diagnostic Workup Steps",
+          "type": "array"
+        },
+        "empirical_treatment": {
+          "items": {
+            "$ref": "#/$defs/EmpiricalTreatmentItem"
+          },
+          "title": "Empirical Treatments",
+          "type": "array"
+        },
+        "disposition": {
+          "description": "Primary destination or clinical disposition (e.g., 'Admission/Observation/Home with follow-up').",
+          "title": "Disposition",
+          "type": "string"
+        }
+      },
+      "required": [
+        "workup",
+        "empirical_treatment",
+        "disposition"
+      ],
+      "title": "ManagementSection",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "acute_warning": {
+      "description": "Red flag signs of an immediate, life-threatening emergency state. Return null if none.",
+      "title": "Acute Warning",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "diagnoses": {
+      "description": "Prioritized differential diagnoses ranked by probability. Include critical rules even if low probability.",
+      "items": {
+        "$ref": "#/$defs/IndividualDiagnosis"
+      },
+      "title": "Differential Diagnoses",
+      "type": "array"
+    },
+    "management": {
+      "$ref": "#/$defs/ManagementSection"
+    },
+    "sources": {
+      "description": "List of peer-reviewed guidelines or reference tools utilized (e.g. 'UpToDate', 'NICE guidelines').",
+      "items": {
+        "type": "string"
+      },
+      "title": "Medical Sources",
+      "type": "array"
+    }
+  },
+  "required": [
+    "acute_warning",
+    "diagnoses",
+    "management",
+    "sources"
+  ],
+  "title": "management_plan_v1",
+  "type": "object"
+}

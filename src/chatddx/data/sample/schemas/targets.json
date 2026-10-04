@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Targets",
+  "description": "What a case's answer is held to: a word pattern per target. Hand-written for the sample data.",
+  "type": "object",
+  "required": ["diagnosis"],
+  "additionalProperties": false,
+  "properties": {
+    "diagnosis": { "$ref": "#/$defs/target" },
+    "warning": { "$ref": "#/$defs/target" },
+    "disposition": { "$ref": "#/$defs/target" }
+  },
+  "$defs": {
+    "target": {
+      "type": "object",
+      "required": ["pattern"],
+      "additionalProperties": false,
+      "properties": {
+        "pattern": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Words joined by & (and) and | (or), with parentheses; a trailing * matches any ending."
+        }
+      }
+    }
+  }
+}

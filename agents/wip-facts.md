@@ -50,7 +50,7 @@ With facts given, trials and judges also get:
 Without facts, linting is unchanged.
 
 ## From the old `llms.toml`
-`src/chatddx/facts/test/sample.toml` ports the two sample models by hand:
+`src/chatddx/data/sample/facts.toml` (the sample data's, since init-data) ports the two sample models by hand:
 - `specs` moved to the top level, and `coercion` became `output`, with `prompted` mapped to `text`.
 - Reasoning writes use the chunk's names (`effort`, not `reasoning_effort`).
 
@@ -63,8 +63,8 @@ Left behind:
   contract with a toolset), so the note may come back, once checked against vLLM 0.24 (see Open).
 
 ## Open
-- **Where the sample's facts live.** The fixture stands in until the sample data's location is decided (the
-  deferred command).
+- **Where the sample's facts live.** Decided with init-data: `src/chatddx/data/sample/facts.toml`, which the tests
+  load too.
 - **`xhigh`.** It is a level, but neither `Reasoning.effort` nor `Writes.effort` can express it. Adding it to both
   Literals is additive, if a model that supports it shows up.
 - **Named and `required` `tool_choice` on harmony** (gpt-oss) are unverified. vLLM 0.24's gpt-oss tool parser

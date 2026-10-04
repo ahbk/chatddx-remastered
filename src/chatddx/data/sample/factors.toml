@@ -1,0 +1,171 @@
+# The old inventory's slices and configurations (chatddx 7893656, src/chatddx/data/inventory/slices.toml and
+# configurations.toml), hand-edited into remastered's shape. `chatddx init-data` seeds them for the archive.
+#
+# Tables are kinds and keys are component fields, except:
+# - a reference names a record of the referenced kind;
+# - `json_schema_path` loads a JSON file, relative to this one, in place of `json_schema`;
+# - `from_facts` makes the record per model in the facts: its chunk is written from each model's facts
+#   (`ModelFacts.sampling_chunk` or `reasoning_chunk`), named "<record> (<model>)", and a record referencing it
+#   is made per model too. A model whose facts refuse the chunk gets none, and is reported;
+# - `fork_of` names a record of the same kind that this one is a variation of. It's seeded as a fork of that
+#   record's thread, and doesn't inherit its fields;
+# - `tags` and `description` are catalog entries, not fields.
+
+# instruction.ddx was a system message made of the guidance slots and a user message of {{case}}: this prompt, with
+# the output's guidance becoming the system message. instruction.bare is the same prompt with an output that
+# brings no guidance (output.raw).
+[prompt.case]
+segments = [{ slot = "case" }, { slot = "appendices" }]
+
+[output.management-plan]
+description = "The management plan, as the medical-assistant agents ask for it."
+contract = { kind = "native" }
+json_schema_path = "schemas/management_plan_v1.json"
+guidance = "Fill in the management plan for the case."
+
+[output.management-plan-shown]
+description = "The management plan, with its schema also shown to the model."
+fork_of = "management-plan"
+contract = { kind = "native" }
+json_schema_path = "schemas/management_plan_v1.json"
+guidance = [
+  """Fill in the management plan for the case.
+
+Answer with a JSON object that matches this JSON Schema, and nothing else:
+
+""",
+  { insert = "schema" },
+]
+
+[output.management-plan-prompted]
+description = "The management plan, with its schema shown and nothing enforcing it."
+fork_of = "management-plan-shown"
+contract = { kind = "text", json_schema_path = "schemas/management_plan_v1.json" }
+guidance = [
+  """Fill in the management plan for the case.
+
+Answer with a JSON object that matches this JSON Schema, and nothing else:
+
+""",
+  { insert = "schema" },
+]
+
+[output.diagnoses]
+description = "The differential alone, as the medical-assistant agents ask for it."
+contract = { kind = "native" }
+json_schema_path = "schemas/diagnoses.json"
+guidance = "List the plausible diagnoses, most likely first."
+
+[output.diagnoses-tool]
+description = "The differential, answered through the final-result tool."
+fork_of = "diagnoses"
+contract = { kind = "tool", name = "final_result", description = "Give your answer by calling this tool, with the answer as its arguments." }
+json_schema_path = "schemas/diagnoses.json"
+guidance = "List the plausible diagnoses, most likely first."
+
+[output.free-text]
+description = "The differential as plain lines."
+contract = { kind = "text" }
+guidance = "List the plausible diagnoses, one per line, most likely first."
+
+[output.raw]
+description = "Free text with no guidance: whatever the model makes of the case alone."
+contract = { kind = "text" }
+
+# Sampling. The server fills in what a chunk leaves out, from the model's generation_config.
+[sampling.generation-config]
+
+[sampling.recommended]
+description = "What the model's makers recommend for its default reasoning."
+from_facts = { effort = "default" }
+
+# recommended-4k was recommended with max_tokens = 4096; max_tokens is dropped from sampling.
+
+[sampling.greedy]
+temperature = 0
+
+[sampling.fixed]
+temperature = 0.7
+top_p = 0.8
+top_k = 20
+presence_penalty = 0
+frequency_penalty = 0
+
+# Reasoning. reasoning.default is no chunk at all: a recipe without one leaves reasoning to the model.
+[reasoning.off]
+from_facts = { effort = "off" }
+
+[reasoning.on]
+from_facts = { effort = "on" }
+
+[reasoning.minimal]
+from_facts = { effort = "minimal" }
+
+[reasoning.low]
+from_facts = { effort = "low" }
+
+[reasoning.medium]
+from_facts = { effort = "medium" }
+
+[reasoning.high]
+from_facts = { effort = "high" }
+
+[reasoning.xhigh]
+from_facts = { effort = "xhigh" }
+
+[reasoning.on-budget-2048]
+description = "A budget worth comparing against plain on."
+from_facts = { effort = "on", budget = 2048 }
+
+# toolset.web and tool.web_search wait for tool code in remastered: a tool pins the code that runs it (G8), and
+# web_search's implementation (chatddx.runtime.tools.web_search) has no home yet. So does configuration.plan-web.
+
+# Configurations: recipes, compiled into skeleton threads.
+[recipe.plan]
+description = "The management plan, as the medical-assistant agents ask for it."
+tags = ["ddx"]
+prompt = "case"
+output = "management-plan"
+sampling = "recommended"
+
+[recipe.plan-shown]
+description = "The same, with the schema shown to the model in the instructions."
+tags = ["ddx"]
+fork_of = "plan"
+prompt = "case"
+output = "management-plan-shown"
+sampling = "recommended"
+
+[recipe.plan-prompted]
+description = "The same, with the schema shown and nothing enforcing it."
+tags = ["ddx"]
+fork_of = "plan"
+prompt = "case"
+output = "management-plan-prompted"
+sampling = "recommended"
+
+[recipe.diagnoses]
+description = "The differential alone, as the medical-assistant agents ask for it."
+tags = ["ddx"]
+prompt = "case"
+output = "diagnoses"
+sampling = "recommended"
+
+[recipe.diagnoses-tool]
+description = "The same, answered through the final-result tool."
+tags = ["ddx"]
+fork_of = "diagnoses"
+prompt = "case"
+output = "diagnoses-tool"
+sampling = "recommended"
+
+[recipe.free-text]
+description = "The differential as plain lines."
+tags = ["ddx"]
+prompt = "case"
+output = "free-text"
+sampling = "recommended"
+
+# Reference data for scoring.
+[expectation_schema.targets]
+json_schema_path = "schemas/targets.json"

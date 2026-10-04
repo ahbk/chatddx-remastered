@@ -113,3 +113,9 @@ Vignettes are never translated: a case runs in the language it was written in, s
 sets."
 
 ## Proposed amendments
+
+### init-data: lookups
+- **Threads and edits**, append: "`Catalog.find(kind, name, owner=)` lists the live threads of a kind whose current
+  name is `name`, owned by `owner` if given; the sample loader uses it to match its records on a re-run. Names
+  aren't unique, so it may return several. `Catalog.forks(thread)` lists the threads forked from any edit of a
+  thread, and `Catalog.expectations_of(case)` the expectation threads whose head expects a case."

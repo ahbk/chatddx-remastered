@@ -12,8 +12,8 @@ Permalink base: https://github.com/chatddx-administration/chatddx/blob/7893656c1
 ## Decided
 - Seed now: chunks, recipes (as compiled skeleton threads), cases with their families, an expectation schema and
   expectations.
-- Deferred: engines and models, scorers, the `init-data` command, the compiler's `Code` (old C8), scorings (old D9),
-  which come from a separate runtime-data pipe.
+- Deferred: engines and models, scorers, scorings (old D9), which come from a separate runtime-data pipe. The
+  `init-data` command and the compiler's `Code` (old C8) are done.
 - Base the sample data on 7893656. Quirks found while tweaking it, such as 13d317d's rename and the
   `DutchFall10w`/`Dutchfall*` spelling, are welcome stress tests.
 - `max_tokens` is dropped from sampling.
@@ -83,7 +83,7 @@ tags = ["ddx"]
     `agents/wip-facts.md`.
     - The package is `chatddx.facts`. `ModelFacts.reasoning_chunk` and `sampling_chunk` write literal chunks,
       and `lint(…, facts=)` checks pairs.
-    - The sample's two models are ported in `src/chatddx/facts/test/sample.toml`.
+    - The sample's two models are ported in `src/chatddx/data/sample/facts.toml`.
 - **G2. Reasoning levels.** [maybe fix remastered] (old C2)
   - The old intent levels were `default, off, on, minimal, low, medium, high, xhigh` and `budget`. They were
     translated per model, and a model could refuse a level with a reason.
@@ -650,14 +650,39 @@ tags = ["ddx"]
 - One scorer per output shape (`plan`, `diagnoses`, `free-text`, `raw`), with the old view names as labels.
 
 ### The command
-- Loaders per channel: a factor TOML loader with name references, a case importer from a source, a catalog writer,
-  and the World inventory.
-- Name lookup: no lookup by (kind, name, owner) in the catalog.
-- Re-runs: re-seeding without duplicate threads (created / validated / updated).
-- People: the `archive` person, and creating USER or requiring `chatddx person add` first.
-- Sharing:
-  - collaborator entries on archive threads;
-  - the giftbag as forks;
-  - families aren't per owner.
-- The compiler's `Code` for `Compilation` records (old C8).
-- `wipe-data`, which tier 2 rules out as a DELETE.
+- **Done**: `chatddx init-data USER --inventory PATH [--giftbag]`.
+  - Decided:
+    - the sample data lives in the repo (`src/chatddx/data/sample/`), with the vignettes named by the World
+      inventory;
+    - model-dependent chunks come per model via facts;
+    - re-runs are created/validated/updated, keyed by (kind, name, owner archive);
+    - the giftbag is forks.
+  - The hand edit (`src/chatddx/data/sample/`):
+    - `factors.toml` from slices and configurations. The TOML take holds, plus `from_facts` (per-model chunks)
+      and `fork_of` (seeded as a fork, inheriting no fields).
+    - `cases.toml` from cases.toml with the `# guessed` markers dropped.
+    - `schemas/` with the two output schemas and the hand-written `targets.json`.
+    - `facts.toml`, moved from the facts tests.
+  - What changed in the hand edit:
+    - `instruction.ddx` and `instruction.bare` collapse into `prompt.case` (bare is the same prompt with
+      `output.raw`).
+    - `reasoning.default` is no chunk.
+    - `sampling.recommended-4k` is gone with `max_tokens`.
+    - `toolset.web`, `tool.web_search` and `configuration.plan-web` wait for tool code in remastered (G8).
+    - `coercion.*` folded into outputs (G4, G5), and `extends` became `fork_of` (G9).
+  - `chatddx.seed.plan_factors` is pure. It plans 38 records, including 12 recipes (6 configurations × 2 models),
+    and skips 4 refused reasoning chunks for gpt-oss. `chatddx.seed.seed` writes them in one transaction.
+  - Old C8 resolved: `core/rig.py:rig()` is the compiler's `Code`, with its revision from `CHATDDX_REVISION`.
+  - Catalog: `find(kind, name, owner=)`, `forks(thread)`, `expectations_of(case)`.
+  - Real-data check against the old checkout's vignettes, in a scratch database:
+    - first run: 236 created and 136 giftbag forks;
+    - re-run: all 236 validated and every fork kept;
+    - against the 13d317d checkout: 230 validated, the renamed `DutchFall10w` missing, and `Dutchfall11w` and
+      `casesfromedn1` needing repair. That's G13's survey result.
+  - Still open:
+    - A renamed vignette shows as missing. `Catalog.survey` could name the rename, and a `repair` command could
+      apply it.
+    - `wipe-data`, which tier 2 rules out as a DELETE; deletion is a `deleted` entry.
+    - Tags and collaborators are only added on a re-run, never removed.
+    - Scorers and scorings (old D9) and engines stay deferred.
+  - Tests: `src/chatddx/store/test/test_seed.py`.

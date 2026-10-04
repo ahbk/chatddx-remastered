@@ -190,6 +190,43 @@ class Catalog:
         ).fetchall()
         return [_edit(r) for r in rows]
 
+    # Live threads of a kind whose current name is `name`, owned by `owner` if given.
+    def find(self, kind: str, name: str, *, owner: int | None = None) -> list[int]:
+        rows = self._conn.execute(
+            f"""
+            SELECT t.id FROM catalog.thread t
+            WHERE t.kind = %s AND NOT {_DELETED}
+                AND (
+                    SELECT n.value FROM catalog.entry n
+                    WHERE n.thread = t.id AND n.field = 'name'
+                    ORDER BY n.id DESC LIMIT 1
+                ) = %s
+                AND (%s::int IS NULL OR (
+                    SELECT o.person FROM catalog.entry o
+                    WHERE o.thread = t.id AND o.field = 'owner'
+                    ORDER BY o.id DESC LIMIT 1
+                ) = %s)
+            ORDER BY t.id
+            """,
+            (kind, name, owner, owner),
+        ).fetchall()
+        return [int(r[0]) for r in rows]
+
+    # Threads forked from any edit of `thread`.
+    def forks(self, thread: int) -> list[int]:
+        rows = self._conn.execute(
+            """
+            SELECT t.id FROM catalog.thread t JOIN catalog.edit o ON o.id = t.forked_from
+            WHERE o.thread = %s ORDER BY t.id
+            """,
+            (thread,),
+        ).fetchall()
+        return [int(r[0]) for r in rows]
+
+    # Expectation threads whose head expects `case`.
+    def expectations_of(self, case: str) -> list[int]:
+        return [t for t, _ in self._expectation_heads([case])]
+
     def containing(self, digest: str) -> list[Edit]:
         rows = self._conn.execute(
             f"SELECT {_EDIT} FROM catalog.edit e WHERE e.digest = %s ORDER BY e.id",

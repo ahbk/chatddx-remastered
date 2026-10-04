@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 from pydantic import HttpUrl, JsonValue, ValidationError
 
+import chatddx
 from chatddx.factors.bundle import Registry
 from chatddx.factors.engine import FileDigest, LocalEngine, ModelArtifact, RemoteEngine
 from chatddx.factors.lint import lint
@@ -28,7 +29,7 @@ from chatddx.facts.facts import (
     Writes,
 )
 
-SAMPLE = Path(__file__).parent / "sample.toml"
+SAMPLE = Path(chatddx.__file__).parent / "data" / "sample" / "facts.toml"
 QWEN = "Qwen/Qwen3-8B-AWQ"
 GPT_OSS = "openai/gpt-oss-20b"
 
