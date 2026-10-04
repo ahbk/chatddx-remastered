@@ -1,5 +1,7 @@
 from typing import Any, LiteralString
 
+from pydantic import JsonValue
+
 from chatddx.core.catalog import (
     THREAD_KINDS,
     About,
@@ -11,15 +13,24 @@ from chatddx.core.catalog import (
     Part,
     Subject,
     Thread,
+    Variation,
 )
-from chatddx.factors.base import Fingerprint, iter_refs, resolve
+from chatddx.factors.base import (
+    Component,
+    Fingerprint,
+    canonical_bytes,
+    iter_refs,
+    parse_component,
+    resolve,
+)
 from chatddx.factors.cases import SourceCase
+from chatddx.factors.request import Recipe
 from chatddx.factors.scoring import Scorer
 from chatddx.ledger.ledger import Compilation
 
 from .store import Connection, Store
 
-_EDIT = "e.id, e.thread, e.digest, e.compilation, e.by, e.at"
+_EDIT = "e.id, e.thread, e.digest, e.compilation, e.based_on, e.by, e.at"
 
 _HEAD: LiteralString = """
     CROSS JOIN LATERAL (
@@ -37,9 +48,15 @@ _DELETED: LiteralString = """
 
 
 def _edit(row: tuple[Any, ...]) -> Edit:
-    id, thread, digest, compilation, by, at = row
+    id, thread, digest, compilation, based_on, by, at = row
     return Edit(
-        id=id, thread=thread, digest=digest, compilation=compilation, by=by, at=at
+        id=id,
+        thread=thread,
+        digest=digest,
+        compilation=compilation,
+        based_on=based_on,
+        by=by,
+        at=at,
     )
 
 
@@ -76,15 +93,36 @@ class Catalog:
             return self.edit(row[0], digest, by, compilation=compilation)
 
     def edit(
-        self, thread: int, digest: str, by: int, *, compilation: str | None = None
+        self,
+        thread: int,
+        digest: str,
+        by: int,
+        *,
+        compilation: str | None = None,
+        based_on: int | None = None,
     ) -> Edit:
+        # src/chatddx/store/migrations/0016-t2-catalog-based-on.sql repeats this check.
+        if based_on is not None:
+            in_origin = self._conn.execute(
+                """
+                SELECT FROM catalog.thread t
+                JOIN catalog.edit o ON o.id = t.forked_from
+                JOIN catalog.edit b ON b.thread = o.thread AND b.id >= o.id
+                WHERE t.id = %s AND b.id = %s
+                """,
+                (thread, based_on),
+            ).fetchone()
+            if in_origin is None:
+                raise ValueError(
+                    f"edit {based_on} is not in the origin of thread {thread}"
+                )
         row = self._conn.execute(
             f"""
-            INSERT INTO catalog.edit AS e (thread, kind, digest, compilation, by)
-            SELECT t.id, t.kind, %s, %s, %s FROM catalog.thread t WHERE t.id = %s
+            INSERT INTO catalog.edit AS e (thread, kind, digest, compilation, based_on, by)
+            SELECT t.id, t.kind, %s, %s, %s, %s FROM catalog.thread t WHERE t.id = %s
             RETURNING {_EDIT}
             """,
-            (digest, compilation, by, thread),
+            (digest, compilation, based_on, by, thread),
         ).fetchone()
         if row is None:
             raise LookupError(f"no thread with id {thread}")
@@ -139,13 +177,7 @@ class Catalog:
                 (head.digest,),
             )
         ]
-        if head.compilation is not None:
-            row = self._conn.execute(
-                "SELECT payload FROM factor.compilation WHERE digest = %s",
-                (head.compilation,),
-            ).fetchone()
-            assert row is not None
-            recipe = Compilation.parse(str(row[0])).recipe
+        if (recipe := self._recipe(head)) is not None:
             refs += [(s.path, s.digest) for s in iter_refs(recipe, "/recipe")]
         refs += self._through_cases(refs)
         rows = self._conn.execute(
@@ -160,6 +192,51 @@ class Catalog:
             ([p for p, _ in refs], [d for _, d in refs]),
         ).fetchall()
         return [Behind(path=r[0], digest=r[1], head=_edit(r[2:])) for r in rows]
+
+    def recipe(self, thread: int) -> Recipe | None:
+        return self._recipe(self.head(thread))
+
+    def variation(self, thread: int) -> Variation | None:
+        forked_from = self.thread(thread).forked_from
+        if forked_from is None:
+            return None
+        history = self.history(thread)
+        based_on = [e.based_on for e in history if e.based_on is not None]
+        base = self._edit_by_id(based_on[-1] if based_on else forked_from)
+        fork = history[-1]
+        by_recipe = base.compilation is not None and fork.compilation is not None
+        before, after = self._shape(base, by_recipe), self._shape(fork, by_recipe)
+        return Variation(
+            base=base,
+            head=self.head(base.thread),
+            varies={
+                path: (before.get(path), after.get(path))
+                for path in sorted(before.keys() | after.keys())
+                if before.get(path) != after.get(path)
+            },
+        )
+
+    def proposal(self, thread: int) -> Recipe | Component | None:
+        variation = self.variation(thread)
+        if variation is None or not variation.moved:
+            return None
+        fork = self.head(thread)
+        if variation.base.compilation is not None and fork.compilation is not None:
+            recipe = self._recipe(variation.head)
+            if recipe is None:
+                return None
+            changes = {
+                path.removeprefix("/recipe/"): after
+                for path, (_, after) in variation.varies.items()
+            }
+            return Recipe.model_validate({**recipe.model_dump(mode="json"), **changes})
+        doc = Store(self._conn).get(variation.head.digest).canonical_doc()
+        for path, (_, after) in variation.varies.items():
+            if after is None:
+                _ = doc.pop(path[1:], None)
+            else:
+                doc[path[1:]] = after
+        return parse_component(canonical_bytes(doc))
 
     def adopt(self, case: str, by: int) -> int:
         with self._conn.transaction():
@@ -304,6 +381,34 @@ class Catalog:
             (scorer,),
         )
         return {(part, position): value for part, position, value in rows}
+
+    def _edit_by_id(self, id: int) -> Edit:
+        row = self._conn.execute(
+            f"SELECT {_EDIT} FROM catalog.edit e WHERE e.id = %s", (id,)
+        ).fetchone()
+        if row is None:
+            raise LookupError(f"no edit with id {id}")
+        return _edit(row)
+
+    def _recipe(self, edit: Edit) -> Recipe | None:
+        if edit.compilation is None:
+            return None
+        row = self._conn.execute(
+            "SELECT payload FROM factor.compilation WHERE digest = %s",
+            (edit.compilation,),
+        ).fetchone()
+        assert row is not None
+        return Compilation.parse(str(row[0])).recipe
+
+    def _shape(self, edit: Edit, by_recipe: bool) -> dict[str, JsonValue]:
+        if by_recipe:
+            recipe = self._recipe(edit)
+            assert recipe is not None
+            return {
+                f"/recipe/{k}": v for k, v in recipe.model_dump(mode="json").items()
+            }
+        doc = Store(self._conn).get(edit.digest).canonical_doc()
+        return {f"/{k}": v for k, v in doc.items() if k not in ("kind", "v")}
 
     @staticmethod
     def _subject(subject: Subject) -> tuple[LiteralString, object]:

@@ -78,6 +78,10 @@ behind. A fork doesn't make anything behind, since it doesn't contain the digest
 Not implemented: storing what caused an edit (option B3). It can be derived by diffing consecutive edits' references,
 and a nullable `implied_by` column can be added later.
 
+Implemented later, for variations (G9 in `agents/wip-sample-data.md`): a nullable `catalog.edit.based_on`. It names
+the origin edit a fork was re-applied onto, so `Catalog.variation` and `Catalog.proposal` compare a fork with the
+right base. It's narrower than `implied_by`: it only says what a fork is based on, not why an edit was made.
+
 ### 5. What names and labels attach to
 Implemented (was a take):
 - **Names, tags, descriptions, owner, collaborators, delete flags** are entries in one log, `catalog.entry`, on a

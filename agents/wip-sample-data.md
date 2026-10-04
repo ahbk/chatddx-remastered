@@ -219,6 +219,22 @@ tags = ["ddx"]
     - forks copy whole skeletons.
   - Semantics differ too. Old `extends` was live: a child followed its parent's edits. A fork is a snapshot, and
     nothing propagates (`agents/wip-catalog.md`, decision 4); `Catalog.behind` only reports.
+  - **Fixed** (user's choice: a proposal to re-apply when the origin moves). A variation stays a fork, as the docs
+    say, and the catalog now knows what it varies:
+    - `Catalog.recipe(thread)` reads a configuration's recipe.
+    - `Catalog.variation(thread)` gives the base (`forked_from`, or the latest `based_on`), the origin's head,
+      `moved`, and `varies`: recipe parts for skeleton threads, top-level fields for other kinds.
+    - `Catalog.proposal(thread)` gives the origin's head with the fork's changes on top.
+    - Accepting is `Catalog.edit(fork, …, based_on=origin_head)`. The new `catalog.edit.based_on` column
+      (migrations 0015 t0, 0016 t2) records it, so the same proposal isn't made twice.
+    - Sample data, when the loader exists (deferred command): a record-level `extends` becomes a fork with
+      `forked_from`. `plan-shown`, `plan-prompted` and `diagnoses-tool` vary `output`. `coercion.prompted`
+      vs `native-shown` is an output chunk fork that changes `contract`. `sampling.recommended-4k` is gone with
+      `max_tokens` (old C3).
+    - Chunk derivation needs no helper: an author changes a field and saves the result as a fork. The catalog then
+      sees the field as varied.
+    - Proposed amendments: `docs/catalog.md`, `docs/store.md`, `docs/chatddx.md`.
+    - Tests: `test_variations_are_reapplied_on_request`, `test_chunk_variations`.
 - **G10. Skeleton × engine compatibility.** [maybe fix remastered]
   - The old facts refused combinations: gpt-oss can't turn reasoning off, harmony doesn't render `response_format`,
     vLLM ignores `tool_choice = required` for gpt-oss, and native/tool modes need parsers in the engine's argv.

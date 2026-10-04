@@ -158,3 +158,11 @@ tier-2 triggers).
   `Store.load`); a future ORM or view must not rebuild them from `doc`." (`src/chatddx/factors/base.py:46`)
 
 ## Proposed amendments
+- CHANGE in "Layout", the catalog's `edit (id, thread, kind, digest, compilation, by, at)` to
+  `edit (id, thread, kind, digest, compilation, based_on, by, at)`; `based_on` is an edit of the same kind in the
+  thread's origin, at or after `forked_from`.
+- ADD to "Tier 0" migrations: `0015-t0-catalog-based-on.sql` (the column and its same-kind foreign key). ADD to
+  "Tier 2" migrations: `0016-t2-catalog-based-on.sql` (a trigger that keeps `based_on` in the origin thread,
+  repeated in `Catalog.edit`).
+- CHANGE in "Store API": add `recipe`, `variation` and `proposal` to the `Catalog` methods, and `based_on` to
+  `edit`. (`src/chatddx/store/catalog.py:95`, `:196`, `:199`, `:219`)

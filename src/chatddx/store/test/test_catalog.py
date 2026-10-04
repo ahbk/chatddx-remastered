@@ -10,7 +10,14 @@ from chatddx.core.identity import Person
 from chatddx.factors.base import Component, StructuralError, iter_refs, resolve
 from chatddx.factors.bundle import Registry
 from chatddx.factors.cases import Appendix, CaseInput, SourceCase
-from chatddx.factors.request import compile_request
+from chatddx.factors.request import (
+    Insert,
+    NativeOutput,
+    Output,
+    Recipe,
+    Sampling,
+    compile_request,
+)
 from chatddx.factors.scoring import Judge, Scoring
 from chatddx.factors.test.sample import NOW, RIG, fp, generation_recipe, world
 from chatddx.ledger.ledger import Compilation, RunStarted, ScoreStarted
@@ -29,7 +36,10 @@ def stored_world(
 
 
 def compiled(store: Store, reg: Registry, *instructions: str) -> Compilation:
-    recipe = generation_recipe(reg, *instructions)
+    return compiled_recipe(store, reg, generation_recipe(reg, *instructions))
+
+
+def compiled_recipe(store: Store, reg: Registry, recipe: Recipe) -> Compilation:
     skeleton = reg.add(compile_request(recipe, reg.get))
     _ = store.add(reg, [*(s.digest for s in iter_refs(recipe)), skeleton])
     compilation = Compilation(recipe=recipe, skeleton=skeleton, compiler=RIG, at=NOW)
@@ -97,6 +107,93 @@ def test_forks(conn: Connection) -> None:
     assert catalog.heads("chunk.instructions") == [origin, fork]
     with pytest.raises(errors.ForeignKeyViolation), conn.transaction():
         _ = catalog.create(ids["trial"], alice.id, forked_from=origin.id)
+
+
+def test_variations_are_reapplied_on_request(conn: Connection) -> None:
+    catalog, store, reg, _, alice = stored_world(conn)
+    base = generation_recipe(reg)
+    shown = reg.add(
+        Output(
+            contract=NativeOutput(),
+            json_schema={"type": "object"},
+            guidance=("Answer with JSON matching:\n\n", Insert(insert="schema")),
+        )
+    )
+    plan = compiled_recipe(store, reg, base)
+    plan_shown = compiled_recipe(store, reg, base.model_copy(update={"output": shown}))
+    origin = catalog.create(plan.skeleton, alice.id, compilation=plan.digest)
+    fork = catalog.create(
+        plan_shown.skeleton,
+        alice.id,
+        compilation=plan_shown.digest,
+        forked_from=origin.id,
+    )
+    assert catalog.recipe(origin.thread) == base
+    assert catalog.variation(origin.thread) is None
+    variation = catalog.variation(fork.thread)
+    assert variation is not None
+    assert (variation.base, variation.head, variation.moved) == (origin, origin, False)
+    assert variation.varies == {"/recipe/output": (base.output, shown)}
+    assert catalog.proposal(fork.thread) is None
+
+    greedy = reg.add(Sampling(temperature=0))
+    _ = store.add(reg, [greedy])
+    moved_recipe = base.model_copy(update={"sampling": greedy})
+    moved = compiled_recipe(store, reg, moved_recipe)
+    head = catalog.edit(
+        origin.thread, moved.skeleton, alice.id, compilation=moved.digest
+    )
+    variation = catalog.variation(fork.thread)
+    assert variation is not None
+    assert (variation.base, variation.head, variation.moved) == (origin, head, True)
+    proposal = catalog.proposal(fork.thread)
+    assert proposal == moved_recipe.model_copy(update={"output": shown})
+
+    assert isinstance(proposal, Recipe)
+    accepted = compiled_recipe(store, reg, proposal)
+    with pytest.raises(ValueError, match="origin"):
+        _ = catalog.edit(fork.thread, accepted.skeleton, alice.id, based_on=fork.id)
+    reapplied = catalog.edit(
+        fork.thread,
+        accepted.skeleton,
+        alice.id,
+        compilation=accepted.digest,
+        based_on=head.id,
+    )
+    assert reapplied.based_on == head.id
+    variation = catalog.variation(fork.thread)
+    assert variation is not None
+    assert (variation.base, variation.moved) == (head, False)
+    assert variation.varies == {"/recipe/output": (base.output, shown)}
+    assert catalog.proposal(fork.thread) is None
+
+    with pytest.raises(errors.RaiseException, match="origin"), conn.transaction():
+        _ = conn.execute(
+            """
+            INSERT INTO catalog.edit (thread, kind, digest, by, based_on)
+            VALUES (%s, 'skeleton', %s, %s, %s)
+            """,
+            (fork.thread, accepted.skeleton, alice.id, fork.id),
+        )
+
+
+def test_chunk_variations(conn: Connection) -> None:
+    catalog, store, reg, _, alice = stored_world(conn)
+    recommended, longer, cooler = (
+        reg.add(Sampling(temperature=0.6, top_p=0.95)),
+        reg.add(Sampling(temperature=0.6, top_p=0.95, max_output_tokens=4096)),
+        reg.add(Sampling(temperature=0.7, top_p=0.95)),
+    )
+    _ = store.add(reg, [recommended, longer, cooler])
+    origin = catalog.create(recommended, alice.id)
+    fork = catalog.create(longer, alice.id, forked_from=origin.id)
+    variation = catalog.variation(fork.thread)
+    assert variation is not None
+    assert variation.varies == {"/max_output_tokens": (None, 4096)}
+    _ = catalog.edit(origin.thread, cooler, alice.id)
+    assert catalog.proposal(fork.thread) == Sampling(
+        temperature=0.7, top_p=0.95, max_output_tokens=4096
+    )
 
 
 def test_threads_behind_are_proposed_not_moved(conn: Connection) -> None:

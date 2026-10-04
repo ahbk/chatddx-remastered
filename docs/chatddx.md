@@ -260,3 +260,6 @@ The one hard block is clearance: sending case-derived content to an engine that 
 **Case drift and canary drift are not implemented.** `RunItem.vignette` records the observed fingerprint, but nothing compares it with `CaseInput.vignette`, and nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
+- ADD to the references under "Intended evolution of configurations": "`src/chatddx/store/catalog.py:Catalog.variation`
+  and `Catalog.proposal` (what a fork varies, and re-applying it when its origin moves), and
+  `catalog.edit.based_on`".

@@ -4,7 +4,7 @@ from enum import StrEnum
 from typing import ClassVar, Literal, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, JsonValue, model_validator
 
 from chatddx.factors.base import Fingerprint
 from chatddx.factors.cases import SourceCase
@@ -65,8 +65,19 @@ class Edit(_Frozen):
     thread: int
     digest: str
     compilation: str | None
+    based_on: int | None
     by: int
     at: datetime
+
+
+class Variation(_Frozen):
+    base: Edit
+    head: Edit
+    varies: dict[str, tuple[JsonValue, JsonValue]]
+
+    @property
+    def moved(self) -> bool:
+        return self.head.id != self.base.id
 
 
 class Behind(_Frozen):
