@@ -54,3 +54,13 @@ ledger provide the means; the runner enforces.
    the hard block is undecided.
 5. **Sources.** Sources are now listed in the inventory with a `sensitive` flag (G11 in
    `agents/wip-sample-data.md`). Still unspecified: what clearance each requires, beyond sensitive or not.
+
+## Tools (G8)
+- A tool's arguments are written by the model from the case. A tool that sends them off the host (the old
+  `web_search` goes to DuckDuckGo) sends case-derived content to a third party, so the hard block covers tools as
+  it covers engines and judges.
+- Tools are pinned by code (`Tool.code`, `entry_point`), so the clearance pipeline can clear a tool by its code.
+  Nothing declares which endpoints a tool reaches; that belongs to clearance, not to the factor.
+- Tool results come back from the third party and are stored in the ledger (`ToolRun.result`), next to the
+  responses.
+

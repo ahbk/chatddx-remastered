@@ -59,14 +59,16 @@ Left behind:
 - `tags`: catalog.
 - `profile`: pydantic-ai only.
 - `needs`: vLLM requirements, now G10's runtime lints.
-- gpt-oss's tool note: it was about `tool_choice = "required"`, which remastered never sends.
+- gpt-oss's tool note, about `tool_choice = "required"`. Remastered sends `required` since G8 (a `tool`
+  contract with a toolset), so the note may come back, once checked against vLLM 0.24 (see Open).
 
 ## Open
 - **Where the sample's facts live.** The fixture stands in until the sample data's location is decided (the
   deferred command).
 - **`xhigh`.** It is a level, but neither `Reasoning.effort` nor `Writes.effort` can express it. Adding it to both
   Literals is additive, if a model that supports it shows up.
-- **Named `tool_choice` on harmony** (gpt-oss) is unverified.
+- **Named and `required` `tool_choice` on harmony** (gpt-oss) are unverified. vLLM 0.24's gpt-oss tool parser
+  accepts both, so the JSON-array grammar applies; whether harmony's output survives it isn't known.
 - **Facts for engines vs models.** Some old facts were really about model × runtime (harmony and
   `response_format`). They live on the model for now; a runtime-keyed section can be added when a second runtime
   appears.

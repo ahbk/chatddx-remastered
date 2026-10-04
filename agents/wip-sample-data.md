@@ -31,7 +31,7 @@ Permalink base: https://github.com/chatddx-administration/chatddx/blob/7893656c1
 | llm | 2 | `ModelArtifact`; its facts have no home (G1) | deferred, except G1 |
 | serving, stack | 5, 5 | `LocalEngine` + World inventory | deferred |
 | client | 2 | `Code` on `RunStarted`, written per run | dropped |
-| tool, toolset | 1, 1 | nothing yet (G8) | |
+| tool, toolset | 1, 1 | `tool` + `chunk.tools` (G8) | the loop, clearance |
 | instruction | 2 | `chunk.instructions` + `chunk.prompt` | G3 |
 | output | 4 | `chunk.output`; views go to scorers | G4, G6, G7 |
 | coercion | 5 | `chunk.output` contract | G4, G5 |
@@ -210,6 +210,45 @@ tags = ["ddx"]
     - ledger rows for tool calls and results: a run item holds one `Call`;
     - a clearance rule: a tool such as `web_search` sends case-derived text to a third party, which falls under the
       hard block.
+  - **Fixed** in shape; the loop waits for the runner.
+    - Decided:
+      - a tool's code is a factor;
+      - a `tool` contract with a toolset uses `tool_choice: required`;
+      - a `native` contract with tools is allowed and linted;
+      - no loop this round.
+    - `Tool` (kind `tool`): name, description, parameters, `code` and `entry_point`. `Toolset` (`chunk.tools`):
+      tools with distinct names, plain-text guidance, `max_rounds` (default 5, the old `TOOL_ROUNDS`).
+      `Recipe.tools`.
+    - Compilation:
+      - the body offers the toolset's tools, with `auto` for `native` and `text` contracts;
+      - a `tool` contract's answer tool comes last, with `required`;
+      - an answer tool named like a toolset tool fails;
+      - the `tool_guidance` insert (G3's mechanism) works like `output_guidance` and is appended after it when
+        not inserted;
+      - translations cover the toolset's texts (G18).
+    - The skeleton references its tools and holds `max_rounds`, and its structure rules allow tools per contract.
+      `Skeleton.cross_check` matches the offered tools to the referenced ones by name.
+    - `tool_calls(response)` and `next_request(body, response, results)` build each round's request, deterministically.
+    - Ledger: `RunItem.turns`, each a `Turn` of `ToolRun`s and the next `Call`. `check_run` checks rounds against
+      the skeleton and warns `tools.unanswered`. Single-call items keep their bytes, since `turns` defaults to empty.
+    - Lints:
+      - `vllm.tools_refused` replaces `vllm.tool_unconstrained`, which was wrong: vLLM 0.24 *refuses* a tool
+        choice without the parser flags, except for harmony and Mistral models (`docs/vllm.md` 5, corrected).
+      - New `vllm.native_tools_uncallable`.
+    - Migration `0021-t2-catalog-tools` adds the thread kinds. Titles: a tool by its name, a toolset as `with …`.
+    - Sample data: `plan-web` is `plan` with a toolset holding `web_search`. Its code (the old
+      `chatddx.runtime.tools.web_search`) has no home in remastered yet, so the tool's `Code` and `entry_point`
+      wait for the runner.
+    - Still open:
+      - the loop itself, and where tools run;
+      - clearance for tools (`agents/wip-clearance.md`);
+      - `schema.ref_unverified` doesn't look at toolset tools' parameters;
+      - gpt-oss with `required` (`agents/wip-facts.md`);
+      - a turn after a response that already called the answer tool isn't rejected.
+    - Proposed amendments: `docs/factors.md`, `docs/ledger.md`, `docs/vllm.md` (5 corrected, 9, 10),
+      `docs/findings.md`, `docs/clearance.md`, `docs/store.md`.
+    - Tests: `test_tools_compile_into_the_request`, `test_tool_rounds_continue_the_request`, the tool cases in
+      `test_skeleton_and_engine_compatibility`, `test_tool_rounds_are_checked`.
 - **G9. Variations.** [maybe fix remastered] (old C9)
   - The sample data defines `plan-shown`, `plan-prompted`, `diagnoses-tool`, `coercion.prompted` and
     `sampling.recommended-4k` as "X with Y replaced".

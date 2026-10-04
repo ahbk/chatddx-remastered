@@ -138,3 +138,15 @@ Note: Part of it exists now: the case-derived tables are in their own ledger sch
 - Nothing compares declared and observed scorer code. ScoreStarted.scorer_code is never checked against Scorer.code, so a mismatch goes unnoticed.
 
 ## Proposed amendments
+
+### G8: tool rounds
+- **RunItem**, append: "An item whose skeleton has tools may take tool rounds (`turns`). Each `Turn` holds the
+  tools the runner ran for the previous response's calls (`ToolRun`: the call's id, the tool's name, start and end
+  times, and the result sent back or an error) and the next `Call`. `RunItem.calls` lists the first call and every
+  round's. Tool arguments are in the previous call's response; results are stored as sent, since they shaped the
+  next request."
+- **Run**, `check_run`, append: "It raises for rounds on a skeleton without tools, for more rounds than
+  `max_rounds`, for a round whose tools don't match the previous response's calls (the answer tool aside), and for
+  a result from a tool the skeleton doesn't have. It warns (`tools.unanswered`) when an item's last response still
+  calls tools. Model attestation covers every call; an item lacks a prompt-token fingerprint if any of its calls
+  does. `compare_prompt_tokens` compares first calls only, since later ones depend on what the tools returned."

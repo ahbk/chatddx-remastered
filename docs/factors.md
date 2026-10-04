@@ -306,3 +306,50 @@ the seed isn't sent, but the trial's seeds still count toward its hash, so two o
 - `Hardware` has no GPU count, so tensor-parallel engines can't be told apart by hardware (the old code had `gpu_count`).
 
 ## Proposed amendments
+
+### G8: tools
+- **In depth**, kinds: "the eight `chunk.*` kinds" → "the nine `chunk.*` kinds", and add `tool` to the list.
+- **Request** intro, inserts: "`schema` in the output's guidance and `output_guidance` in the instructions or the
+  prompt" → "`schema` in the output's guidance, and `output_guidance` and `tool_guidance` in the instructions or
+  the prompt".
+- **Request**, new sections after Passthrough:
+  "#### Tool
+  - principal author: Developers
+  - defined in: `request.py:Tool`
+
+  A tool (kind `tool`) is a function the model may call between turns: a name, a description, a JSON Schema for
+  its parameters, and the code that runs it (`Code`, plus an `entry_point` such as `chatddx_tools.web:search`). Its
+  code is pinned like a scorer's, because what it returns is what the model reads next: a new implementation is a
+  new tool, a new skeleton and a new trial. What it returned is still recorded per run (`docs/ledger.md`), since a
+  tool such as a web search answers differently from day to day.
+
+  #### Toolset
+  - principal author: Researchers
+  - defined in: `request.py:Toolset`
+
+  A toolset (kind `chunk.tools`) offers tools to the model: the tools, with distinct names, optional guidance
+  (plain text, the old `tool_guidance`), and `max_rounds` (default 5), the most tool rounds an item may take. Its
+  guidance goes where the instructions or the prompt insert `tool_guidance`, or else after the instructions,
+  following the output guidance."
+- **Recipe**: add `tools` to the optional references.
+- **Compilation** (in Recipe or Skeleton): "With a toolset, the body lists its tools, in order, as functions.
+  A `native` or `text` contract gets `tool_choice: auto`, and the model answers when it stops calling tools. A
+  `tool` contract's answer tool is listed last, with `tool_choice: required`: every turn calls a tool, and the
+  answer tool ends the item. An answer tool named like a toolset tool fails the compilation. Translations cover
+  the toolset's guidance and its tools' descriptions and parameter prose."
+- **Skeleton**, append: "A skeleton also references the tools it offers and holds `max_rounds`, both or
+  neither. With tools, a `native` contract needs `response_format`, `tools` and `tool_choice: auto`; a `tool`
+  contract needs its answer tool among the tools and `tool_choice: required`; a `text` contract needs `tools`
+  and `tool_choice: auto`. The tools the body offers, the answer tool aside, must be the referenced tools, by
+  name and in order (`Skeleton.cross_check`); their descriptions may be translated."
+- **Rendering and runtime keys**, append: "A response that calls tools gets another request:
+  `tool_calls(response)` reads the calls, and `next_request(body, response, results)` appends the assistant's
+  message (content and tool calls; its reasoning is left out) and one `tool` message per call, in the calls'
+  order. Everything else in the body stays, the seed included. The loop belongs to the runner: it ends when a
+  response calls no toolset tool, or after `max_rounds` rounds. A call naming no tool of the skeleton is answered
+  with an error."
+- **Linting**: "`vllm.tool_unconstrained`" becomes `vllm.tools_refused`: a body with `tools` on an engine without
+  `--enable-auto-tool-choice` and `--tool-call-parser` is refused by vLLM 0.24, or, for harmony and Mistral models,
+  goes out unconstrained (`docs/vllm.md` 5). New `vllm.native_tools_uncallable`: a `native` contract with tools,
+  whose `auto` tool choice vLLM 0.24 can't honour, since `response_format` constrains the whole answer
+  (`docs/vllm.md` 10).

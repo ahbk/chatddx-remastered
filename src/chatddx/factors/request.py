@@ -1,11 +1,19 @@
 import json
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from typing import Annotated, Literal, NamedTuple, cast
+from typing import Annotated, Literal, NamedTuple, cast, override
 from urllib.parse import unquote
 
-from pydantic import AfterValidator, Field, JsonValue, field_validator, model_validator
+from pydantic import (
+    AfterValidator,
+    Field,
+    JsonValue,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 from .base import (
+    Code,
     Component,
     Digest,
     Frozen,
@@ -18,7 +26,7 @@ from .base import (
 )
 
 SlotName = Literal["case", "appendices", "completion", "expectation"]
-InsertName = Literal["schema", "output_guidance"]
+InsertName = Literal["schema", "output_guidance", "tool_guidance"]
 # As with NormalizeOp (cases.py), each op name pins one behavior; a changed behavior
 # gets a new name.
 SchemaOp = Literal["inline_refs@1"]
@@ -33,8 +41,8 @@ REQUIRED_SLOTS: dict[Purpose, frozenset[SlotName]] = {
     "judge": frozenset({"completion"}),
 }
 INSERTS_BY_KIND: dict[str, frozenset[InsertName]] = {
-    "chunk.instructions": frozenset({"output_guidance"}),
-    "chunk.prompt": frozenset({"output_guidance"}),
+    "chunk.instructions": frozenset({"output_guidance", "tool_guidance"}),
+    "chunk.prompt": frozenset({"output_guidance", "tool_guidance"}),
     "chunk.output": frozenset({"schema"}),
 }
 
@@ -340,6 +348,38 @@ class Passthrough(Component):
         return self
 
 
+ToolName = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_-]{1,64}$")]
+EntryPoint = Annotated[str, StringConstraints(pattern=r"^[\w.]+:[\w.]+$")]
+
+
+# A function the model may call between turns. Its code is pinned like a scorer's,
+# since what it returns is what the model reads next.
+class Tool(Component):
+    kind: Literal["tool"] = "tool"
+    name: ToolName
+    description: str = Field(min_length=1)
+    parameters: dict[str, JsonValue]
+    code: Code
+    entry_point: EntryPoint
+
+
+ToolRef = Annotated[Digest, RefTo("tool")]
+
+
+class Toolset(Component):
+    kind: Literal["chunk.tools"] = "chunk.tools"
+    tools: tuple[ToolRef, ...] = Field(min_length=1)
+    guidance: str | None = Field(default=None, min_length=1)
+    max_rounds: int = Field(default=5, ge=1)
+
+    @override
+    def cross_check(self, get: Resolver) -> list[str]:
+        names = [resolve(get, t, Tool).name for t in self.tools]
+        if dupes := sorted({n for n in names if names.count(n) > 1}):
+            return [f"tools named more than once: {dupes}"]
+        return []
+
+
 # Source text -> translation, applied to every text a recipe brings, as gettext does.
 class Translations(Component):
     kind: Literal["chunk.translations"] = "chunk.translations"
@@ -381,6 +421,7 @@ class Recipe(Frozen):
     passthrough: Annotated[Digest, RefTo("chunk.passthrough")] | None = None
     appendix_layout: AppendixLayout = AppendixLayout()
     translations: Annotated[Digest, RefTo("chunk.translations")] | None = None
+    tools: Annotated[Digest, RefTo("chunk.tools")] | None = None
 
 
 # The frozen request: what a trial or judge actually references.
@@ -394,6 +435,8 @@ class Skeleton(Component):
     body: Settings = Field(default_factory=dict)
     contract: OutputContract
     appendix_layout: AppendixLayout = AppendixLayout()
+    tools: tuple[ToolRef, ...] = ()
+    max_rounds: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="before")
     @classmethod
@@ -410,27 +453,61 @@ class Skeleton(Component):
         if owned := self.body.keys() & RUNTIME_KEYS:
             raise ValueError(f"body may not set {sorted(owned)}")
         _check_slots(self.purpose, [m.content for m in self.messages])
+        if bool(self.tools) != (self.max_rounds is not None):
+            raise ValueError("a skeleton has max_rounds exactly when it has tools")
+        keys = set(self.body) & OUTPUT_KEYS
+        names = _tool_names(self.body)
+        if len(set(names)) != len(names):
+            raise ValueError("tools named more than once")
+        choice = self.body.get("tool_choice")
         match self.contract:
+            case NativeOutput() if self.tools:
+                if keys != {"response_format", "tools", "tool_choice"} or (
+                    choice != "auto"
+                ):
+                    raise ValueError(
+                        "native contract with tools needs response_format, tools "
+                        + "and tool_choice auto"
+                    )
             case NativeOutput():
-                if set(self.body) & OUTPUT_KEYS != {"response_format"}:
+                if keys != {"response_format"}:
                     raise ValueError(
                         "native contract needs response_format and no tools"
                     )
             case ToolOutput(name=name, description=description):
-                if set(self.body) & OUTPUT_KEYS != {"tools", "tool_choice"}:
+                if keys != {"tools", "tool_choice"}:
                     raise ValueError("tool contract needs tools and tool_choice only")
-                if _tool_names(self.body) != [name]:
+                if self.tools and (name not in names or choice != "required"):
+                    raise ValueError(
+                        f"tool contract with tools needs a tool named {name!r} "
+                        + "and tool_choice required"
+                    )
+                if not self.tools and names != [name]:
                     raise ValueError(
                         f"tool contract needs exactly one tool named {name!r}"
                     )
-                if _tool_description(self.body) != description:
+                if _tool_description(self.body, name) != description:
                     raise ValueError(
                         f"tool contract needs its tool described as {description!r}"
                     )
+            case TextOutput() if self.tools:
+                if keys != {"tools", "tool_choice"} or choice != "auto":
+                    raise ValueError(
+                        "text contract with tools needs tools and tool_choice auto"
+                    )
             case TextOutput():
-                if set(self.body) & OUTPUT_KEYS:
+                if keys:
                     raise ValueError("text contract may not constrain the output")
         return self
+
+    @override
+    def cross_check(self, get: Resolver) -> list[str]:
+        answer = self.contract.name if isinstance(self.contract, ToolOutput) else None
+        offered = [n for n in _tool_names(self.body) if n != answer]
+        named = [resolve(get, t, Tool).name for t in self.tools]
+        if offered != named:
+            return [f"the body offers tools {offered}, the skeleton names {named}"]
+        return []
 
     @property
     def greedy(self) -> bool:
@@ -441,8 +518,9 @@ class Skeleton(Component):
         match self.contract:
             case NativeOutput():
                 return _get(self.body, "response_format", "json_schema", "schema")
-            case ToolOutput():
-                return _get(self.body, "tools", 0, "function", "parameters")
+            case ToolOutput(name=name):
+                function = _tool_function(self.body, name)
+                return None if function is None else function.get("parameters")
             case TextOutput(json_schema=schema):
                 return schema
 
@@ -469,9 +547,22 @@ def _tool_names(body: Mapping[str, JsonValue]) -> list[str]:
     return [str(_get(t, "function", "name")) for t in tools]
 
 
-def _tool_description(body: Mapping[str, JsonValue]) -> JsonValue:
-    function = _get(body.get("tools"), 0, "function")
-    return function.get("description") if isinstance(function, dict) else None
+def _tool_function(
+    body: Mapping[str, JsonValue], name: str
+) -> dict[str, JsonValue] | None:
+    tools = body.get("tools")
+    for t in tools if isinstance(tools, list) else []:
+        match t:
+            case {"function": {"name": str() as n} as function} if n == name:
+                return function
+            case _:
+                pass
+    return None
+
+
+def _tool_description(body: Mapping[str, JsonValue], name: str) -> JsonValue:
+    function = _tool_function(body, name)
+    return None if function is None else function.get("description")
 
 
 def _check_slots(
@@ -567,6 +658,8 @@ class _Parts(NamedTuple):
     prompt: Prompt
     output: Output
     appendix_layout: AppendixLayout
+    toolset: Toolset | None
+    tools: tuple[Tool, ...]
 
 
 # The recipe's text-bearing parts, with every text passed through tr(part).
@@ -594,7 +687,27 @@ def _parts(spec: Recipe, get: Resolver, tr: Callable[[str], Translate]) -> _Part
         between=_tr(layout.between, t),
         after=_tr(layout.after, t),
     )
-    return _Parts(instructions, few_shot, prompt, output, appendix_layout)
+    toolset, tools = None, ()
+    if spec.tools is not None:
+        ts, t = resolve(get, spec.tools, Toolset), tr("tools")
+        toolset = Toolset(
+            tools=ts.tools,
+            guidance=None if ts.guidance is None else _tr(ts.guidance, t),
+            max_rounds=ts.max_rounds,
+        )
+        tools = tuple(
+            Tool.model_validate(
+                {
+                    **tool.model_dump(),
+                    "description": _tr(tool.description, t),
+                    "parameters": _tr_schema(tool.parameters, t),
+                }
+            )
+            for tool in (resolve(get, d, Tool) for d in ts.tools)
+        )
+    return _Parts(
+        instructions, few_shot, prompt, output, appendix_layout, toolset, tools
+    )
 
 
 # What a translation of the recipe needs, per part, in order; whitespace is left out.
@@ -641,21 +754,30 @@ def compile_request(spec: Recipe, get: Resolver) -> Skeleton:
     if prompt.purpose != spec.purpose:
         raise StructuralError(f"{prompt.purpose} prompt in a {spec.purpose} recipe")
 
-    guidance = output.guidance_text()
-    fills: dict[InsertName, str] = {"output_guidance": guidance}
-    placed = "output_guidance" in _inserts(prompt.segments)
+    toolset = parts.toolset
+    fills: dict[InsertName, str] = {
+        "output_guidance": output.guidance_text(),
+        "tool_guidance": "" if toolset is None else toolset.guidance or "",
+    }
+    instructions = parts.instructions
+    in_prompt = set(_inserts(prompt.segments))
+    in_instructions = set(
+        [] if instructions is None else _inserts(_segments(instructions.text))
+    )
     system = ""
     role: Literal["system", "developer"] = "system"
-    if (instructions := parts.instructions) is not None:
-        if "output_guidance" in _inserts(_segments(instructions.text)):
-            if placed:
-                raise StructuralError(
-                    "output guidance is inserted in both the instructions and the prompt"
-                )
-            placed = True
+    if instructions is not None:
         system, role = _fill_text(instructions.text, fills), instructions.role
-    if guidance and not placed:
-        system = f"{system}\n\n{guidance}" if system else guidance
+    # Guidance goes where it's inserted, or else after the instructions, in this order.
+    guidances: tuple[InsertName, ...] = ("output_guidance", "tool_guidance")
+    for name in guidances:
+        if name in in_prompt and name in in_instructions:
+            raise StructuralError(
+                f"{name.replace('_', ' ')} is inserted in both the instructions "
+                + "and the prompt"
+            )
+        if (text := fills[name]) and name not in in_prompt | in_instructions:
+            system = f"{system}\n\n{text}" if system else text
 
     messages: list[Message] = []
     if system:
@@ -679,6 +801,19 @@ def compile_request(spec: Recipe, get: Resolver) -> Skeleton:
             managed["thinking_token_budget"] = reasoning.thinking_token_budget
         if reasoning.chat_template_kwargs:
             managed["chat_template_kwargs"] = reasoning.chat_template_kwargs
+    offered: list[JsonValue] = [
+        {
+            "type": "function",
+            "function": {
+                "name": t.name,
+                "description": t.description,
+                "parameters": t.parameters,
+            },
+        }
+        for t in parts.tools
+    ]
+    if offered:
+        managed["tools"], managed["tool_choice"] = offered, "auto"
     contract = output.contract
     match contract:
         case NativeOutput():
@@ -691,12 +826,20 @@ def compile_request(spec: Recipe, get: Resolver) -> Skeleton:
                 },
             }
         case ToolOutput(name=name, description=description):
+            if name in {t.name for t in parts.tools}:
+                raise StructuralError(
+                    f"the answer tool {name!r} has the name of a tool in the toolset"
+                )
             function: dict[str, JsonValue] = {"name": name}
             if description is not None:
                 function["description"] = description
             function["parameters"] = output.output_schema
-            managed["tools"] = [{"type": "function", "function": function}]
-            managed["tool_choice"] = {"type": "function", "function": {"name": name}}
+            managed["tools"] = [*offered, {"type": "function", "function": function}]
+            managed["tool_choice"] = (
+                "required"
+                if offered
+                else {"type": "function", "function": {"name": name}}
+            )
         case TextOutput():
             contract = TextOutput(json_schema=output.output_schema)
     if clash := body.keys() & managed.keys():
@@ -709,6 +852,8 @@ def compile_request(spec: Recipe, get: Resolver) -> Skeleton:
         body=body,
         contract=contract,
         appendix_layout=parts.appendix_layout,
+        tools=() if toolset is None else toolset.tools,
+        max_rounds=None if toolset is None else toolset.max_rounds,
     )
 
 
@@ -730,3 +875,60 @@ def render(
     if return_token_ids:
         body["return_token_ids"] = True
     return body
+
+
+# Tool rounds. A response that calls tools gets one more request: the same body, the
+# assistant's message (its reasoning left out) and one tool message per call, in order.
+
+
+class ToolCall(Frozen):
+    id: str
+    name: str
+    arguments: str
+
+
+def _message(response: Mapping[str, JsonValue]) -> dict[str, JsonValue]:
+    match response.get("choices"):
+        case [{"message": dict() as message}, *_]:
+            return message
+        case _:
+            return {}
+
+
+def tool_calls(response: Mapping[str, JsonValue]) -> tuple[ToolCall, ...]:
+    calls = _message(response).get("tool_calls")
+    found: list[ToolCall] = []
+    for call in calls if isinstance(calls, list) else []:
+        match call:
+            case {
+                "id": str() as id,
+                "function": {"name": str() as name, "arguments": str() as arguments},
+            }:
+                found.append(ToolCall(id=id, name=name, arguments=arguments))
+            case _:
+                pass
+    return tuple(found)
+
+
+def next_request(
+    body: Mapping[str, JsonValue],
+    response: Mapping[str, JsonValue],
+    results: Mapping[str, str],
+) -> dict[str, JsonValue]:
+    message, calls = _message(response), tool_calls(response)
+    if missing := [c.id for c in calls if c.id not in results]:
+        raise StructuralError(f"no result for tool calls {missing}")
+    previous = body.get("messages")
+    messages: list[JsonValue] = [
+        *(previous if isinstance(previous, list) else []),
+        {
+            "role": "assistant",
+            "content": message.get("content"),
+            "tool_calls": message.get("tool_calls"),
+        },
+        *(
+            {"role": "tool", "tool_call_id": c.id, "content": results[c.id]}
+            for c in calls
+        ),
+    ]
+    return {**body, "messages": messages}

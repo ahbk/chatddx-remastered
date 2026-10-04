@@ -124,6 +124,16 @@ def _has_ref(node: JsonValue) -> bool:
             return False
 
 
+def _choice(choice: JsonValue) -> str:
+    match choice:
+        case {"function": {"name": str() as name}}:
+            return repr(name)
+        case str():
+            return choice
+        case _:
+            return "auto"
+
+
 def _asks_to_reason(body: dict[str, JsonValue]) -> bool | None:
     kwargs = body.get("chat_template_kwargs")
     thinking = kwargs.get("enable_thinking") if isinstance(kwargs, dict) else None
@@ -192,14 +202,23 @@ def _runtime(
             + "--reasoning-parser or --reasoning-config",
             subject=subject,
         )
-    if isinstance(skeleton.contract, ToolOutput) and not (
+    if "tools" in skeleton.body and not (
         {"--enable-auto-tool-choice", "--tool-call-parser"} <= flags
     ):
         constrained = False
         yield Finding(
-            code="vllm.tool_unconstrained",
-            message="vLLM 0.24 leaves a named tool unconstrained without "
-            + "--enable-auto-tool-choice and --tool-call-parser",
+            code="vllm.tools_refused",
+            message="vLLM 0.24 refuses tool_choice "
+            + f"{_choice(skeleton.body.get('tool_choice'))} without "
+            + "--enable-auto-tool-choice and --tool-call-parser; for harmony and "
+            + "Mistral models it goes out unconstrained instead",
+            subject=subject,
+        )
+    if isinstance(skeleton.contract, NativeOutput) and skeleton.tools:
+        yield Finding(
+            code="vllm.native_tools_uncallable",
+            message="with tool_choice auto, vLLM 0.24 constrains the whole answer to "
+            + "response_format, so no tool can be called",
             subject=subject,
         )
     if constrained and "--reasoning-parser" not in flags:

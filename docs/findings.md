@@ -83,3 +83,12 @@ the request's language, or some of a trial's cases', is unknown, because a label
 the labels disagree (`lint`, with `languages=`).
 
 ## Proposed amendments
+
+### G8: tool findings
+- `vllm.tool_unconstrained` → `vllm.tools_refused`: a body with tools on an engine without
+  `--enable-auto-tool-choice` and `--tool-call-parser`; vLLM 0.24 refuses it, or sends it unconstrained for
+  harmony and Mistral models.
+- `vllm.native_tools_uncallable`: a `native` contract with tools; on vLLM 0.24 the schema constrains the whole
+  answer, so no tool can be called.
+- `tools.unanswered`: an item's last response still calls tools, after its rounds ran out or the run stopped
+  (`check_run`).

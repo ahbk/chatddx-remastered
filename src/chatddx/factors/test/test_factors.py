@@ -45,11 +45,16 @@ from chatddx.factors.request import (
     Skeleton,
     Slot,
     TextOutput,
+    Tool,
+    ToolCall,
     ToolOutput,
+    Toolset,
     Translations,
     compile_request,
+    next_request,
     render,
     texts,
+    tool_calls,
 )
 from chatddx.factors.scoring import (
     Expectation,
@@ -61,6 +66,7 @@ from chatddx.factors.test.sample import (
     RIG,
     SHA,
     fp,
+    generation_recipe,
     generation_skeleton,
     local_engine,
     world,
@@ -669,6 +675,151 @@ def test_translations_apply_at_compile_time(reg: Registry) -> None:
             _ = Translations(entries=entries)
 
 
+def web_search(reg: Registry) -> str:
+    return reg.add(
+        Tool(
+            name="web_search",
+            description="Search the web.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "What to look up."}
+                },
+                "required": ["query"],
+            },
+            code=RIG,
+            entry_point="chatddx_tools.web:search",
+        )
+    )
+
+
+def test_tools_compile_into_the_request(reg: Registry) -> None:
+    web = web_search(reg)
+    tools = reg.add(Toolset(tools=(web,), guidance="Search when unsure.", max_rounds=3))
+    base = generation_recipe(reg).model_copy(update={"tools": tools})
+    web_function: dict[str, JsonValue] = {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "Search the web.",
+            "parameters": resolve(reg.get, web, Tool).parameters,
+        },
+    }
+
+    native = compile_request(base, reg.get)
+    assert (native.tools, native.max_rounds) == ((web,), 3)
+    assert native.messages[0].content == (
+        "You are an emergency physician.\n\nAnswer in JSON.\n\nSearch when unsure.",
+    )
+    assert native.body["tools"] == [web_function]
+    assert native.body["tool_choice"] == "auto"
+    assert "response_format" in native.body
+
+    answer = reg.add(
+        Output(
+            contract=ToolOutput(name="answer", description="Give the answer."),
+            json_schema={"type": "object"},
+        )
+    )
+    tool = compile_request(base.model_copy(update={"output": answer}), reg.get)
+    tool_list = tool.body["tools"]
+    assert isinstance(tool_list, list)
+    assert tool_list[0] == web_function
+    assert tool.body["tool_choice"] == "required"
+    assert tool.output_schema == {"type": "object"}
+
+    text = reg.add(Output(contract=TextOutput()))
+    plain = compile_request(base.model_copy(update={"output": text}), reg.get)
+    assert (plain.body["tools"], plain.body["tool_choice"]) == ([web_function], "auto")
+
+    placed = reg.add(
+        Prompt(
+            segments=(
+                "Case:\n",
+                Slot(slot="case"),
+                Insert(insert="tool_guidance", before="\n\n"),
+            )
+        )
+    )
+    inserted = compile_request(base.model_copy(update={"prompt": placed}), reg.get)
+    assert inserted.messages[-1].content == (
+        "Case:\n",
+        Slot(slot="case"),
+        "\n\nSearch when unsure.",
+    )
+    assert "Search when unsure." not in str(inserted.messages[0].content)
+    bare = compile_request(
+        generation_recipe(reg).model_copy(update={"prompt": placed}), reg.get
+    )
+    assert bare.messages[-1].content == ("Case:\n", Slot(slot="case"))
+
+    clash = reg.add(
+        Output(
+            contract=ToolOutput(name="web_search", description="Answer."),
+            json_schema={"type": "object"},
+        )
+    )
+    with pytest.raises(StructuralError, match="web_search"):
+        _ = compile_request(base.model_copy(update={"output": clash}), reg.get)
+
+    assert texts(base, reg.get)["tools"] == (
+        "Search when unsure.",
+        "Search the web.",
+        "What to look up.",
+    )
+    twice = Toolset(tools=(web, web))
+    _ = reg.add(twice)
+    with pytest.raises(StructuralError, match="more than once"):
+        reg.check([twice.digest])
+    with pytest.raises(ValidationError, match="max_rounds"):
+        _ = Skeleton.model_validate({**native.model_dump(), "max_rounds": None})
+    with pytest.raises(ValidationError, match="auto"):
+        _ = Skeleton.model_validate(
+            {**plain.model_dump(), "body": {**plain.body, "tool_choice": "required"}}
+        )
+
+
+def test_tool_rounds_continue_the_request(reg: Registry) -> None:
+    web = web_search(reg)
+    tools = reg.add(Toolset(tools=(web,)))
+    skeleton = compile_request(
+        generation_recipe(reg).model_copy(update={"tools": tools}), reg.get
+    )
+    body = render(
+        skeleton, model="m", seed=1, fills={"case": "Chest pain.", "appendices": ""}
+    )
+    called: dict[str, JsonValue] = {
+        "role": "assistant",
+        "content": None,
+        "reasoning": "Let me check.",
+        "tool_calls": [
+            {
+                "id": "c1",
+                "type": "function",
+                "function": {"name": "web_search", "arguments": '{"query": "ACS"}'},
+            }
+        ],
+    }
+    response: dict[str, JsonValue] = {"choices": [{"message": called}]}
+    assert tool_calls(response) == (
+        ToolCall(id="c1", name="web_search", arguments='{"query": "ACS"}'),
+    )
+    assert tool_calls({"choices": [{"message": {"content": "ACS"}}]}) == ()
+    follow_up = next_request(body, response, {"c1": "1. ACS - Wikipedia"})
+    messages = follow_up["messages"]
+    assert isinstance(messages, list) and isinstance(body["messages"], list)
+    assert messages[: len(body["messages"])] == body["messages"]
+    assert messages[len(body["messages"]) :] == [
+        {"role": "assistant", "content": None, "tool_calls": called["tool_calls"]},
+        {"role": "tool", "tool_call_id": "c1", "content": "1. ACS - Wikipedia"},
+    ]
+    assert {k: v for k, v in follow_up.items() if k != "messages"} == {
+        k: v for k, v in body.items() if k != "messages"
+    }
+    with pytest.raises(StructuralError, match="c1"):
+        _ = next_request(body, response, {})
+
+
 def test_engine_argv_cannot_override_manifest(reg: Registry) -> None:
     engine = local_engine(reg)
     for argv in (["--served-model-name=x"], ["--chat_template", "t.jinja"]):
@@ -960,8 +1111,21 @@ def test_skeleton_and_engine_compatibility(reg: Registry) -> None:
     assert findings(thinking, bare) == {"vllm.grammar_before_reasoning": "warning"}
     assert findings(silent, bare) == {}
     assert findings(native, parsers) == {}
-    assert findings(tool, bare) == {"vllm.tool_unconstrained": "warning"}
+    assert findings(tool, bare) == {"vllm.tools_refused": "warning"}
     assert findings(tool, parsers) == {}
+    with_tools = generation_recipe(reg).model_copy(
+        update={"tools": reg.add(Toolset(tools=(web_search(reg),)))}
+    )
+    native_tools = reg.add(compile_request(with_tools, reg.get))
+    text = reg.add(Output(contract=TextOutput()))
+    text_tools = reg.add(
+        compile_request(with_tools.model_copy(update={"output": text}), reg.get)
+    )
+    assert findings(native_tools, parsers) == {
+        "vllm.native_tools_uncallable": "warning"
+    }
+    assert findings(text_tools, bare) == {"vllm.tools_refused": "warning"}
+    assert findings(text_tools, parsers) == {}
     assert findings(budget, bare) == {"vllm.thinking_budget_refused": "warning"}
     assert findings(budget, local("--reasoning-config", "{}")) == {}
     assert findings(native, remote) == {"schema.ref_unverified": "warning"}

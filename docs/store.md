@@ -175,3 +175,7 @@ tier-2 triggers).
   `Store.load`); a future ORM or view must not rebuild them from `doc`." (`src/chatddx/factors/base.py:46`)
 
 ## Proposed amendments
+
+### G8: tools
+- **Migrations, tier 2**, add `0021-t2-catalog-tools.sql`.
+- **Endowes**, add: "`0021` adds `chunk.tools` and `tool` to the thread kinds."

@@ -51,3 +51,23 @@ vLLM is used for running local models within our control. A fake vLLM is under p
 Fake vLLM based on 0.24.0 should pin all of them
 
 ## Proposed amendments
+
+### G8: tools
+- **5**, replace with: "Without `--enable-auto-tool-choice` and `--tool-call-parser` there is no tool parser
+  (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/parser/parser_manager.py#L35-L36), and vLLM 0.24 refuses a request whose `tool_choice` is `auto`
+  (needs both flags) or `required` or named (needs `--tool-call-parser`)
+  (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/serve/render/serving.py#L345-L368). The exceptions are gpt-oss (harmony) and Mistral
+  tokenizers, which pass that check; their request then goes out unconstrained, since the tool's schema reaches
+  the grammar only through a tool parser's `adjust_request`
+  (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/serve/render/serving.py#L946-L966,
+  https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/parser/abstract_parser.py#L455-L464)." This corrects the old text, which said every such request goes
+  out unconstrained.
+- New **9**: "`tool_choice: required` constrains the answer to a JSON array of at least one `{name, parameters}`
+  call, any of the tools, and a named choice to the tool's parameters. Either way the tool parser replaces any
+  `response_format` (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/tool_parsers/abstract_tool_parser.py#L119-L148,
+  https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/tool_parsers/utils.py#L247-L298)."
+- New **10**: "`tool_choice: auto` adds no grammar (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/tool_parsers/utils.py#L297-L298), so with a
+  `response_format` the whole answer is constrained to that schema and the model can't write a tool call. The
+  request isn't refused: structured outputs go with `auto` and `required`
+  (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/chat_completion/protocol.py#L759-L768)."
+- "pin all of them" stays true with 9 and 10 added.
