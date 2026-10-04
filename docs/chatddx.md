@@ -243,21 +243,11 @@ The "scored results" are just those ScoreItem rows. What aggregates them isn't n
 ## Findings and errors
 A finding (`src/chatddx/factors/base.py: Finding`) has a level (`warning` by default, or `info`), a code, a message and optionally the subject it concerns. Findings are how "warnings, not crashes" is implemented: anything declared that doesn't match what was observed, and anything risky, becomes a finding. The run and score checks return their findings, and a run's or score's findings are stored in its finished row. The codes are:
 
-- `attestation.model`: the engine returned a different model name than declared: the engine digest for a local engine, the requested model for a remote one (`check_run`).
-- `attestation.prompt_tokens`: some run items have no prompt-token fingerprint, for example because the engine didn't return token ids (`check_run`).
-- `attestation.prompt_tokens_drift`: an item read different prompt tokens than the same item in another run (`compare_prompt_tokens`).
-- `run.incomplete`: a finished run lacks some of the trial's items (`check_run`).
-- `ledger.seal`: a run's or score's rows no longer match the seal in its finished row (`check_run`, `check_score`).
-- `engine.chat_template` and `engine.chat_template_date`: the chat-template file doesn't match the engine's declared digest, or reads the current date (`check_chat_template`).
-- `bundle.recanonicalized`: the current code would serialize a bundled component differently from its stored bytes, which remain authoritative (`Bundle.load`).
-- `model.revision`, `engine.closure`, `scorer.revision`, and the pair rules for trials and judges (`vllm.temperature_clamped`, `vllm.tool_unconstrained`, `vllm.thinking_budget_refused`, `vllm.grammar_before_reasoning`, `schema.ref_unverified`): the lints in `docs/factors.md`.
-
-- `facts.missing`, `facts.reasoning_unmatched`, `facts.budget_refused`, `facts.output_refused` and `facts.output_note`.
-- `case.drift`: the vignette read at the source differs from the case's fingerprint (`prepare_case`, `check_run`).
-
 Structurally malformed input raises instead. Constructing a component, canary or record that breaks its own rules raises pydantic's `ValidationError`: for example flags the start-up script owns in `argv`, slots unsuitable for the purpose, a skeleton body at odds with its contract, runtime keys in a body, duplicate seeds or cases, a shuffle seed without shuffled order, or a stage log out of order. Problems that need other components or records to see raise `StructuralError`: a digest that doesn't match its bytes, an unknown kind or schema version, a missing or wrongly typed reference, a failed `cross_check`, a recipe whose prompt purpose differs from its own or whose passthrough overrides a managed key, and the run and score checks' own violations (items outside the trial, unplanned canary calls, a score of another run, views, items, judges or seeds that don't exist).
 
 The one hard block is clearance: sending case-derived content to an engine that isn't cleared, judge engines included, must be refused. Clearance has a dedicated pipeline and the factors do not enforce it; the runner must.
+
+See `docs/findings.md` for a list of all findings and what they mean.
 
 ## Possible design issues
 
@@ -266,9 +256,3 @@ The one hard block is clearance: sending case-derived content to an engine that 
 ## Proposed amendments
 
 ### G14: expectation lints
-- **Findings and errors**, extend the lints bullet: "`model.revision`, `engine.closure`, `scorer.revision`,
-  `expectation_schema.invalid`, `expectation.invalid`, `expectation.unchecked`, and the pair rules for trials and
-  judges (…): the lints in `docs/factors.md`."
-- Same list, cleanup: the `facts.*` bullet sits after a blank line and names no source. Suggest joining it to the
-  list and ending it with ": the facts lints in `docs/factors.md`".
-
