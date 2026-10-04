@@ -37,7 +37,7 @@ It must be possible to deliver the cage together with the results, for scientifi
 - **Purpose:** whether a prompt or skeleton is for `generation` or for a `judge`; it decides which slots are allowed.
 - **Contract:** how an output chunk constrains the answer: `native`, `tool` or `text`.
 - **Normalization:** the text-cleanup steps a trial applies to vignettes.
-**Schema op:** a named, versioned rewrite an output chunk applies to its schema at
+- **Schema op:** a named, versioned rewrite an output chunk applies to its schema at
   compile time, so the skeleton sends and shows the rewritten schema. Today the only one is `inline_refs@1`.
 - **Trial:** The smallest unit of an scientific intent (i.e. Experiment): skeleton + engine + cases + text-cleanup steps + seeds.
 - **Replicate:** one seed of a trial, identified by its index.
@@ -58,6 +58,9 @@ It must be possible to deliver the cage together with the results, for scientifi
 - **Inventory:** ops-authored TOML files that say what the World holds and where: hosts and GPUs, engines and
   their endpoints, model file paths, chat-template files, Nix closures, vignette sources. It is mutable and not
   content-addressed.
+- **Facts:** ops- or developer-authored knowledge about models (how each reasoning level is expressed or refused,
+  recommended sampling, output caveats, specs), typed in code, written in TOML and keyed by model name.
+  Not factors: they write and check literal chunks, and no digest depends on them.
 - **Manifest:** a document the rig writes for one consumer in the World, joining factors (what) with inventory entries (where).
 - **Rig:** the chatddx software that builds cages from factors, runs and scores inside them and records what happened.
 
@@ -246,6 +249,8 @@ A finding (`src/chatddx/factors/base.py: Finding`) has a level (`warning` by def
 - `bundle.recanonicalized`: the current code would serialize a bundled component differently from its stored bytes, which remain authoritative (`Bundle.load`).
 - `model.revision`, `engine.closure`, `scorer.revision`, and the pair rules for trials and judges (`vllm.temperature_clamped`, `vllm.tool_unconstrained`, `vllm.thinking_budget_refused`, `vllm.grammar_before_reasoning`, `schema.ref_unverified`): the lints in `docs/factors.md`.
 
+- `facts.missing`, `facts.reasoning_unmatched`, `facts.budget_refused`, `facts.output_refused` and `facts.output_note`.
+
 Structurally malformed input raises instead. Constructing a component, canary or record that breaks its own rules raises pydantic's `ValidationError`: for example flags the start-up script owns in `argv`, slots unsuitable for the purpose, a skeleton body at odds with its contract, runtime keys in a body, duplicate seeds or cases, a shuffle seed without shuffled order, or a stage log out of order. Problems that need other components or records to see raise `StructuralError`: a digest that doesn't match its bytes, an unknown kind or schema version, a missing or wrongly typed reference, a failed `cross_check`, a recipe whose prompt purpose differs from its own or whose passthrough overrides a managed key, and the run and score checks' own violations (items outside the trial, unplanned canary calls, a score of another run, views, items, judges or seeds that don't exist).
 
 The one hard block is clearance: sending case-derived content to an engine that isn't cleared, judge engines included, must be refused. Clearance has a dedicated pipeline and the factors do not enforce it; the runner must.
@@ -255,9 +260,3 @@ The one hard block is clearance: sending case-derived content to an engine that 
 **Case drift and canary drift are not implemented.** `RunItem.vignette` records the observed fingerprint, but nothing compares it with `CaseInput.vignette`, and nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
-- ADD to the glossary, after **Inventory**: "**Facts:** ops- or developer-authored knowledge about models (how
-  each reasoning level is expressed or refused, recommended sampling, output caveats, specs), typed in code,
-  written in TOML and keyed by model name. Not factors: they write and check literal chunks, and no digest depends
-  on them." (`src/chatddx/facts/facts.py:182`)
-- CHANGE in "Findings and errors": add `facts.missing`, `facts.reasoning_unmatched`, `facts.budget_refused`,
-  `facts.output_refused` and `facts.output_note` to the lints listed. (`src/chatddx/factors/lint.py:154`)

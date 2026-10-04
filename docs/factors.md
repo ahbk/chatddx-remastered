@@ -14,6 +14,9 @@ Simply stated, if it doesn't affect output or scoring, it's not a factor, some e
 - people, roles, authentication and authorization: These are specified in `identity.md`.
 - names, labels, tags, descriptions, authors, owners, collaborators, version history: These are specified in the `catalog.md`.
 - sensitivity and vetting parameters: These are specified in `clearance.md`.
+- knowledge about models (reasoning levels, recommended sampling, output caveats, specs):
+  these are model facts (`src/chatddx/facts/facts.py`, material in `agents/wip-facts.md` until a `facts.md`
+  exists). They produce and check literal chunks at authoring, and no digest depends on them.
 
 ## In depth
 In the code, A factor is immutable and identified by its digest. They reference eachother by this digest, forming a graph. Each reference is typed (`Annotated[Digest, RefTo(kind, …)]`). From these types, `Registry.check` derives the graph and checks that every reference exists and has an allowed kind. Rules that span components, such as "a trial must use a generation skeleton", are `cross_check` hooks run by the same check.
@@ -217,7 +220,27 @@ A canary set (kind `canary_set`) is a list of fixed, non-sensitive probe request
 ## Linting
 Lints (`lint.py`) warn about settings that are valid but risky. They are plain functions over a registry, run on demand; nothing in the factor components stores their findings. Keeping them out of the data layer means knowledge that changes between vLLM releases can change without touching any factor. `lint(registry, digests)` applies one rule per kind. A model artifact whose revision is not a 40-character commit gets `model.revision`, because a branch or tag can move. A local engine whose closure is not a Nix store path gets `engine.closure`. A scorer whose code has no revision gets `scorer.revision`.
 
-A trial on a local vLLM 0.24 engine whose skeleton sets a temperature between 0 and 0.01 gets `vllm.temperature_clamped`, because vLLM 0.24 raises such temperatures to 0.01 (an unverified assumption, see "Possible design issues"). This last rule is the only one keyed by the declared runtime version.
+A trial or a judge pairs a skeleton with an engine, and both get the same pair rules. Five are keyed by the declared runtime,
+vLLM 0.24 (`docs/vllm.md`):
+- `vllm.temperature_clamped`: the skeleton sets a temperature between 0 and 0.01, which vLLM 0.24 raises to 0.01.
+- `vllm.tool_unconstrained`: a `tool` contract without `--enable-auto-tool-choice` and `--tool-call-parser` in
+  the engine's argv goes out unconstrained.
+- `vllm.thinking_budget_refused`: `thinking_token_budget` without `--reasoning-parser` or `--reasoning-config` is
+  refused.
+- `vllm.grammar_before_reasoning`: a `native` contract, or a constrained `tool` one, without `--reasoning-parser`
+  is constrained from the first token, so the model can't reason first. It's a warning when the skeleton asks
+  for reasoning (`reasoning_effort`, `thinking_token_budget`, `enable_thinking: true`), and `info` when it leaves
+  reasoning to the model. Nothing is reported when it turns reasoning off.
+- `lint(registry, digests, facts=)` takes model facts. With them,
+  trials and judges also get `facts.missing` (info), `facts.reasoning_unmatched`, `facts.budget_refused`,
+  `facts.output_refused` and `facts.output_note` (info), and `vllm.grammar_before_reasoning` takes its level from
+  the model's default reasoning.
+
+Engines that aren't vLLM 0.24 (remote engines and other versions) get `schema.ref_unverified` when a `native` or
+`tool` schema has `$ref`: the engine isn't known to resolve it, and `inline_refs@1` removes it. Flags are read as
+vLLM reads them, with `_` and `-` alike in their names." (`src/chatddx/factors/lint.py:67`, `:128`,
+`src/chatddx/factors/engine.py:16`). This also drops "(an unverified assumption, …)": `docs/vllm.md` assumption 2
+verifies it.
 
 ## Possible design issues
 
@@ -253,13 +276,3 @@ the seed isn't sent, but the trial's seeds still count toward its hash, so two o
 - `Hardware` has no GPU count, so tensor-parallel engines can't be told apart by hardware (the old code had `gpu_count`).
 
 ## Proposed amendments
-- ADD to "Not factors": "- knowledge about models (reasoning levels, recommended sampling, output caveats, specs):
-  these are model facts (`src/chatddx/facts/facts.py`, material in `agents/wip-facts.md` until a `facts.md`
-  exists). They produce and check literal chunks at authoring, and no digest depends on them."
-- CHANGE in "Linting": the paragraph on the temperature clamp still says it is "the only one keyed by the declared
-  runtime version". The earlier amendment listing the pair rules (`vllm.tool_unconstrained`,
-  `vllm.thinking_budget_refused`, `vllm.grammar_before_reasoning`, `schema.ref_unverified`) was removed from this
-  list without landing in the text. ADD as well: "`lint(registry, digests, facts=)` takes model facts. With them,
-  trials and judges also get `facts.missing` (info), `facts.reasoning_unmatched`, `facts.budget_refused`,
-  `facts.output_refused` and `facts.output_note` (info), and `vllm.grammar_before_reasoning` takes its level from
-  the model's default reasoning." (`src/chatddx/factors/lint.py:154`, `:196`)
