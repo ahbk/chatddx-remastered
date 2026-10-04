@@ -280,3 +280,25 @@ the seed isn't sent, but the trial's seeds still count toward its hash, so two o
 - `Hardware` has no GPU count, so tensor-parallel engines can't be told apart by hardware (the old code had `gpu_count`).
 
 ## Proposed amendments
+
+### G14: expectations are linted against their schema
+- **Expectation schema**, append: "Its `$schema` names the draft it's written in, 2020-12 when absent."
+- **Expectation**, replace "The factors do not validate the data against its schema; the scorer does." with "Building
+  an expectation doesn't validate its data against its schema. Lints check it (see "Linting"), and the scorer
+  decides what to do with data that fails."
+- **Linting**, new paragraph after the first: "Expectation schemas and expectations are checked with the
+  `jsonschema` library. An expectation schema gets `expectation_schema.invalid` when its `$schema` names a draft
+  the library can't check, or when it breaks its draft's metaschema. An expectation gets `expectation.invalid`
+  when its data fails its schema; the message gives the most relevant error's JSON Pointer and how many more
+  there are. It gets `expectation.unchecked` when a `$ref` the data reaches can't be resolved: refs are resolved
+  within the schema only, and nothing is fetched. An expectation whose schema is invalid isn't checked, since the
+  schema's own finding covers it. `format` is an annotation, as 2020-12 has it, and isn't asserted."
+  (`src/chatddx/factors/lint.py:81`)
+- **Linting**, cleanup found while reading it:
+  - The last paragraph ends with text left from an earlier amendment. Everything after "with `_` and `-` alike
+    in their names." should go, i.e. the quote mark, the source references and "This also drops … verifies it."
+  - "Five are keyed by the declared runtime, vLLM 0.24" introduces four vLLM rules and the facts bullet. The fifth
+    runtime-keyed rule is `schema.ref_unverified`, which is keyed by the runtime *not* being vLLM 0.24. Suggest
+    "Four are keyed by the declared runtime, vLLM 0.24", and moving the facts bullet out of that list into its own
+    paragraph.
+

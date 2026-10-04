@@ -1,7 +1,12 @@
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 
+from jsonschema import ValidationError, validators
+from jsonschema.exceptions import SchemaError, relevance
+from jsonschema.protocols import Validator
 from pydantic import JsonValue
+from referencing.exceptions import Unresolvable
+from referencing.jsonschema import UnknownDialect, specification_with
 
 from chatddx.facts.facts import ContractFact, Facts, ModelFacts, Refusal, model_name
 
@@ -9,7 +14,7 @@ from .base import Component, Finding, resolve
 from .bundle import Registry
 from .engine import LocalEngine, ModelArtifact, flag_names
 from .request import NativeOutput, Skeleton, ToolOutput
-from .scoring import Judge, Scorer
+from .scoring import Expectation, ExpectationSchema, Judge, Scorer
 from .trial import Trial
 
 _COMMIT = re.compile(r"^[0-9a-f]{40}$")
@@ -39,6 +44,70 @@ def _scorer(c: Scorer, _: Registry) -> Iterable[Finding]:
         yield Finding(
             code="scorer.revision",
             message="scorer code has no revision",
+            subject=c.digest,
+        )
+
+
+def _where(error: ValidationError | SchemaError) -> str:
+    path: Sequence[str | int] = error.absolute_path
+    if not path:
+        return "at the root"
+    tokens = (str(p).replace("~", "~0").replace("/", "~1") for p in path)
+    return "at /" + "/".join(tokens)
+
+
+def _known_draft(draft: JsonValue) -> bool:
+    if not isinstance(draft, str):
+        return False
+    try:
+        _ = specification_with(draft)
+    except UnknownDialect:
+        return False
+    return True
+
+
+def _validator(schema: dict[str, JsonValue]) -> type[Validator] | str:
+    draft = schema.get("$schema", "https://json-schema.org/draft/2020-12/schema")
+    if not _known_draft(draft):
+        return f"$schema {draft!r} names no draft that can be checked"
+    cls = validators.validator_for(schema)
+    try:
+        cls.check_schema(schema)
+    except SchemaError as e:
+        return f"{_where(e)}: {e.message}"
+    return cls
+
+
+def _expectation_schema(c: ExpectationSchema, _: Registry) -> Iterable[Finding]:
+    match _validator(c.json_schema):
+        case str() as message:
+            yield Finding(
+                code="expectation_schema.invalid", message=message, subject=c.digest
+            )
+        case _:
+            pass
+
+
+def _expectation(c: Expectation, registry: Registry) -> Iterable[Finding]:
+    schema = resolve(registry.get, c.json_schema, ExpectationSchema).json_schema
+    cls = _validator(schema)
+    if isinstance(cls, str):
+        return
+    try:
+        errors = list(cls(schema).iter_errors(c.data))
+    except Unresolvable as e:
+        yield Finding(
+            code="expectation.unchecked",
+            message=f"a $ref in the schema can't be resolved: {e.ref}",
+            subject=c.digest,
+        )
+        return
+    error = max(errors, key=relevance, default=None)
+    if error is not None:
+        more = f" (and {len(errors) - 1} more)" if len(errors) > 1 else ""
+        yield Finding(
+            code="expectation.invalid",
+            message=f"{_where(error)}: {error.message}{more}",
             subject=c.digest,
         )
 
@@ -207,6 +276,10 @@ def lint(
                 findings.extend(_engine(c, registry))
             case Scorer() as c:
                 findings.extend(_scorer(c, registry))
+            case ExpectationSchema() as c:
+                findings.extend(_expectation_schema(c, registry))
+            case Expectation() as c:
+                findings.extend(_expectation(c, registry))
             case Trial() as c:
                 findings.extend(_trial(c, registry, facts))
             case Judge() as c:

@@ -49,6 +49,8 @@ from chatddx.factors.request import (
     render,
 )
 from chatddx.factors.scoring import (
+    Expectation,
+    ExpectationSchema,
     Judge,
 )
 from chatddx.factors.test.sample import (
@@ -692,6 +694,70 @@ def test_lint(reg: Registry) -> None:
         Trial(skeleton=skeleton, engine=ids["engine"], cases=(ids["case"],), seeds=(1,))
     )
     assert [f.code for f in lint(reg, [trial])] == ["vllm.temperature_clamped"]
+
+
+def test_expectations_are_linted_against_their_schema(reg: Registry) -> None:
+    ids = world(reg)
+    ddx = reg.add(
+        ExpectationSchema(
+            json_schema={
+                "type": "object",
+                "properties": {"ddx": {"type": "array", "items": {"type": "string"}}},
+                "required": ["ddx"],
+            }
+        )
+    )
+
+    def findings(data: JsonValue, schema: str = ddx) -> list[tuple[str, str]]:
+        expectation = reg.add(
+            Expectation(case=ids["case"], json_schema=schema, data=data)
+        )
+        return [(f.code, f.message) for f in lint(reg, [expectation])]
+
+    assert findings({"ddx": ["ACS"]}) == []
+    assert findings({"ddx": ["ACS", 3]}) == [
+        ("expectation.invalid", "at /ddx/1: 3 is not of type 'string'")
+    ]
+    assert findings({"ddx": [1, 2]}) == [
+        ("expectation.invalid", "at /ddx/1: 2 is not of type 'string' (and 1 more)")
+    ]
+    assert findings([]) == [
+        ("expectation.invalid", "at the root: [] is not of type 'object'")
+    ]
+
+    def schema_findings(json_schema: dict[str, JsonValue]) -> list[tuple[str, str]]:
+        schema = reg.add(ExpectationSchema(json_schema=json_schema))
+        return [(f.code, f.message) for f in lint(reg, [schema])]
+
+    tuple_items: dict[str, JsonValue] = {"items": [{"type": "string"}]}
+    assert schema_findings(tuple_items) == [
+        (
+            "expectation_schema.invalid",
+            "at /items: [{'type': 'string'}] is not of type 'object', 'boolean'",
+        )
+    ]
+    draft7 = "http://json-schema.org/draft-07/schema#"
+    assert schema_findings({"$schema": draft7, **tuple_items}) == []
+    assert schema_findings({"$schema": "https://example.org/draft"}) == [
+        (
+            "expectation_schema.invalid",
+            "$schema 'https://example.org/draft' names no draft that can be checked",
+        )
+    ]
+
+    broken = reg.add(ExpectationSchema(json_schema=tuple_items))
+    assert findings(["anything"], broken) == []
+    dangling = reg.add(
+        ExpectationSchema(json_schema={"properties": {"ddx": {"$ref": "#/$defs/ddx"}}})
+    )
+    assert schema_findings({"properties": {"ddx": {"$ref": "#/$defs/ddx"}}}) == []
+    assert findings({"ddx": []}, dangling) == [
+        (
+            "expectation.unchecked",
+            "a $ref in the schema can't be resolved: /$defs/ddx",
+        )
+    ]
+    assert findings({}, dangling) == []
 
 
 def test_skeleton_and_engine_compatibility(reg: Registry) -> None:

@@ -380,6 +380,28 @@ tags = ["ddx"]
 - **G14. Expectation data isn't validated.** [maybe fix remastered]
   - By design the factors don't check `Expectation.data` against its schema; the scorer does. Hand-edited sample
     data has no check before it lands, and scorers are deferred.
+  - **Fixed** with lints, so building an expectation still doesn't validate it ("warnings, not crashes"), and the
+    scorer still decides what to do with data that fails.
+    - New dependency: `jsonschema` (and `types-jsonschema` for typing). Expectation schemas are checked against
+      the draft their `$schema` names, 2020-12 when it's absent.
+    - `expectation_schema.invalid`: the `$schema` names a draft the library can't check, or the schema breaks its
+      draft's metaschema (e.g. `items` as a list under 2020-12).
+    - `expectation.invalid`: the data fails its schema. The message gives the most relevant error's JSON Pointer
+      and how many more there are, e.g. `at /ddx/1: 3 is not of type 'string' (and 1 more)`.
+    - `expectation.unchecked`: a `$ref` the data reaches can't be resolved. Refs are resolved within the schema
+      only, so nothing is fetched. A dangling ref on a path the data doesn't take goes unnoticed.
+    - An expectation whose schema is invalid isn't checked; the schema's own finding covers it.
+    - `format` stays an annotation, as 2020-12 has it.
+    - Real-data check: a hand-written targets schema (`diagnosis` required, `warning`, `disposition`, each
+      `{pattern}`, no extra keys) passes all 99 old cases' `targets`. A `patern` typo is reported as
+      `at /disposition: 'pattern' is a required property (and 1 more)`.
+    - Still open:
+      - The loader (the deferred command) should lint what it lands and show the findings.
+      - `Output.json_schema` goes to the engine unchecked. The same `_validator` could give it
+        `output.schema_invalid`.
+    - Proposed amendments: `docs/factors.md` (Expectation schema, Expectation, Linting), `docs/chatddx.md`
+      (Findings).
+    - Test: `test_expectations_are_linted_against_their_schema`.
 
 ### Catalog
 - **G17. Configurations are named, but nothing names them.** [maybe fix remastered] (found after `docs/catalog.md`

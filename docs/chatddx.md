@@ -264,3 +264,11 @@ The one hard block is clearance: sending case-derived content to an engine that 
 **Canary drift are not implemented:** nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
+
+### G14: expectation lints
+- **Findings and errors**, extend the lints bullet: "`model.revision`, `engine.closure`, `scorer.revision`,
+  `expectation_schema.invalid`, `expectation.invalid`, `expectation.unchecked`, and the pair rules for trials and
+  judges (…): the lints in `docs/factors.md`."
+- Same list, cleanup: the `facts.*` bullet sits after a blank line and names no source. Suggest joining it to the
+  list and ending it with ": the facts lints in `docs/factors.md`".
+
