@@ -21,6 +21,7 @@ from chatddx.factors.request import (
     Sampling,
     Skeleton,
     Slot,
+    Translations,
 )
 from chatddx.factors.scoring import (
     Expectation,
@@ -137,6 +138,8 @@ def describe(component: Component, title: Title) -> str:
             ]
             parts += [] if budget is None else [f"budget {budget}"]
             return ", ".join(parts) or "default reasoning"
+        case Translations(entries=entries):
+            return f"translations, {_count(len(entries), 'text')}"
         case Passthrough(body=body):
             return "passthrough: " + ", ".join(body)
         case Skeleton(purpose=purpose):

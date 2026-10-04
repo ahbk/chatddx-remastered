@@ -9,6 +9,7 @@ from chatddx.factors.base import (
     Component,
     Fingerprint,
     StructuralError,
+    resolve,
     sha256_digest,
 )
 from chatddx.factors.bundle import Bundle, Registry
@@ -45,8 +46,10 @@ from chatddx.factors.request import (
     Slot,
     TextOutput,
     ToolOutput,
+    Translations,
     compile_request,
     render,
+    texts,
 )
 from chatddx.factors.scoring import (
     Expectation,
@@ -555,6 +558,117 @@ def test_tool_contracts_carry_a_description(reg: Registry) -> None:
         _ = ToolOutput(name="a", description="")
 
 
+def test_translations_apply_at_compile_time(reg: Registry) -> None:
+    schema: dict[str, JsonValue] = {
+        "type": "object",
+        "title": "Plan",
+        "properties": {
+            "urgency": {
+                "type": "string",
+                "enum": ["high", "low"],
+                "description": "How urgent.",
+            },
+            "description": {"type": "string", "description": "Free text."},
+        },
+    }
+    recipe = Recipe(
+        instructions=reg.add(
+            Instructions(
+                text=(
+                    "You are an emergency physician.",
+                    Insert(insert="output_guidance", before="\n\n"),
+                )
+            )
+        ),
+        few_shot=reg.add(
+            FewShot(
+                messages=(
+                    Example(role="user", content="Chest pain."),
+                    Example(role="assistant", content="ACS."),
+                )
+            )
+        ),
+        prompt=reg.add(Prompt(segments=("Case:\n", Slot(slot="case")))),
+        output=reg.add(
+            Output(
+                contract=ToolOutput(name="plan", description="The plan."),
+                json_schema=schema,
+                guidance=("Answer with:\n\n", Insert(insert="schema")),
+            )
+        ),
+        sampling=reg.add(Sampling(temperature=0)),
+        appendix_layout=AppendixLayout(before="\n\nLabs:\n"),
+    )
+    assert texts(recipe, reg.get) == {
+        "instructions": ("You are an emergency physician.",),
+        "few_shot": ("Chest pain.", "ACS."),
+        "prompt": ("Case:\n",),
+        "output": (
+            "Answer with:\n\n",
+            "Plan",
+            "How urgent.",
+            "Free text.",
+            "The plan.",
+        ),
+        "appendix_layout": ("\n\nLabs:\n",),
+    }
+    swedish = {
+        "You are an emergency physician.": "Du är akutläkare.",
+        "Chest pain.": "Bröstsmärta.",
+        "ACS.": "AKS.",
+        "Case:\n": "Fall:\n",
+        "Answer with:\n\n": "Svara med:\n\n",
+        "Plan": "Vårdplan",
+        "How urgent.": "Hur brådskande.",
+        "Free text.": "Fritext.",
+        "The plan.": "Planen.",
+        "\n\nLabs:\n": "\n\nLabb:\n",
+    }
+    translated = recipe.model_copy(
+        update={"translations": reg.add(Translations(entries=swedish))}
+    )
+    skeleton = compile_request(translated, reg.get)
+    system, user, assistant, prompt = skeleton.messages
+    assert system.content[0] == (
+        "Du är akutläkare.\n\nSvara med:\n\n"
+        + json.dumps(skeleton.output_schema, indent=2, ensure_ascii=False)
+    )
+    assert (user.content, assistant.content) == (("Bröstsmärta.",), ("AKS.",))
+    assert prompt.content == ("Fall:\n", Slot(slot="case"))
+    assert skeleton.appendix_layout.before == "\n\nLabb:\n"
+    assert skeleton.output_schema == {
+        "type": "object",
+        "title": "Vårdplan",
+        "properties": {
+            "urgency": {
+                "type": "string",
+                "enum": ["high", "low"],
+                "description": "Hur brådskande.",
+            },
+            "description": {"type": "string", "description": "Fritext."},
+        },
+    }
+    tools = skeleton.body["tools"]
+    assert isinstance(tools, list) and isinstance(tools[0], dict)
+    assert tools[0]["function"] == {
+        "name": "plan",
+        "description": "Planen.",
+        "parameters": skeleton.output_schema,
+    }
+
+    partial = {k: v for k, v in swedish.items() if k not in ("Plan", "ACS.")}
+    with pytest.raises(StructuralError, match="no translation for 'ACS.', 'Plan'"):
+        _ = compile_request(
+            recipe.model_copy(
+                update={"translations": reg.add(Translations(entries=partial))}
+            ),
+            reg.get,
+        )
+    for entries in ({}, {"  ": "x"}, {"Plan": ""}):
+        with pytest.raises(ValidationError):
+            _ = Translations(entries=entries)
+
+
 def test_engine_argv_cannot_override_manifest(reg: Registry) -> None:
     engine = local_engine(reg)
     for argv in (["--served-model-name=x"], ["--chat_template", "t.jinja"]):
@@ -758,6 +872,31 @@ def test_expectations_are_linted_against_their_schema(reg: Registry) -> None:
         )
     ]
     assert findings({}, dangling) == []
+
+
+def test_languages_are_linted_per_trial(reg: Registry) -> None:
+    ids = world(reg)
+    trial = resolve(reg.get, ids["trial"], Trial)
+
+    def findings(languages: dict[str, str]) -> list[tuple[str, str, str]]:
+        return [
+            (f.code, f.level, f.message)
+            for f in lint(reg, [ids["trial"]], languages=languages.get)
+            if f.code.startswith("language.")
+        ]
+
+    case = trial.cases[0]
+    assert findings({trial.skeleton: "sv", case: "sv"}) == []
+    assert findings({trial.skeleton: "sv", case: "en"}) == [
+        ("language.mixed", "warning", "the request is sv, but 1 of 1 cases is en")
+    ]
+    assert findings({case: "en"}) == [
+        ("language.unknown", "info", "the request's language is unknown")
+    ]
+    assert findings({trial.skeleton: "sv"}) == [
+        ("language.unknown", "info", "the language of 1 of 1 cases is unknown")
+    ]
+    assert [f.code for f in lint(reg, [ids["trial"]])] == []
 
 
 def test_skeleton_and_engine_compatibility(reg: Registry) -> None:

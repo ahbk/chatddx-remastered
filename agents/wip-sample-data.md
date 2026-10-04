@@ -493,11 +493,59 @@ tags = ["ddx"]
       needs the store, unlike today's registry-only lints), or written as a `language` entry when a compiled
       skeleton thread is saved.
     - **Pairing translated cases.** A translated vignette is its own family; `translation_of` needs a
-      family-to-family link the catalog doesn't have.
+      family-to-family link the catalog doesn't have. (Dropped: there will be no translated vignettes.)
     - **Warning or refusal.** The backlog refused mixed runs; remastered's rule is "warnings, not crashes".
       Language mixing could become a second hard block next to clearance, or stay a lint.
     - **The source language of untranslated recipes.** A recipe without translations has the language its chunks
       were written in, which nothing declares today.
+  - **Fixed**, with the language implicit in what's sent.
+    - Decided: languages are never passed to the model. A model answering in another language than it was
+      prompted in loses the score.
+    - Decided: no translated vignettes, ever. A case runs in the language it was written in, so the request follows
+      the case, and the backlog's `translation_of` and paired cases are dropped.
+    - Decided: mixing is a warning, not a hard block. Translations cover chunk texts and schema prose.
+    - No dedicated pipeline. Clearance and facts have their own authorship, store or enforcement; language has
+      none of these:
+      - the labels are descriptive and correctable, so they're catalog entries;
+      - the translations reach the wire, so they're a factor;
+      - the check joins the two in a lint, with the languages passed in the way facts are.
+      - The case-to-expectation link isn't made by language: an expectation is keyed by its case's digest, and
+        `language_of(expectation)` just follows it.
+    - `Translations` (`chunk.translations`), `Recipe.translations`, `texts(recipe, get)`, applied in
+      `compile_request`. A missing text fails the compilation with every missing text listed.
+    - Labels: `language` entries on chunk threads (the language their texts are in) and on translations threads
+      (the language they translate into), next to G12's family labels. `Catalog.language_of(digest)` reads them.
+    - Lint: `lint(…, languages=catalog.language_of)` gives a trial `language.mixed` (warning) and
+      `language.unknown` (info).
+    - Migration `0020-t2-catalog-translations` adds the thread kind.
+    - Sample data: the 20 Swedish EDN cases run under English chunks, so trials over them get `language.mixed`
+      until a Swedish translations chunk exists. A loader that labels the old chunks `en` makes the request side
+      known.
+    - Side effects of the implicit language:
+      - **Not everything the model reads is ours.** Chat templates add English: default system prompts, harmony's
+        channel instructions, tool-call scaffolding. Reasoning traces are often English whatever the prompt.
+        The template digest pins this, but no translation reaches it.
+      - **Structure stays English.** Property names, enum values and tool names aren't translated, so a Swedish
+        answer has English keys and enum values. That's what keeps scoring language-neutral.
+      - **Budgets aren't neutral.** The same text takes different numbers of tokens in Swedish and English, so one
+        sampling chunk truncates differently per language: a confound when comparing languages.
+      - **Scorers that need the language** (stemming, synonym tables, ontologies) can't read it from the
+        request. If one does, the language should be in the expectation data or the scorer's resources, which
+        are factors, not read from the catalog at scoring time.
+      - **Labels can be wrong, and are mutable.** Nothing checks a label against the text. A language-ID check on
+        vignettes or outputs could, later. Analyses split by language should freeze the labels at export, as
+        with titles.
+      - **Unthreaded chunks have no label**, so an unsaved variation's language is known only through threaded
+        chunks or a labelled translations thread.
+      - **Judges aren't checked.** An English judge prompt grading a Swedish answer goes unflagged.
+      - A label describes a whole thread, so a thread whose text was rewritten in another language labels its
+        old edits wrongly too.
+    - Still open: few-shot assistant examples that are JSON answers are translated as one text, so the translator
+      edits the JSON by hand.
+    - Proposed amendments: `docs/factors.md` (In depth, Translations, Recipe, Linting), `docs/catalog.md`
+      (languages), `docs/store.md` (0020, Store API), `docs/findings.md`.
+    - Tests: `test_translations_apply_at_compile_time`, `test_languages_are_linted_per_trial`,
+      `test_languages_come_from_labels`.
 
 ## Parked with the deferred work
 

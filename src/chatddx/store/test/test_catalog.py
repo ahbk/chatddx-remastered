@@ -10,13 +10,16 @@ from chatddx.core.identity import Person
 from chatddx.factors.base import Component, StructuralError, iter_refs, resolve
 from chatddx.factors.bundle import Registry
 from chatddx.factors.cases import Appendix, CaseInput, SourceCase
+from chatddx.factors.lint import lint
 from chatddx.factors.request import (
     Insert,
     NativeOutput,
     Output,
     Recipe,
     Sampling,
+    Translations,
     compile_request,
+    texts,
 )
 from chatddx.factors.scoring import Expectation, Judge, Scoring
 from chatddx.factors.test.sample import NOW, RIG, fp, generation_recipe, world
@@ -574,6 +577,63 @@ def test_cases_have_a_language(conn: Connection) -> None:
             """,
             (family.family, alice.id),
         )
+
+
+def test_languages_come_from_labels(conn: Connection) -> None:
+    catalog, store, reg, ids, alice = stored_world(conn)
+    base = generation_recipe(reg)
+    plan = compiled_recipe(store, reg, base)
+
+    def label(digest: str, language: str) -> int:
+        thread = catalog.create(digest, alice.id).thread
+        catalog.note(
+            Subject(thread=thread),
+            Entry(field=EntryField.LANGUAGE, value=language),
+            alice.id,
+        )
+        return thread
+
+    assert set(texts(base, reg.get)) == {"instructions", "prompt", "output"}
+    assert catalog.language_of(plan.skeleton) is None
+    assert base.instructions is not None
+    _ = label(base.instructions, "en")
+    _ = label(base.prompt, "en")
+    assert catalog.language_of(plan.skeleton) is None
+    _ = label(base.output, "en")
+    assert catalog.language_of(plan.skeleton) == "en"
+    assert catalog.language_of(ids["trial"]) == "en"
+    conflicting = label(base.output, "sv")
+    assert catalog.language_of(base.output) is None
+    assert catalog.language_of(plan.skeleton) is None
+    catalog.note(Subject(thread=conflicting), Entry(field=EntryField.DELETED), alice.id)
+    assert catalog.language_of(plan.skeleton) == "en"
+
+    needed = [t for part in texts(base, reg.get).values() for t in part]
+    swedish = reg.add(Translations(entries={t: f"[sv] {t}" for t in needed}))
+    translated = compiled_recipe(
+        store, reg, base.model_copy(update={"translations": swedish})
+    )
+    assert catalog.language_of(translated.skeleton) is None
+    _ = label(swedish, "sv")
+    assert catalog.language_of(translated.skeleton) == "sv"
+
+    hand_written = resolve(reg.get, ids["judge"], Judge).skeleton
+    assert catalog.language_of(hand_written) is None
+    _ = label(hand_written, "en")
+    assert catalog.language_of(hand_written) == "en"
+
+    scoring = resolve(reg.get, ids["scoring"], Scoring)
+    assert catalog.language_of(ids["case"]) is None
+    family = catalog.adopt(ids["case"], alice.id)
+    catalog.note(
+        Subject(family=family), Entry(field=EntryField.LANGUAGE, value="sv"), alice.id
+    )
+    assert catalog.language_of(ids["case"]) == "sv"
+    assert catalog.language_of(scoring.expectations[0]) == "sv"
+    findings = lint(reg, [ids["trial"]], languages=catalog.language_of)
+    assert [(f.code, f.message) for f in findings] == [
+        ("language.mixed", "the request is en, but 1 of 1 cases is sv")
+    ]
 
 
 def test_subject_is_one_thing() -> None:

@@ -29,8 +29,9 @@ from chatddx.factors.base import (
 )
 from chatddx.factors.bundle import Registry
 from chatddx.factors.cases import Appendix, CaseInput, SourceCase
-from chatddx.factors.request import Recipe, Skeleton
+from chatddx.factors.request import Recipe, Skeleton, texts
 from chatddx.factors.scoring import Expectation, Scorer
+from chatddx.factors.trial import Trial
 from chatddx.ledger.ledger import Compilation
 
 from .store import Connection, Store
@@ -311,6 +312,42 @@ class Catalog:
                     return f"{names[t]} (earlier)"
         return self._derive(digest)
 
+    # The language a component is in, from labels; None when unlabelled or unclear.
+    def language_of(self, digest: str) -> str | None:
+        store = Store(self._conn)
+        match self._kind(digest):
+            case "case":
+                family = self.family(digest)
+                if family is None:
+                    return None
+                return self.about(Subject(family=family)).language
+            case "expectation":
+                return self.language_of(resolve(store.get, digest, Expectation).case)
+            case "trial":
+                return self.language_of(resolve(store.get, digest, Trial).skeleton)
+            case "skeleton":
+                row = self._conn.execute(
+                    """
+                    SELECT payload FROM factor.compilation WHERE skeleton = %s
+                    ORDER BY digest LIMIT 1
+                    """,
+                    (digest,),
+                ).fetchone()
+                if row is None:
+                    return self._label(digest)
+                recipe = Compilation.parse(str(row[0])).recipe
+                if recipe.translations is not None:
+                    return self._label(recipe.translations)
+                parts: list[str | None] = [
+                    getattr(recipe, part)
+                    for part in texts(recipe, store.get)
+                    if part != "appendix_layout"
+                ]
+                labels = {None if p is None else self._label(p) for p in parts}
+                return labels.pop() if len(labels) == 1 else None
+            case _:
+                return self._label(digest)
+
     def adopt(self, case: str, by: int) -> int:
         with self._conn.transaction():
             if (family := self.family(case)) is not None:
@@ -557,6 +594,23 @@ class Catalog:
         ).fetchone()
         assert row is not None
         return Compilation.parse(str(row[0])).recipe
+
+    def _label(self, digest: str) -> str | None:
+        rows = self._conn.execute(
+            f"""
+            SELECT DISTINCT (
+                SELECT l.value FROM catalog.entry l
+                WHERE l.thread = t.id AND l.field = 'language'
+                ORDER BY l.id DESC LIMIT 1
+            )
+            FROM catalog.thread t
+            WHERE NOT {_DELETED} AND EXISTS (
+                SELECT FROM catalog.edit x WHERE x.thread = t.id AND x.digest = %s
+            )
+            """,
+            (digest,),
+        ).fetchall()
+        return str(rows[0][0]) if len(rows) == 1 and rows[0][0] is not None else None
 
     def _derive(self, digest: str, compilation: str | None = None) -> str:
         component = Store(self._conn).get(digest)

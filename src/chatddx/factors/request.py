@@ -1,6 +1,6 @@
 import json
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from typing import Annotated, Literal, cast
+from typing import Annotated, Literal, NamedTuple, cast
 from urllib.parse import unquote
 
 from pydantic import AfterValidator, Field, JsonValue, field_validator, model_validator
@@ -14,6 +14,7 @@ from .base import (
     Settings,
     StructuralError,
     resolve,
+    sorted_keys,
 )
 
 SlotName = Literal["case", "appendices", "completion", "expectation"]
@@ -339,6 +340,25 @@ class Passthrough(Component):
         return self
 
 
+# Source text -> translation, applied to every text a recipe brings, as gettext does.
+class Translations(Component):
+    kind: Literal["chunk.translations"] = "chunk.translations"
+    entries: Annotated[dict[str, str], AfterValidator(sorted_keys)] = Field(
+        min_length=1
+    )
+
+    @field_validator("entries")
+    @classmethod
+    def _entries(cls, entries: dict[str, str]) -> dict[str, str]:
+        if any(not text.strip() for text in entries):
+            raise ValueError("whitespace isn't translated")
+        if empty := sorted(
+            text for text, translation in entries.items() if not translation
+        ):
+            raise ValueError(f"no translation given for {empty}")
+        return entries
+
+
 class AppendixLayout(Frozen):
     before: str = "\n\n"
     between: str = "\n\n"
@@ -360,6 +380,7 @@ class Recipe(Frozen):
     reasoning: Annotated[Digest, RefTo("chunk.reasoning")] | None = None
     passthrough: Annotated[Digest, RefTo("chunk.passthrough")] | None = None
     appendix_layout: AppendixLayout = AppendixLayout()
+    translations: Annotated[Digest, RefTo("chunk.translations")] | None = None
 
 
 # The frozen request: what a trial or judge actually references.
@@ -465,9 +486,157 @@ def _check_slots(
         raise ValueError(f"slots used more than once: {sorted(dupes)}")
 
 
+Translate = Callable[[str], str]
+
+# Schema keywords whose string value is prose the model may read, keywords whose
+# members are named schemas, and keywords holding instance data, never translated.
+_PROSE = frozenset({"title", "description"})
+_NAMED = frozenset(
+    {"properties", "patternProperties", "$defs", "definitions", "dependentSchemas"}
+)
+_DATA = frozenset({"enum", "const", "default", "examples"})
+
+
+def _tr(text: str, tr: Translate) -> str:
+    return tr(text) if text.strip() else text
+
+
+def _tr_segments[T](
+    segments: Iterable[str | Insert | T], tr: Translate
+) -> tuple[str | Insert | T, ...]:
+    translated: list[str | Insert | T] = []
+    for s in segments:
+        if isinstance(s, str):
+            translated.append(_tr(s, tr))
+        elif isinstance(s, Insert):
+            translated.append(
+                Insert(
+                    insert=s.insert, before=_tr(s.before, tr), after=_tr(s.after, tr)
+                )
+            )
+        else:
+            translated.append(s)
+    return tuple(translated)
+
+
+def _tr_text(
+    text: str | tuple[str | Insert, ...], tr: Translate
+) -> str | tuple[str | Insert, ...]:
+    return _tr(text, tr) if isinstance(text, str) else _tr_segments(text, tr)
+
+
+def _tr_schema(node: JsonValue, tr: Translate) -> JsonValue:
+    match node:
+        case list():
+            return [_tr_schema(v, tr) for v in node]
+        case dict():
+            translated: dict[str, JsonValue] = {}
+            for k, v in node.items():
+                if k in _PROSE and isinstance(v, str):
+                    translated[k] = _tr(v, tr)
+                elif k in _NAMED and isinstance(v, dict):
+                    translated[k] = {name: _tr_schema(s, tr) for name, s in v.items()}
+                elif k in _DATA:
+                    translated[k] = v
+                else:
+                    translated[k] = _tr_schema(v, tr)
+            return translated
+        case _:
+            return node
+
+
+def _tr_output(output: Output, tr: Translate) -> Output:
+    doc = output.model_dump()
+    if output.guidance is not None:
+        doc["guidance"] = _tr_text(output.guidance, tr)
+    if output.json_schema is not None:
+        doc["json_schema"] = _tr_schema(output.json_schema, tr)
+    match output.contract:
+        case ToolOutput(description=str() as description):
+            doc["contract"] = {**doc["contract"], "description": _tr(description, tr)}
+        case TextOutput(json_schema=dict() as schema):
+            doc["contract"] = {**doc["contract"], "json_schema": _tr_schema(schema, tr)}
+        case _:
+            pass
+    return Output.model_validate(doc)
+
+
+class _Parts(NamedTuple):
+    instructions: Instructions | None
+    few_shot: FewShot | None
+    prompt: Prompt
+    output: Output
+    appendix_layout: AppendixLayout
+
+
+# The recipe's text-bearing parts, with every text passed through tr(part).
+def _parts(spec: Recipe, get: Resolver, tr: Callable[[str], Translate]) -> _Parts:
+    instructions = few_shot = None
+    if spec.instructions is not None:
+        c = resolve(get, spec.instructions, Instructions)
+        instructions = Instructions(
+            role=c.role, text=_tr_text(c.text, tr("instructions"))
+        )
+    if spec.few_shot is not None:
+        f = resolve(get, spec.few_shot, FewShot)
+        few_shot = FewShot(
+            messages=tuple(
+                Example(role=m.role, content=_tr(m.content, tr("few_shot")))
+                for m in f.messages
+            )
+        )
+    p = resolve(get, spec.prompt, Prompt)
+    prompt = Prompt(purpose=p.purpose, segments=_tr_segments(p.segments, tr("prompt")))
+    output = _tr_output(resolve(get, spec.output, Output), tr("output"))
+    layout, t = spec.appendix_layout, tr("appendix_layout")
+    appendix_layout = AppendixLayout(
+        before=_tr(layout.before, t),
+        between=_tr(layout.between, t),
+        after=_tr(layout.after, t),
+    )
+    return _Parts(instructions, few_shot, prompt, output, appendix_layout)
+
+
+# What a translation of the recipe needs, per part, in order; whitespace is left out.
+def texts(spec: Recipe, get: Resolver) -> dict[str, tuple[str, ...]]:
+    found: dict[str, list[str]] = {}
+
+    def collect(part: str) -> Translate:
+        seen = found.setdefault(part, [])
+
+        def tr(text: str) -> str:
+            if text not in seen:
+                seen.append(text)
+            return text
+
+        return tr
+
+    _ = _parts(spec, get, collect)
+    return {part: tuple(seen) for part, seen in found.items() if seen}
+
+
 def compile_request(spec: Recipe, get: Resolver) -> Skeleton:
-    prompt = resolve(get, spec.prompt, Prompt)
-    output = resolve(get, spec.output, Output)
+    entries = (
+        None
+        if spec.translations is None
+        else resolve(get, spec.translations, Translations).entries
+    )
+    missing: set[str] = set()
+
+    def translate(text: str) -> str:
+        if entries is None:
+            return text
+        if text not in entries:
+            missing.add(text)
+            return text
+        return entries[text]
+
+    parts = _parts(spec, get, lambda _: translate)
+    if missing:
+        raise StructuralError(
+            "no translation for " + ", ".join(repr(t) for t in sorted(missing))
+        )
+    prompt, output = parts.prompt, parts.output
     sampling = resolve(get, spec.sampling, Sampling)
     if prompt.purpose != spec.purpose:
         raise StructuralError(f"{prompt.purpose} prompt in a {spec.purpose} recipe")
@@ -477,8 +646,7 @@ def compile_request(spec: Recipe, get: Resolver) -> Skeleton:
     placed = "output_guidance" in _inserts(prompt.segments)
     system = ""
     role: Literal["system", "developer"] = "system"
-    if spec.instructions is not None:
-        instructions = resolve(get, spec.instructions, Instructions)
+    if (instructions := parts.instructions) is not None:
         if "output_guidance" in _inserts(_segments(instructions.text)):
             if placed:
                 raise StructuralError(
@@ -492,8 +660,7 @@ def compile_request(spec: Recipe, get: Resolver) -> Skeleton:
     messages: list[Message] = []
     if system:
         messages.append(Message(role=role, content=(system,)))
-    if spec.few_shot is not None:
-        few_shot = resolve(get, spec.few_shot, FewShot)
+    if (few_shot := parts.few_shot) is not None:
         messages.extend(
             Message(role=m.role, content=(m.content,)) for m in few_shot.messages
         )
@@ -541,7 +708,7 @@ def compile_request(spec: Recipe, get: Resolver) -> Skeleton:
         messages=tuple(messages),
         body=body,
         contract=contract,
-        appendix_layout=spec.appendix_layout,
+        appendix_layout=parts.appendix_layout,
     )
 
 

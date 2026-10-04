@@ -176,3 +176,8 @@ tier-2 triggers).
   values for names, tags and languages, which `0017`'s shape check let through because a check that is NULL
   passes."
 - **Store API**, `Catalog`: add `title` and `title_of`, and `create`'s optional `name`.
+
+### G18: translations
+- **Migrations, tier 2**, add `0020-t2-catalog-translations.sql`.
+- **Endowes**, add: "`0020` adds `chunk.translations` to the thread kinds."
+- **Store API**, `Catalog`: add `language_of`.

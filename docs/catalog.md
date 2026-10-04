@@ -107,3 +107,21 @@ reaches a request.
   - "every kind has threads except `case`…" starts with a lowercase letter.
   - The heading `## A note on the "evolution of configurations" workflow"` and the section's last line, after
     "on request.", each end with a stray quote mark.
+
+### G18: languages are labels
+- **Cases**, replace the paragraph "A case's language is a `language` entry on its family…" with:
+  "Languages are `language` entries: on a family, the language its vignette is written in; on a chunk thread, the
+  language its texts are written in; on a translations thread, the language it translates into. Each holds a
+  language tag such as `sv` or `pt-BR`; it can be replaced but not removed, and the latest one wins
+  (`About.language`). No tag ever reaches a request: what's sent is in a language, it isn't told one.
+
+  `Catalog.language_of(digest)` reads any component's language from these labels: a case's from its family, an
+  expectation's from its case, a trial's from its skeleton, and a compiled skeleton's from its recipe: the
+  translations' label when it has translations, else the label its text-bearing chunks (instructions, few-shot,
+  prompt, output) agree on. A hand-written skeleton, a chunk or a translations chunk takes the label of the live
+  threads that hold it, when they agree. Unlabelled or disagreeing gives none. Lints use it to check that a trial
+  is in one language (`docs/factors.md`, "Linting").
+
+  Vignettes are never translated: a case runs in the language it was written in, so the request follows the case
+  (a Swedish case runs under a Swedish-translated configuration), and comparing languages means comparing case
+  sets."

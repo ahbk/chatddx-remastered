@@ -278,3 +278,30 @@ the seed isn't sent, but the trial's seeds still count toward its hash, so two o
 - `Hardware` has no GPU count, so tensor-parallel engines can't be told apart by hardware (the old code had `gpu_count`).
 
 ## Proposed amendments
+
+### G18: translations, and one language per trial
+- **In depth**, "the seven `chunk.*` kinds" → "the eight `chunk.*` kinds".
+- **Request**, new chunk section after Passthrough:
+  "#### Translations
+  - principal author: Researchers (translators)
+  - defined in: `request.py:Translations`
+
+  Translations (kind `chunk.translations`) map source texts to translations, the way gettext does: each entry is
+  a text exactly as a chunk brings it, whitespace included, and its translation. A recipe may reference one
+  (`Recipe.translations`), and compilation then passes every text the recipe brings through it: the instructions,
+  the few-shot messages, the prompt's literal segments, the output's guidance, the `before` and `after` of
+  inserts, a tool contract's description, the appendix layout, and the `title` and `description` strings of the
+  output schema. Property names and `enum`, `const`, `default` and `examples` are never translated, so the
+  answer's structure and its scoring don't change. Whitespace-only texts pass through. A text without a
+  translation fails the compilation, which lists every missing text: nothing is guessed and nothing mixes.
+  `texts(recipe, get)` lists, per part, what a translation needs.
+
+  Translations carry no language. A request's language is implicit in its text, and no language tag reaches the
+  model; the labels are catalog entries (`docs/catalog.md`). The skeleton is literal translated text, and its
+  compilation records the translations it read."
+- **Recipe**, "optional references to instructions, few-shot, reasoning and passthrough chunks" → "optional
+  references to instructions, few-shot, reasoning, passthrough and translations chunks".
+- **Linting**, new paragraph: "`lint(…, languages=)` takes a function from a digest to its language, normally
+  `Catalog.language_of`. With it, a trial gets `language.mixed` when some of its cases are in another language
+  than its request, and `language.unknown` (info) when the request's language, or some cases', is unknown.
+  Judges aren't checked." (`src/chatddx/factors/lint.py:_languages`)

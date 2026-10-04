@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, JsonValue, model_validator
 from chatddx.factors.base import Fingerprint
 from chatddx.factors.cases import SourceCase
 
-# src/chatddx/store/migrations/0014-t2-catalog-kinds.sql repeats these kinds.
+# src/chatddx/store/migrations/0020-t2-catalog-translations.sql repeats these kinds.
 THREAD_KINDS = frozenset(
     {
         "chunk.instructions",
@@ -20,6 +20,7 @@ THREAD_KINDS = frozenset(
         "chunk.sampling",
         "chunk.reasoning",
         "chunk.passthrough",
+        "chunk.translations",
         "skeleton",
         "trial",
         "judge",

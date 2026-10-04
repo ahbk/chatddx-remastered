@@ -1,5 +1,5 @@
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 
 from jsonschema import ValidationError, validators
 from jsonschema.exceptions import SchemaError, relevance
@@ -252,9 +252,45 @@ def _model_facts(
             pass
 
 
-def _trial(c: Trial, registry: Registry, facts: Facts | None) -> Iterable[Finding]:
+Languages = Callable[[str], str | None]
+
+
+def _languages(c: Trial, languages: Languages) -> Iterable[Finding]:
+    request = languages(c.skeleton)
+    if request is None:
+        yield Finding(
+            level="info",
+            code="language.unknown",
+            message="the request's language is unknown",
+            subject=c.digest,
+        )
+        return
+    cases = [languages(case) for case in c.cases]
+    if unknown := cases.count(None):
+        yield Finding(
+            level="info",
+            code="language.unknown",
+            message=f"the language of {unknown} of {len(cases)} cases is unknown",
+            subject=c.digest,
+        )
+    other = [lang for lang in cases if lang is not None and lang != request]
+    if other:
+        verb = "is" if len(other) == 1 else "are"
+        yield Finding(
+            code="language.mixed",
+            message=f"the request is {request}, but {len(other)} of {len(cases)} "
+            + f"cases {verb} {', '.join(sorted(set(other)))}",
+            subject=c.digest,
+        )
+
+
+def _trial(
+    c: Trial, registry: Registry, facts: Facts | None, languages: Languages | None
+) -> Iterable[Finding]:
     skeleton = resolve(registry.get, c.skeleton, Skeleton)
     yield from _pair(c.digest, skeleton, registry.get(c.engine), registry, facts)
+    if languages is not None:
+        yield from _languages(c, languages)
 
 
 def _judge(c: Judge, registry: Registry, facts: Facts | None) -> Iterable[Finding]:
@@ -266,6 +302,7 @@ def lint(
     registry: Registry,
     digests: Iterable[str] | None = None,
     facts: Facts | None = None,
+    languages: Languages | None = None,
 ) -> list[Finding]:
     findings: list[Finding] = []
     for d in registry if digests is None else digests:
@@ -281,7 +318,7 @@ def lint(
             case Expectation() as c:
                 findings.extend(_expectation(c, registry))
             case Trial() as c:
-                findings.extend(_trial(c, registry, facts))
+                findings.extend(_trial(c, registry, facts, languages))
             case Judge() as c:
                 findings.extend(_judge(c, registry, facts))
             case _:
