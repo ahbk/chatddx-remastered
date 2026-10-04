@@ -98,6 +98,9 @@ Variations allow controlled experiments without the combinatorial explosion; the
 
 "Delete" in this case is a `deleted` flag in the `catalog` layer since true deletions are blocked on database level (see tier 2 in `docs/store.md`).
 
+`src/chatddx/store/catalog.py:Catalog.variation` and `Catalog.proposal` (what a fork varies,
+and re-applying it when its origin moves), and `catalog.edit.based_on`".
+
 ### On the table
 - The result from scorers needs to be aggregated and exported. Since python is well-suited for statistical analysis, processing the data into publishable results may become a requirement.
 - Garbage collector for true deletions of non-referenced items.
@@ -260,6 +263,3 @@ The one hard block is clearance: sending case-derived content to an engine that 
 **Case drift and canary drift are not implemented.** `RunItem.vignette` records the observed fingerprint, but nothing compares it with `CaseInput.vignette`, and nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
-- ADD to the references under "Intended evolution of configurations": "`src/chatddx/store/catalog.py:Catalog.variation`
-  and `Catalog.proposal` (what a fork varies, and re-applying it when its origin moves), and
-  `catalog.edit.based_on`".

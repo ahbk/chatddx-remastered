@@ -31,8 +31,10 @@ It includes roles and owner (admin) setup, migrations and tests.
   `credential (person, hash)` and `session (token_digest, person, created, expires)`
 
 - Schema `catalog`, not case-derived, append-only: `thread (id, kind, forked_from, by, at)`,
-  `edit (id, thread, kind, digest, compilation, by, at)`, `entry (id, thread | run | score, field, value, person,
-  present, by, at)` and `label (id, scorer, part, position, value, by, at)`
+  `edit (id, thread, kind, digest, compilation, based_on, by, at)`,
+  `entry (id, thread | run | score, field, value, person, present, by, at)` and
+  `label (id, scorer, part, position, value, by, at)`.
+  `based_on` is an edit of the same kind in the thread's origin, at or after `forked_from`.
 
 - schema `catalog` gains `family (id, by, at)` and `binding (id, family, source, source_id,
   vignette, by, at)`, and `entry` gains a `family` subject.
@@ -49,6 +51,7 @@ migrations:
 - `0006-t0-identity-auth.sql`
 - `0009-t0-catalog.sql`
 - `0012-t0-catalog-families.sql`
+- `0015-t0-catalog-based-on.sql` (the column and its same-kind foreign key).
 
 Endowes:
 - tables, keys, foreign keys.
@@ -86,6 +89,7 @@ migrations:
 - `0011-t2-catalog-checks.sql`
 - `0013-t2-catalog-families.sql`
 - `0014-t2-catalog-kinds.sql`
+- `0016-t2-catalog-based-on.sql` (a trigger that keeps `based_on` in the origin thread, repeated in `Catalog.edit`).
 
 Endowes:
 - CHECKs that digests match canonical text, that `doc` and every key column match
@@ -138,8 +142,8 @@ migrations up to the tier (default 2) and prints each one; `--dry-run` only list
 - `People` (`src/chatddx/store/people.py`): `add`, `get`, `find`, `update`, `set_password`,
   `authenticate`, `open_session`, `session`, `close_session`, `purge_sessions`.
 - `Catalog` (`src/chatddx/store/catalog.py`): `create`, `edit`, `thread`, `history`, `head`,
-  `heads`, `containing`, `behind`, `note`, `about`, `label`, `labels`.
-- `Catalog.adopt`, `Catalog.family`, `Catalog.bindings` (`src/chatddx/store/catalog.py`).
+  `heads`, `containing`, `behind`, `note`, `about`, `label`, `labels`, `recipe`, `variation` and `proposal`.
+- `Catalog.adopt`, `Catalog.family`, `Catalog.bindings`.
 
 ## Tests
 `src/chatddx/store/test/`: a migrated template database per session, a fresh copy per test, dropped afterwards.
@@ -158,11 +162,3 @@ tier-2 triggers).
   `Store.load`); a future ORM or view must not rebuild them from `doc`." (`src/chatddx/factors/base.py:46`)
 
 ## Proposed amendments
-- CHANGE in "Layout", the catalog's `edit (id, thread, kind, digest, compilation, by, at)` to
-  `edit (id, thread, kind, digest, compilation, based_on, by, at)`; `based_on` is an edit of the same kind in the
-  thread's origin, at or after `forked_from`.
-- ADD to "Tier 0" migrations: `0015-t0-catalog-based-on.sql` (the column and its same-kind foreign key). ADD to
-  "Tier 2" migrations: `0016-t2-catalog-based-on.sql` (a trigger that keeps `based_on` in the origin thread,
-  repeated in `Catalog.edit`).
-- CHANGE in "Store API": add `recipe`, `variation` and `proposal` to the `Catalog` methods, and `based_on` to
-  `edit`. (`src/chatddx/store/catalog.py:95`, `:196`, `:199`, `:219`)
