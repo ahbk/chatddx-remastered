@@ -133,10 +133,9 @@ the binding log allows them, because each repair keeps one half of the binding a
 - Detection: the import script's listing of a source (id → fingerprint) compared with current bindings, or the
   case-drift check (`docs/factors.md`, "Misc", not implemented).
 
-Not implemented, waiting on the repair helpers:
-- appending bindings (no API yet) and the "share the id or the fingerprint" trigger;
-- `behind` doesn't report a case whose binding isn't current. That can only happen after a repair, and matters for
-  cases without appendices, which `behind` can't otherwise flag.
+Implemented later (G13 in `agents/wip-sample-data.md`): `Catalog.survey` for detection, `Catalog.repair`, the
+"keep the id or the vignette" trigger (`0018-t2-catalog-bindings.sql`), and `behind` reporting cases whose family
+has a newer binding (`Behind.binding`).
 
 ## Implemented
 - `src/chatddx/core/catalog.py`: `THREAD_KINDS`, `EntryField`, `Entry` (shape rules), `Subject`, `About.of`,

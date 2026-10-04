@@ -360,6 +360,23 @@ tags = ["ddx"]
     content (comments appended to `Dutchfall11w.txt` and `casesfromedn1.txt`).
   - `Catalog.adopt` refuses both, and the repair helpers and the API to append bindings aren't implemented
     (`docs/catalog.md`, "Cases").
+  - **Fixed**, following `agents/wip-catalog.md` decision 7.
+    - `Catalog.survey(source, listing)` sorts a source's vignettes into unchanged, changed, renamed, new and gone.
+    - `Catalog.repair(family, by, id=… | vignette=…)` appends a binding, re-binds appendix threads, builds new
+      cases, and on a rename re-keys expectation threads.
+    - `Catalog.behind` reports a case whose family has a newer binding (`Behind.binding`).
+    - Migration `0018-t2-catalog-bindings` makes consecutive bindings keep the id or the vignette.
+    - Stress test: adopting the 99 vignettes at 7893656 and surveying the 13d317d checkout found exactly
+      `Dutchfall11w` and `casesfromedn1` changed (the appended comments) and `DutchFall10w` → `Dutchfall10w`
+      renamed. After three repairs all 99 were unchanged. This ran in a rolled-back transaction.
+    - Still open:
+      - Two identical vignettes under different ids: `survey` calls the second new, while `adopt` refuses it as a
+        rename (`agents/wip-catalog.md`, known gaps).
+      - Trials aren't re-keyed by any repair; `behind` proposes the new cases to their owners.
+      - A repair rebuilds only the cases at the family's current binding, not older ones.
+    - Proposed amendments: `docs/catalog.md` (Cases), `docs/store.md` (0018, Store API), `docs/factors.md`
+      (Misc).
+    - Tests: `test_renamed_vignettes_are_repaired`, `test_changed_vignettes_are_repaired`.
 - **G14. Expectation data isn't validated.** [maybe fix remastered]
   - By design the factors don't check `Expectation.data` against its schema; the scorer does. Hand-edited sample
     data has no check before it lands, and scorers are deferred.

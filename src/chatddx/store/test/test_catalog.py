@@ -5,7 +5,7 @@ import pytest
 from psycopg import errors, sql
 from pydantic import ValidationError
 
-from chatddx.core.catalog import THREAD_KINDS, About, Entry, EntryField, Subject
+from chatddx.core.catalog import THREAD_KINDS, About, Entry, EntryField, Subject, Survey
 from chatddx.core.identity import Person
 from chatddx.factors.base import Component, StructuralError, iter_refs, resolve
 from chatddx.factors.bundle import Registry
@@ -18,7 +18,7 @@ from chatddx.factors.request import (
     Sampling,
     compile_request,
 )
-from chatddx.factors.scoring import Judge, Scoring
+from chatddx.factors.scoring import Expectation, Judge, Scoring
 from chatddx.factors.test.sample import NOW, RIG, fp, generation_recipe, world
 from chatddx.ledger.ledger import Compilation, RunStarted, ScoreStarted
 from chatddx.store import Catalog, People, Store
@@ -209,6 +209,7 @@ def test_threads_behind_are_proposed_not_moved(conn: Connection) -> None:
 
     _ = catalog.edit(chunk.thread, instructions(v2), alice.id)
     [behind] = catalog.behind(skeleton.thread)
+    assert behind.head is not None
     assert (behind.path, behind.digest, behind.head.digest) == (
         "/recipe/instructions",
         instructions(v1),
@@ -347,6 +348,87 @@ def test_behind_looks_through_cases(conn: Connection) -> None:
     assert [(b.path, b.head) for b in catalog.behind(expected.thread)] == [
         ("/case/appendices/0", head)
     ]
+
+
+def test_renamed_vignettes_are_repaired(conn: Connection) -> None:
+    catalog, store, reg, ids, alice = stored_world(conn)
+    case = resolve(reg.get, ids["case"], CaseInput)
+    [appendix] = case.appendices
+    source = case.case.source
+    family = catalog.adopt(ids["case"], alice.id)
+    name = Entry(field=EntryField.NAME, value="chest pain")
+    catalog.note(Subject(family=family), name, alice.id)
+    trial = catalog.create(ids["trial"], alice.id)
+    expectation = resolve(reg.get, ids["scoring"], Scoring).expectations[0]
+    expected = catalog.create(expectation, alice.id)
+    appended = catalog.create(appendix, alice.id)
+
+    assert catalog.survey(source, {"c1": case.vignette}) == Survey(unchanged=(family,))
+    survey = catalog.survey(source, {"c1-renamed": case.vignette, "c9": fp("new")})
+    assert (survey.renamed, survey.new) == (((family, "c1", "c1-renamed"),), ("c9",))
+    assert catalog.survey(source, {}).gone == (family,)
+
+    repair = catalog.repair(family, alice.id, id="c1-renamed")
+    renamed = SourceCase(source=source, id="c1-renamed")
+    assert (repair.binding.case, repair.binding.vignette) == (renamed, case.vignette)
+    rebound = resolve(store.get, repair.cases[ids["case"]], CaseInput)
+    assert (rebound.case, rebound.vignette) == (renamed, case.vignette)
+    assert rebound.appendices == (repair.appendices[appendix],)
+    new_appendix = resolve(store.get, repair.appendices[appendix], Appendix)
+    assert (new_appendix.case, new_appendix.text) == (renamed, "Troponin 80 ng/L.")
+    assert catalog.head(appended.thread).digest == repair.appendices[appendix]
+    rekeyed = resolve(store.get, catalog.head(expected.thread).digest, Expectation)
+    assert rekeyed.case == repair.cases[ids["case"]]
+    assert {e.thread for e in repair.edits} == {appended.thread, expected.thread}
+    assert catalog.family(repair.cases[ids["case"]]) == catalog.family(ids["case"])
+    assert catalog.about(Subject(family=family)).name == "chest pain"
+    assert catalog.survey(source, {"c1-renamed": case.vignette}).unchanged == (family,)
+    assert [(b.path, b.digest, b.binding) for b in catalog.behind(trial.thread)] == [
+        ("/cases/0", ids["case"], repair.binding),
+        ("/cases/0/appendices/0", appendix, None),
+    ]
+    assert catalog.behind(expected.thread) == []
+
+
+def test_changed_vignettes_are_repaired(conn: Connection) -> None:
+    catalog, store, reg, ids, alice = stored_world(conn)
+    case = resolve(reg.get, ids["case"], CaseInput)
+    source = case.case.source
+    family = catalog.adopt(ids["case"], alice.id)
+    expectation = resolve(reg.get, ids["scoring"], Scoring).expectations[0]
+    expected = catalog.create(expectation, alice.id)
+    edited = fp("edited at the source")
+    survey = catalog.survey(source, {"c1": edited})
+    assert survey == Survey(changed=((family, "c1", edited),))
+
+    with pytest.raises(ValueError, match="one of the id or the vignette"):
+        _ = catalog.repair(family, alice.id)
+    with pytest.raises(ValueError, match="one of the id or the vignette"):
+        _ = catalog.repair(family, alice.id, id="c2", vignette=edited)
+    with pytest.raises(ValueError, match="one of the id or the vignette"):
+        _ = catalog.repair(family, alice.id, id="c1")
+    repair = catalog.repair(family, alice.id, vignette=edited)
+    rebound = resolve(store.get, repair.cases[ids["case"]], CaseInput)
+    assert (rebound.case, rebound.vignette) == (case.case, edited)
+    assert catalog.head(expected.thread).digest == expectation
+    assert repair.edits == ()
+    assert [
+        (b.path, b.digest, b.binding)
+        for b in catalog.behind(expected.thread)
+        if b.binding is not None
+    ] == [("/case", ids["case"], repair.binding)]
+
+    with (
+        pytest.raises(errors.RaiseException, match="keep the id or the vignette"),
+        conn.transaction(),
+    ):
+        _ = conn.execute(
+            """
+                INSERT INTO catalog.binding (family, source, source_id, vignette, by)
+                VALUES (%s, %s, 'elsewhere', %s::jsonb, %s)
+                """,
+            (family, source, '{"hex": "' + "0" * 64 + '"}', alice.id),
+        )
 
 
 @pytest.mark.parametrize(

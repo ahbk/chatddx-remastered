@@ -166,3 +166,7 @@ tier-2 triggers).
   `Store.load`); a future ORM or view must not rebuild them from `doc`." (`src/chatddx/factors/base.py:46`)
 
 ## Proposed amendments
+- ADD to "Tier 2" migrations: `0018-t2-catalog-bindings.sql`, a trigger that refuses a binding that keeps neither
+  the previous binding's (source, id) nor its vignette.
+- CHANGE in "Store API": add `survey` and `repair` to the `Catalog` methods. `behind` now also reports cases whose
+  family has a newer binding. (`src/chatddx/store/catalog.py:193`, `:334`, `:379`)

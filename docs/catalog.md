@@ -65,3 +65,17 @@ be replaced but not removed, and the latest one wins (`About.language`). It desc
 reaches a request.
 
 ## Proposed amendments
+- CHANGE in "Cases": "Repair helpers are not implemented." to:
+  - `Catalog.survey(source, listing)` compares a source's listing (id → fingerprint, e.g. from `Source.cases()`)
+    with the current bindings of that source's families. It sorts them into unchanged, changed (same id, new
+    content), renamed (same content under an id the listing has, while the old id is gone), new, and gone. A
+    vignette whose name and content both changed shows up as gone plus new.
+  - `Catalog.repair(family, by, id=…)` or `vignette=…` changes exactly one half of the binding. It appends a
+    binding, gives the appendix threads at the old binding a re-bound edit (same text), and builds the family's
+    cases anew. A rename also re-keys the expectation threads of those cases, whose data a rename can't affect. A
+    content change leaves them, and `behind` proposes the new case for a clinician to confirm.
+  - `Catalog.behind` reports a case whose family has a newer binding (`Behind.binding` instead of `Behind.head`),
+    so cases without appendices are flagged too.
+  - Consecutive bindings must keep the id or the vignette (tier 2).
+
+  (`src/chatddx/store/catalog.py:334`, `:379`, `:587`, `src/chatddx/core/catalog.py:97`, `:110`, `:118`)

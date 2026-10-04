@@ -44,6 +44,7 @@ def test_migrate_command(
         "applied 0014-t2-catalog-kinds",
         "applied 0016-t2-catalog-based-on",
         "applied 0017-t2-catalog-language",
+        "applied 0018-t2-catalog-bindings",
     ]
     with pytest.raises(SystemExit):
         main(["migrate", "--tier", "3"])

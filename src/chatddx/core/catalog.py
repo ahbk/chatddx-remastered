@@ -85,12 +85,6 @@ class Variation(_Frozen):
         return self.head.id != self.base.id
 
 
-class Behind(_Frozen):
-    path: str
-    digest: str
-    head: Edit
-
-
 class Binding(_Frozen):
     id: int
     family: int
@@ -98,6 +92,34 @@ class Binding(_Frozen):
     vignette: Fingerprint
     by: int
     at: datetime
+
+
+class Behind(_Frozen):
+    path: str
+    digest: str
+    head: Edit | None = None
+    binding: Binding | None = None
+
+    @model_validator(mode="after")
+    def _one(self) -> Self:
+        if (self.head is None) == (self.binding is None):
+            raise ValueError("behind either a newer head or a newer binding")
+        return self
+
+
+class Survey(_Frozen):
+    unchanged: tuple[int, ...] = ()
+    changed: tuple[tuple[int, str, Fingerprint], ...] = ()
+    renamed: tuple[tuple[int, str, str], ...] = ()
+    new: tuple[str, ...] = ()
+    gone: tuple[int, ...] = ()
+
+
+class Repair(_Frozen):
+    binding: Binding
+    cases: dict[str, str]
+    appendices: dict[str, str]
+    edits: tuple[Edit, ...]
 
 
 class Subject(_Frozen):

@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from typing import Any, LiteralString
 
 from pydantic import JsonValue
@@ -11,7 +12,9 @@ from chatddx.core.catalog import (
     Entry,
     EntryField,
     Part,
+    Repair,
     Subject,
+    Survey,
     Thread,
     Variation,
 )
@@ -23,9 +26,10 @@ from chatddx.factors.base import (
     parse_component,
     resolve,
 )
-from chatddx.factors.cases import SourceCase
+from chatddx.factors.bundle import Registry
+from chatddx.factors.cases import Appendix, CaseInput, SourceCase
 from chatddx.factors.request import Recipe
-from chatddx.factors.scoring import Scorer
+from chatddx.factors.scoring import Expectation, Scorer
 from chatddx.ledger.ledger import Compilation
 
 from .store import Connection, Store
@@ -45,6 +49,24 @@ _DELETED: LiteralString = """
         ORDER BY d.id DESC LIMIT 1
     ), false)
 """
+
+
+def _binding(family: int, row: tuple[Any, ...]) -> Binding:
+    id, source, source_id, vignette, by, at = row
+    return Binding(
+        id=id,
+        family=family,
+        case=SourceCase(source=source, id=source_id),
+        vignette=Fingerprint.model_validate(vignette),
+        by=by,
+        at=at,
+    )
+
+
+def _jsonb(vignette: Fingerprint) -> str:
+    return canonical_bytes(
+        vignette.model_dump(mode="json", context={"canonical": True})
+    ).decode()
 
 
 def _edit(row: tuple[Any, ...]) -> Edit:
@@ -191,7 +213,8 @@ class Catalog:
             """,
             ([p for p, _ in refs], [d for _, d in refs]),
         ).fetchall()
-        return [Behind(path=r[0], digest=r[1], head=_edit(r[2:])) for r in rows]
+        heads = [Behind(path=r[0], digest=r[1], head=_edit(r[2:])) for r in rows]
+        return sorted([*heads, *self._rebound(refs)], key=lambda b: b.path)
 
     def recipe(self, thread: int) -> Recipe | None:
         return self._recipe(self.head(thread))
@@ -306,17 +329,102 @@ class Catalog:
         ).fetchall()
         if not rows:
             raise LookupError(f"no family with id {family}")
-        return [
-            Binding(
-                id=id,
-                family=family,
-                case=SourceCase(source=source, id=source_id),
-                vignette=Fingerprint.model_validate(vignette),
-                by=by,
-                at=at,
+        return [_binding(family, row) for row in rows]
+
+    def survey(self, source: str, listing: Mapping[str, Fingerprint]) -> Survey:
+        current = [
+            _binding(row[0], row[1:])
+            for row in self._conn.execute(
+                """
+                SELECT family, id, source, source_id, vignette, by, at FROM (
+                    SELECT DISTINCT ON (family) * FROM catalog.binding
+                    ORDER BY family, id DESC
+                ) b
+                WHERE source = %s ORDER BY family
+                """,
+                (source,),
             )
-            for id, source, source_id, vignette, by, at in rows
         ]
+        by_id = {b.case.id: b for b in current}
+        unchanged: list[int] = []
+        changed: list[tuple[int, str, Fingerprint]] = []
+        renamed: list[tuple[int, str, str]] = []
+        new: list[str] = []
+        for id, vignette in sorted(listing.items()):
+            moved = [
+                b
+                for b in current
+                if b.vignette == vignette
+                and b.case.id != id
+                and b.case.id not in listing
+            ]
+            if (b := by_id.get(id)) is not None:
+                if b.vignette == vignette:
+                    unchanged.append(b.family)
+                else:
+                    changed.append((b.family, id, vignette))
+            elif len(moved) == 1:
+                renamed.append((moved[0].family, moved[0].case.id, id))
+            else:
+                new.append(id)
+        seen = {*unchanged, *(f for f, *_ in changed), *(f for f, *_ in renamed)}
+        return Survey(
+            unchanged=tuple(unchanged),
+            changed=tuple(changed),
+            renamed=tuple(renamed),
+            new=tuple(new),
+            gone=tuple(b.family for b in current if b.family not in seen),
+        )
+
+    def repair(
+        self,
+        family: int,
+        by: int,
+        *,
+        id: str | None = None,
+        vignette: Fingerprint | None = None,
+    ) -> Repair:
+        old = self.bindings(family)[-1]
+        case = old.case if id is None else SourceCase(source=old.case.source, id=id)
+        new_vignette = old.vignette if vignette is None else vignette
+        if (case == old.case) == (new_vignette == old.vignette):
+            raise ValueError("a repair changes exactly one of the id or the vignette")
+        store = Store(self._conn)
+        reg = Registry()
+        appendices: dict[str, str] = {}
+
+        def rebind(appendix: str) -> str:
+            if appendix not in appendices:
+                text = resolve(store.get, appendix, Appendix).text
+                appendices[appendix] = reg.add(
+                    Appendix(case=case, vignette=new_vignette, text=text)
+                )
+            return appendices[appendix]
+
+        with self._conn.transaction():
+            binding = self._bind(family, case, new_vignette, by)
+            cases: dict[str, str] = {}
+            for digest in self._at(old, "case"):
+                c = resolve(store.get, digest, CaseInput)
+                cases[digest] = reg.add(
+                    CaseInput(
+                        case=case,
+                        vignette=new_vignette,
+                        appendices=tuple(rebind(a) for a in c.appendices),
+                    )
+                )
+            moves = [(t, rebind(d)) for t, d in self._heads_at(old, "appendix")]
+            if id is not None:
+                for t, d in self._expectation_heads(list(cases)):
+                    e = resolve(store.get, d, Expectation)
+                    _ = reg.add(store.get(e.json_schema))
+                    rekeyed = Expectation(
+                        case=cases[e.case], json_schema=e.json_schema, data=e.data
+                    )
+                    moves.append((t, reg.add(rekeyed)))
+            _ = store.add(reg, list(reg))
+            edits = tuple(self.edit(t, d, by) for t, d in moves)
+        return Repair(binding=binding, cases=cases, appendices=appendices, edits=edits)
 
     def note(self, subject: Subject, entry: Entry, by: int) -> None:
         _ = self._conn.execute(
@@ -419,6 +527,81 @@ class Catalog:
         if subject.run is not None:
             return "run", subject.run
         return "score", subject.score
+
+    # src/chatddx/store/migrations/0018-t2-catalog-bindings.sql keeps each binding's id or vignette.
+    def _bind(
+        self, family: int, case: SourceCase, vignette: Fingerprint, by: int
+    ) -> Binding:
+        row = self._conn.execute(
+            """
+            INSERT INTO catalog.binding (family, source, source_id, vignette, by)
+            VALUES (%s, %s, %s, %s::jsonb, %s)
+            RETURNING id, source, source_id, vignette, by, at
+            """,
+            (family, case.source, case.id, _jsonb(vignette), by),
+        ).fetchone()
+        assert row is not None
+        return _binding(family, row)
+
+    def _at(self, binding: Binding, kind: LiteralString) -> list[str]:
+        return [
+            str(d)
+            for (d,) in self._conn.execute(
+                """
+                SELECT digest FROM factor.component
+                WHERE kind = %s AND doc #>> '{case,source}' = %s
+                    AND doc #>> '{case,id}' = %s AND doc -> 'vignette' = %s::jsonb
+                ORDER BY digest
+                """,
+                (kind, binding.case.source, binding.case.id, _jsonb(binding.vignette)),
+            )
+        ]
+
+    def _heads_at(self, binding: Binding, kind: LiteralString) -> list[tuple[int, str]]:
+        return [
+            (int(t), str(d))
+            for t, d in self._conn.execute(
+                f"""
+                SELECT t.id, e.digest FROM catalog.thread t {_HEAD}
+                WHERE t.kind = %s AND e.digest = ANY(%s)
+                ORDER BY t.id
+                """,
+                (kind, self._at(binding, kind)),
+            )
+        ]
+
+    def _expectation_heads(self, cases: list[str]) -> list[tuple[int, str]]:
+        return [
+            (int(t), str(d))
+            for t, d in self._conn.execute(
+                f"""
+                SELECT t.id, e.digest FROM catalog.thread t {_HEAD}
+                JOIN factor.component c ON c.digest = e.digest
+                WHERE t.kind = 'expectation' AND c.doc ->> 'case' = ANY(%s)
+                ORDER BY t.id
+                """,
+                (cases,),
+            )
+        ]
+
+    def _rebound(self, refs: list[tuple[str, str]]) -> list[Behind]:
+        store = Store(self._conn)
+        behind: list[Behind] = []
+        for path, digest in refs:
+            if self._kind(digest) != "case" or (family := self.family(digest)) is None:
+                continue
+            current = self.bindings(family)[-1]
+            case = resolve(store.get, digest, CaseInput)
+            stale = (case.case, case.vignette) != (current.case, current.vignette)
+            if stale and not self.about(Subject(family=family)).deleted:
+                behind.append(Behind(path=path, digest=digest, binding=current))
+        return behind
+
+    def _kind(self, digest: str) -> str | None:
+        row = self._conn.execute(
+            "SELECT kind FROM factor.component WHERE digest = %s", (digest,)
+        ).fetchone()
+        return None if row is None else str(row[0])
 
     def _through_cases(self, refs: list[tuple[str, str]]) -> list[tuple[str, str]]:
         rows = self._conn.execute(

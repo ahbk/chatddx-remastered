@@ -281,3 +281,8 @@ the seed isn't sent, but the trial's seeds still count toward its hash, so two o
 - `Hardware` has no GPU count, so tensor-parallel engines can't be told apart by hardware (the old code had `gpu_count`).
 
 ## Proposed amendments
+- CHANGE in "Misc": "**Re-binding after vignette drift.** A changed vignette orphans its appendices and
+  expectations; who re-binds them?" to "**Re-binding after vignette drift.** `Catalog.repair` re-binds appendices
+  and builds new cases when a vignette's content or file name changes (`docs/catalog.md`, "Cases"). On a content
+  change a clinician confirms each expectation, proposed by `Catalog.behind`; on a rename the repair re-keys them."
+  (`src/chatddx/store/catalog.py:379`)
