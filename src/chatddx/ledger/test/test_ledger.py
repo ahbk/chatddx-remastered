@@ -5,8 +5,9 @@ from uuid import uuid4
 import pytest
 from pydantic import JsonValue, ValidationError
 
-from chatddx.factors.base import Fingerprint, StructuralError
+from chatddx.factors.base import Fingerprint, StructuralError, resolve
 from chatddx.factors.bundle import Registry
+from chatddx.factors.cases import CaseInput
 from chatddx.factors.engine import LocalEngine
 from chatddx.factors.test.sample import (
     NOW,
@@ -57,11 +58,13 @@ def test_run_and_score_checks(reg: Registry) -> None:
             prompt_tokens=prompt_tokens,
         )
 
-    def item(replicate: int, c: Call) -> RunItem:
+    vignette = resolve(reg.get, ids["case"], CaseInput).vignette
+
+    def item(replicate: int, c: Call, observed: Fingerprint = vignette) -> RunItem:
         return RunItem(
             run=run_id,
             key=ItemKey(case=ids["case"], replicate=replicate),
-            vignette=fp("v"),
+            vignette=observed,
             call=c,
         )
 
@@ -74,6 +77,13 @@ def test_run_and_score_checks(reg: Registry) -> None:
     run = Run(stages=(started, open_run.finish(NOW)), items=items, canaries=canaries)
     assert [f.code for f in check_run(run, reg)] == ["attestation.model"]
     assert run.items[0].call.response == {"model": engine.served_model_name}
+    drifted = Run(
+        stages=(started,),
+        items=(item(0, call(engine.served_model_name), fp("edited at the source")),),
+    )
+    assert [(f.code, f.subject) for f in check_run(drifted, reg)] == [
+        ("case.drift", str(drifted.items[0].key))
+    ]
 
     tampered = run.model_copy(update={"items": items[:1]})
     assert "ledger.seal" in [f.code for f in check_run(tampered, reg)]

@@ -15,6 +15,9 @@ ledger provide the means; the runner enforces.
 - Case-derived tables live in schema `ledger`; at tier 1 `chatddx_reader` can't read them
   (`src/chatddx/store/migrations/0002-t1-grants.sql`).
 - `SourceCase.source` (`src/chatddx/factors/cases.py:12`) names a vignette's source.
+- Sources are declared in the inventory (`src/chatddx/inventory/inventory.py`), and each one says whether it is
+  sensitive (`Source.sensitive`, true by default). `prepare_case` produces the case-derived fills the hard block
+  would guard.
 - `RemoteEngine.base_url` (`src/chatddx/factors/engine.py:76`) is the only endpoint in a factor, and it is part of the
   engine's digest. A local engine has no URL; by the glossary that is an inventory fact (`docs/factors.md`, "Local
   engines have no endpoint…").
@@ -49,5 +52,5 @@ ledger provide the means; the runner enforces.
 4. **Binding check before sending.** A local engine's `served_model_name` is its digest, and `/v1/models` lists it,
    so the runner can confirm an inventory binding before sending case-derived content. Whether that check is part of
    the hard block is undecided.
-5. **Sources.** `SourceCase.source` is a free string; whether sources are listed in the inventory and what clearance
-   each requires is unspecified.
+5. **Sources.** Sources are now listed in the inventory with a `sensitive` flag (G11 in
+   `agents/wip-sample-data.md`). Still unspecified: what clearance each requires, beyond sensitive or not.

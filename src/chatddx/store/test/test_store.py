@@ -7,6 +7,7 @@ from psycopg.pq import TransactionStatus
 
 from chatddx.factors.base import StructuralError, resolve
 from chatddx.factors.bundle import Registry
+from chatddx.factors.cases import CaseInput
 from chatddx.factors.engine import LocalEngine
 from chatddx.factors.request import Recipe, Skeleton
 from chatddx.factors.test.sample import NOW, RIG, fp, world
@@ -151,7 +152,7 @@ def test_run_and_score_roundtrip(conn: Connection) -> None:
         RunItem(
             run=run_id,
             key=ItemKey(case=ids["case"], replicate=r),
-            vignette=fp("v"),
+            vignette=resolve(reg.get, ids["case"], CaseInput).vignette,
             call=call(served),
         )
         for r in range(2)

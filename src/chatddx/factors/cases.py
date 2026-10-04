@@ -5,7 +5,18 @@ from typing import Annotated, Literal, override
 
 from pydantic import Field
 
-from .base import Component, Digest, Fingerprint, Frozen, RefTo, Resolver
+from .base import (
+    Component,
+    Digest,
+    Finding,
+    Fingerprint,
+    Frozen,
+    RefTo,
+    Resolver,
+    StructuralError,
+    resolve,
+)
+from .request import AppendixLayout, SlotName
 
 
 class SourceCase(Frozen):
@@ -59,3 +70,44 @@ def normalize(text: str, ops: Sequence[NormalizeOp]) -> str:
     for op in ops:
         text = _OPS[op](text)
     return text
+
+
+class Prepared(Frozen):
+    fills: dict[SlotName, str]
+    vignette: Fingerprint
+    findings: tuple[Finding, ...] = ()
+
+
+def prepare_case(
+    case: CaseInput,
+    raw: bytes,
+    get: Resolver,
+    layout: AppendixLayout,
+    normalization: Sequence[NormalizeOp] = (),
+    key: tuple[str, bytes] | None = None,
+) -> Prepared:
+    given = None if key is None else key[0]
+    if case.vignette.key_id != given:
+        raise StructuralError(
+            f"the case's vignette is fingerprinted with key {case.vignette.key_id!r}, "
+            + f"not {given!r}"
+        )
+    observed = Fingerprint.of(raw, key)
+    findings: tuple[Finding, ...] = ()
+    if observed != case.vignette:
+        findings = (
+            Finding(
+                code="case.drift",
+                message="the vignette at the source differs from the case's",
+                subject=case.digest,
+            ),
+        )
+    appendices = [resolve(get, a, Appendix).text for a in case.appendices]
+    return Prepared(
+        fills={
+            "case": normalize(raw.decode(), normalization),
+            "appendices": layout.join(appendices),
+        },
+        vignette=observed,
+        findings=findings,
+    )

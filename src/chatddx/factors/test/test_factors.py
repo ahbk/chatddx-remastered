@@ -17,6 +17,7 @@ from chatddx.factors.cases import (
     CaseInput,
     SourceCase,
     normalize,
+    prepare_case,
 )
 from chatddx.factors.engine import (
     FileDigest,
@@ -26,6 +27,7 @@ from chatddx.factors.engine import (
 )
 from chatddx.factors.lint import lint
 from chatddx.factors.request import (
+    AppendixLayout,
     Example,
     FewShot,
     Insert,
@@ -598,6 +600,42 @@ def test_cross_checks(reg: Registry) -> None:
     _ = reg.add(ci)
     with pytest.raises(StructuralError, match="bound to another case"):
         reg.check([ci.digest])
+
+
+def test_prepare_case(reg: Registry) -> None:
+    raw = b"A 54-year-old\r\nwith chest pain.\n"
+    case = SourceCase(source="registry", id="c1")
+    vignette = Fingerprint.of(raw)
+    appendices = tuple(
+        reg.add(Appendix(case=case, vignette=vignette, text=text))
+        for text in ("Troponin 80 ng/L.", "ECG: ST elevation.")
+    )
+    case_input = CaseInput(case=case, vignette=vignette, appendices=appendices)
+    prepared = prepare_case(
+        case_input, raw, reg.get, AppendixLayout(), ("newlines.lf@1", "strip@1")
+    )
+    assert prepared.fills == {
+        "case": "A 54-year-old\nwith chest pain.",
+        "appendices": "\n\nTroponin 80 ng/L.\n\nECG: ST elevation.",
+    }
+    assert (prepared.vignette, prepared.findings) == (vignette, ())
+
+    edited = prepare_case(
+        case_input, b"Edited at the source.", reg.get, AppendixLayout()
+    )
+    assert edited.vignette == Fingerprint.of(b"Edited at the source.")
+    assert [f.code for f in edited.findings] == ["case.drift"]
+
+    keyed = case_input.model_copy(
+        update={"vignette": Fingerprint.of(raw, ("k1", b"secret")), "appendices": ()}
+    )
+    with pytest.raises(StructuralError, match="k1"):
+        _ = prepare_case(keyed, raw, reg.get, AppendixLayout())
+    assert not prepare_case(
+        keyed, raw, reg.get, AppendixLayout(), key=("k1", b"secret")
+    ).findings
+    with pytest.raises(UnicodeDecodeError):
+        _ = prepare_case(case_input, b"\xff", reg.get, AppendixLayout())
 
 
 def test_normalization_ops_are_pinned() -> None:

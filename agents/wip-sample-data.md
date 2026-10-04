@@ -320,6 +320,26 @@ tags = ["ddx"]
   - `prepare_case` is missing (`docs/factors.md`, "Misc").
   - Nothing marks a source sensitive, so a fake-sensitive source can't be declared; `docs/clearance.md` is a stub.
   - Tests need a source too: the old tests' vignettes were inline strings (`test-cases.toml`).
+  - **Fixed** (it follows the glossary: the inventory says where vignette sources are; D1 fake-sensitive, D2 raw
+    bytes).
+    - `chatddx.inventory` loads `[source.<name>]` tables (`kind = "directory"`, `path` relative to the inventory
+      file, `suffix = ".txt"`, `sensitive = true` by default). It refuses any other table for now.
+    - `Source` (`DirectorySource`, `MemorySource` for tests) has `ids()`, `fetch(id) -> bytes` and `cases()`, a
+      `CaseInput` per vignette with no appendices. A directory source's ids are file stems, and ids that would
+      leave the directory are refused.
+    - `prepare_case(case, raw, get, layout, normalization, key=)` (`factors/cases.py`) is the old prepare_case
+      without the IO. It fingerprints the raw bytes, reports `case.drift` on a mismatch (a warning: the run goes on
+      with what was read), decodes strict UTF-8, cleans, and joins the appendices. It returns the fills and the
+      observed fingerprint for `RunItem.vignette`.
+    - `check_run` reports `case.drift` for recorded items.
+    - Sensitivity is declared, not enforced: the hard block waits for clearance (`agents/wip-clearance.md`).
+    - The sample vignettes stay out of this repo, being fake-sensitive. The sample inventory names them where they
+      are, e.g. `[source.sample] path = "<old checkout>/src/chatddx/data/cases"`, so their ids are the old case
+      names, `DutchFall10w` included.
+    - Proposed amendments: `docs/chatddx.md` (per-item steps, drift, Findings, Inventory), `docs/factors.md`
+      (Case, Misc), `docs/ledger.md` (RunStarted), `docs/clearance.md`.
+    - Tests: `src/chatddx/inventory/test/test_inventory.py`, `test_prepare_case`, and the drifted item in
+      `test_run_and_score_checks`.
 - **G12. Case language.** [maybe fix remastered] (old D5)
   - `language` (79 en, 20 sv) has no home. A case's family carries only name, description, tags, owner,
     collaborators and deleted.

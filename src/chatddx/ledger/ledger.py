@@ -19,7 +19,7 @@ from chatddx.factors.base import (
     sorted_keys,
 )
 from chatddx.factors.bundle import Registry
-from chatddx.factors.cases import CaseInputRef
+from chatddx.factors.cases import CaseInput, CaseInputRef
 from chatddx.factors.engine import LocalEngine, RemoteEngine
 from chatddx.factors.request import Recipe, SkeletonRef
 from chatddx.factors.scoring import Judge, JudgeRef, Scorer, Scoring, ScoringRef
@@ -354,6 +354,16 @@ def check_run(run: Run, registry: Registry) -> list[Finding]:
         findings.append(
             Finding(code="run.incomplete", message=f"{len(missing)} items missing")
         )
+    for item in run.items:
+        case = resolve(registry.get, item.key.case, CaseInput)
+        if item.vignette != case.vignette:
+            findings.append(
+                Finding(
+                    code="case.drift",
+                    message="the vignette read differs from the case's",
+                    subject=str(item.key),
+                )
+            )
     engine = registry.get(trial.engine)
     assert isinstance(engine, LocalEngine | RemoteEngine)
     want = engine.served_model_name if isinstance(engine, LocalEngine) else engine.model

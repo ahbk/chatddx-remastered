@@ -263,3 +263,15 @@ The one hard block is clearance: sending case-derived content to an engine that 
 **Case drift and canary drift are not implemented.** `RunItem.vignette` records the observed fingerprint, but nothing compares it with `CaseInput.vignette`, and nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
+- CHANGE in "Per (case, replicate)", steps 2–5: "2. Fetch the vignette's raw bytes from its source by id
+  (`Source.fetch`; sources are declared in the inventory). 3–5. `prepare_case(case, raw, get, layout,
+  normalization)` checks drift (a mismatch is the warning `case.drift`), cleans the vignette, joins the
+  appendices, and returns the fills together with the observed fingerprint for `RunItem.vignette`."
+  (`src/chatddx/factors/cases.py:81`, `src/chatddx/inventory/sources.py`)
+- CHANGE in "Possible design issues": "**Case drift and canary drift are not implemented.**" to "**Canary drift is
+  not implemented.**", and drop "`RunItem.vignette` records the observed fingerprint, but nothing compares it with
+  `CaseInput.vignette`, and". `check_run` now reports `case.drift` (`src/chatddx/ledger/ledger.py:362`).
+- ADD `case.drift` to "Findings and errors": "the vignette read at the source differs from the case's fingerprint
+  (`prepare_case`, `check_run`)."
+- CHANGE the glossary's **Inventory**: add "Vignette sources are `[source.<name>]` tables (a directory of files
+  today), sensitive unless declared otherwise." (`src/chatddx/inventory/inventory.py`)

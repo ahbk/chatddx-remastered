@@ -132,3 +132,7 @@ Note: Part of it exists now: the case-derived tables are in their own ledger sch
 - Nothing compares declared and observed scorer code. ScoreStarted.scorer_code is never checked against Scorer.code, so a mismatch goes unnoticed.
 
 ## Proposed amendments
+- CHANGE in "RunStarted": "Neither case drift (comparing the observed vignette fingerprint with the case's) nor
+  canary drift (comparing canary outputs between phases or runs) is checked yet" to "Case drift is checked:
+  `check_run` reports `case.drift` when a run item's observed vignette fingerprint differs from its case's. Canary
+  drift (comparing canary outputs between phases or runs) isn't checked yet." (`src/chatddx/ledger/ledger.py:362`)

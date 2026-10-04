@@ -276,3 +276,9 @@ the seed isn't sent, but the trial's seeds still count toward its hash, so two o
 - `Hardware` has no GPU count, so tensor-parallel engines can't be told apart by hardware (the old code had `gpu_count`).
 
 ## Proposed amendments
+- REMOVE from "Misc": "**Case drift is not checked.** …" and "No helper prepares a case, i.e. per-item steps 2–5 …".
+  `prepare_case` (`src/chatddx/factors/cases.py:81`) takes the raw bytes, so the factors do no IO, and checks
+  drift. `check_run` reports `case.drift` for recorded items (`src/chatddx/ledger/ledger.py:362`).
+- ADD to "Case", after "An import script supplies the vignette fingerprint, taken over the raw vignette as
+  fetched.": "Sources are declared in the inventory, and `Source.cases()` builds a case, with no appendices, for
+  every vignette a source lists." (`src/chatddx/inventory/sources.py`)
