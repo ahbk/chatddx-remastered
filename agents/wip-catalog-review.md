@@ -70,12 +70,15 @@ open, decided (the user said so), held (waits for the language items), done.
   (`src/chatddx/store/catalog.py:326-330`). Default: family name plus its appendices' titles. done (decb023).
 - B4 an unlabelled thread holding a digest vetoes its language: a plain fork (as the giftbag makes) turns a labelled
   chunk's language into `None` (`src/chatddx/store/catalog.py:634-649`). Languages are per thread, so relabelling a
-  thread relabels every digest it ever held. Default: unlabelled threads abstain. held: language.
+  thread relabels every digest it ever held. Default: unlabelled threads abstain. Decided: option 4, a component's
+  language is kept on its digest (`catalog.language`, `Catalog.language`); a language entry only on a family. done
+  (e37bdf5, migrations 0023, 0024).
 - B5 `behind` gives one entry per moved thread that ever held the referenced digest, so one path can get several.
   Default: document. decided: doc.
-- B6 `language_of`: a trial follows its skeleton, a judge doesn't (it falls to its own thread's entry). Language
-  entries on compiled skeleton, trial or judge threads are accepted and ignored. Default: judge follows its
-  skeleton; document what's ignored. held: language.
+- B6 `language_of`: a trial follows its skeleton, a judge doesn't (it falls to its own row). Since B4, a language
+  can be written on any stored digest, but `language_of` ignores it on compiled skeletons, trials, expectations
+  and cases, whose language comes from elsewhere. Open: does a judge follow its skeleton, and which kinds may have a
+  language at all. held: language.
 - B7 a skeleton with several compilations: `language_of` and titles use the first by digest. Default: language needs
   all to agree; titles keep the first. held: language.
 - B8 `repair(id=…)` doesn't check that the new place is free, so two families can end up bound to one vignette,
@@ -92,12 +95,13 @@ open, decided (the user said so), held (waits for the language items), done.
 - T4 configuration (a skeleton thread, `docs/chatddx.md`) vs variation (a fork of any kind). decided: doc.
 - T5 `Variation.head` is the origin's head, not the fork's. Default: rename it. done (f1e397f): `origin_head`.
 - T6 `catalog.binding.vignette` holds a fingerprint; `Binding.vignette` is (source, id, fingerprint). Default:
-  clarify in the doc, leave the column. decided: doc.
+  clarify in the doc, leave the column. Reopened: no deployed data, so the column could be renamed `fingerprint`.
+  open
 - T7 owner: is a thread's creator its owner? Nothing writes an owner on `create`; the seed does it by hand. Also
   "owner" in the roles' sense (`docs/chatddx.md`, "Roles mentioned"). done (0e56ad2): `Catalog.create(owner=)`, the creator by default.
 - T8 any field is accepted on any subject; removal differs per field (name: no value; tag, collaborator:
   `present = false`; deleted: `present = false` restores; description: replaced only; owner, language: replaced
-  only). Default: document; restrict nothing. decided: doc; the language row is held.
+  only). Default: document; restrict nothing. decided: doc. Since B4, a language entry is refused except on a family.
 - T9 what "deleted" hides, per method: `find`, `heads`, `behind`, `title_of`, languages skip or rank down deleted
   threads; `forks`, `expectations_of`, `containing`, `history`, `repair` include them. Default: document. decided: doc.
 - T10 "the old `extends`" means nothing to a new reader. decided: doc.
@@ -110,6 +114,7 @@ open, decided (the user said so), held (waits for the language items), done.
   that the API folds entries without exposing who changed what. decided: doc.
 - S5 found while fixing: a case stored at an old vignette after a repair gets a replacement that nothing stored;
   `behind` names it, and the portal would have to build it. For "Open design issues". decided: doc.
-- T12 found while fixing: `adopt` writes no owner for the family it creates, unlike `Catalog.create`. open
+- T12 found while fixing: `adopt` writes no owner for the family it creates, unlike `Catalog.create`. done
+  (3be11e3): `Catalog.adopt(owner=)`, the adopter by default.
 - S4 no Terms table and no "Open design issues", unlike `docs/factors.md` and `docs/ledger.md`; the known gaps in
   `agents/wip-catalog.md` belong there. decided: doc.
