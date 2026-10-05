@@ -409,6 +409,7 @@ def test_families(conn: Connection) -> None:
     family = catalog.adopt(ids["case"], alice.id)
     assert catalog.adopt(ids["case"], alice.id) == family
     assert catalog.family(ids["case"]) == family
+    assert catalog.about(Subject(family=family)).owner == alice.id
     case = resolve(reg.get, ids["case"], Case)
     [binding] = catalog.bindings(family)
     assert binding.vignette == case.vignette
@@ -441,7 +442,10 @@ def test_families(conn: Connection) -> None:
     with pytest.raises(ValueError, match="a new name"):
         _ = catalog.adopt(renamed, alice.id)
     assert catalog.family(changed) is None
-    assert catalog.adopt(other, alice.id) != family
+    bob = People(conn).add("bob", "Bob")
+    handed = catalog.adopt(other, alice.id, owner=bob.id)
+    assert handed != family
+    assert catalog.about(Subject(family=handed)).owner == bob.id
 
     with pytest.raises(LookupError):
         _ = catalog.adopt(ids["trial"], alice.id)

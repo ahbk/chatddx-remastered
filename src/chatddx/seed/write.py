@@ -47,8 +47,6 @@ class _Seeder:
         name: str | None = None,
     ) -> None:
         about = self.catalog.about(subject)
-        if about.owner is None:
-            self.note(subject, Entry(field=EntryField.OWNER, person=self.archive.id))
         if name is not None and about.name != name:
             self.note(subject, Entry(field=EntryField.NAME, value=name))
         for tag in sorted(set(tags) - about.tags):

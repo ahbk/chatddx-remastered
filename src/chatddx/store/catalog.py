@@ -401,7 +401,7 @@ class Catalog:
             case _:
                 return self._language(digest)
 
-    def adopt(self, case: str, by: int) -> int:
+    def adopt(self, case: str, by: int, *, owner: int | None = None) -> int:
         with self._conn.transaction():
             if (family := self.family(case)) is not None:
                 return family
@@ -422,8 +422,11 @@ class Catalog:
                 "INSERT INTO catalog.family (by) VALUES (%s) RETURNING id", (by,)
             ).fetchone()
             assert row is not None
-            _ = self._bind(int(row[0]), vignette, by)
-            return int(row[0])
+            family = int(row[0])
+            _ = self._bind(family, vignette, by)
+            owned = Entry(field=EntryField.OWNER, person=by if owner is None else owner)
+            self.note(Subject(family=family), owned, by)
+            return family
 
     def family(self, case: str) -> int | None:
         row = self._conn.execute(
