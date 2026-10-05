@@ -27,6 +27,7 @@ from chatddx.core.titles import (
 from chatddx.factors.base import (
     Component,
     Fingerprint,
+    Resolver,
     canonical_bytes,
     iter_refs,
     parse_component,
@@ -76,6 +77,21 @@ def _jsonb(fingerprint: Fingerprint) -> str:
     return canonical_bytes(
         fingerprint.model_dump(mode="json", context={"canonical": True})
     ).decode()
+
+
+def _rebind_appendix(appendix: Appendix, vignette: Vignette) -> Appendix:
+    return Appendix(vignette=vignette, text=appendix.text)
+
+
+def _rebind_case(
+    case: Case, vignette: Vignette, get: Resolver
+) -> tuple[Case, dict[str, Appendix]]:
+    appendices = {
+        a: _rebind_appendix(resolve(get, a, Appendix), vignette)
+        for a in case.appendices
+    }
+    rebound = tuple(appendices[a].digest for a in case.appendices)
+    return Case(vignette=vignette, appendices=rebound), appendices
 
 
 def _edit(row: tuple[Any, ...]) -> Edit:
@@ -506,8 +522,10 @@ class Catalog:
 
         def rebind(appendix: str) -> str:
             if appendix not in appendices:
-                text = resolve(store.get, appendix, Appendix).text
-                appendices[appendix] = reg.add(Appendix(vignette=vignette, text=text))
+                moved = _rebind_appendix(
+                    resolve(store.get, appendix, Appendix), vignette
+                )
+                appendices[appendix] = reg.add(moved)
             return appendices[appendix]
 
         with self._conn.transaction():
@@ -518,13 +536,11 @@ class Catalog:
             binding = self._bind(family, vignette, by)
             cases: dict[str, str] = {}
             for digest in self._at(old, "case"):
-                c = resolve(store.get, digest, Case)
-                cases[digest] = reg.add(
-                    Case(
-                        vignette=vignette,
-                        appendices=tuple(rebind(a) for a in c.appendices),
-                    )
+                case, moved = _rebind_case(
+                    resolve(store.get, digest, Case), vignette, store.get
                 )
+                appendices |= {a: reg.add(m) for a, m in moved.items()}
+                cases[digest] = reg.add(case)
             moves = [(t, rebind(d)) for t, d in self._heads_at(old, "appendix")]
             if id is not None:
                 for t, d in self._expectation_heads(list(cases)):
@@ -775,7 +791,15 @@ class Catalog:
             case = resolve(store.get, digest, Case)
             stale = case.vignette != current.vignette
             if stale and not self.about(Subject(family=family)).deleted:
-                behind.append(Behind(path=path, digest=digest, binding=current))
+                replacement, _ = _rebind_case(case, current.vignette, store.get)
+                behind.append(
+                    Behind(
+                        path=path,
+                        digest=digest,
+                        binding=current,
+                        replacement=replacement.digest,
+                    )
+                )
         return behind
 
     def _kind(self, digest: str) -> str | None:

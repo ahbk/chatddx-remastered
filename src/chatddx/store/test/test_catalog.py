@@ -503,9 +503,12 @@ def test_renamed_vignettes_are_repaired(conn: Connection) -> None:
     assert catalog.family(repair.cases[ids["case"]]) == catalog.family(ids["case"])
     assert catalog.about(Subject(family=family)).name == "chest pain"
     assert catalog.survey(source, {"c1-renamed": fingerprint}).unchanged == (family,)
-    assert [(b.path, b.digest, b.binding) for b in catalog.behind(trial.thread)] == [
-        ("/cases/0", ids["case"], repair.binding),
-        ("/cases/0/appendices/0", appendix, None),
+    assert [
+        (b.path, b.digest, b.binding, b.replacement)
+        for b in catalog.behind(trial.thread)
+    ] == [
+        ("/cases/0", ids["case"], repair.binding, repair.cases[ids["case"]]),
+        ("/cases/0/appendices/0", appendix, None, None),
     ]
     assert catalog.behind(expected.thread) == []
 
@@ -553,11 +556,13 @@ def test_changed_vignettes_are_repaired(conn: Connection) -> None:
     assert rebound.vignette == case.vignette.model_copy(update={"fingerprint": edited})
     assert catalog.head(expected.thread).digest == expectation
     assert repair.edits == ()
-    assert [
-        (b.path, b.digest, b.binding)
-        for b in catalog.behind(expected.thread)
-        if b.binding is not None
-    ] == [("/case", ids["case"], repair.binding)]
+    [stale] = [b for b in catalog.behind(expected.thread) if b.binding is not None]
+    assert (stale.path, stale.digest, stale.binding, stale.replacement) == (
+        "/case",
+        ids["case"],
+        repair.binding,
+        repair.cases[ids["case"]],
+    )
 
     for moved_to, id, vignette in (
         (source, "elsewhere", '{"hex": "' + "0" * 64 + '"}'),
@@ -574,6 +579,10 @@ def test_changed_vignettes_are_repaired(conn: Connection) -> None:
                 """,
                 (family, moved_to, id, vignette, alice.id),
             )
+
+    second = catalog.repair(family, alice.id, id="c1-renamed")
+    [stale] = [b for b in catalog.behind(expected.thread) if b.binding is not None]
+    assert stale.replacement == second.cases[repair.cases[ids["case"]]]
 
 
 @pytest.mark.parametrize(

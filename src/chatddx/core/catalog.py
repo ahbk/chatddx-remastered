@@ -101,11 +101,16 @@ class Behind(_Frozen):
     digest: str
     head: Edit | None = None
     binding: Binding | None = None
+    replacement: str | None = None
 
     @model_validator(mode="after")
     def _one(self) -> Self:
         if (self.head is None) == (self.binding is None):
             raise ValueError("behind either a newer head or a newer binding")
+        if (self.binding is None) != (self.replacement is None):
+            raise ValueError(
+                "a replacement case goes with a newer binding, and only with it"
+            )
         return self
 
 
