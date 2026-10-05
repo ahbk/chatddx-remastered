@@ -4,7 +4,16 @@ from typing import Annotated, Literal
 
 from pydantic import AfterValidator, Field, HttpUrl, field_validator
 
-from .base import Component, Digest, Finding, Frozen, RefTo, Sha256Hex, sorted_keys
+from .base import (
+    Api,
+    Component,
+    Digest,
+    Finding,
+    Frozen,
+    RefTo,
+    Sha256Hex,
+    sorted_keys,
+)
 
 # Flags the start-up script derives from the manifest itself; argv may not set them.
 OWNED_FLAGS = frozenset(
@@ -56,13 +65,14 @@ class Hardware(Frozen):
 
 
 class Runtime(Frozen):
-    engine: Literal["vllm"] = "vllm"
+    server: Literal["vllm"] = "vllm"
     version: str
     closure: str
 
 
 class LocalEngine(Component):
     kind: Literal["engine.local"] = "engine.local"
+    api: Api = "chat.completions"
     hardware: Hardware
     runtime: Runtime
     model: ModelRef
@@ -92,7 +102,7 @@ class LocalEngine(Component):
 
 class RemoteEngine(Component):
     kind: Literal["engine.remote"] = "engine.remote"
-    api: Literal["openai.chat"] = "openai.chat"
+    api: Api = "chat.completions"
     base_url: HttpUrl
     model: str
 

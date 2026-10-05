@@ -29,7 +29,7 @@ ALTER TABLE ledger.canary_call ADD CHECK (
     doc = payload::jsonb
     AND run = (doc->>'run')::uuid
     AND phase = doc->>'phase'
-    AND probe = (doc->>'probe')::integer
+    AND canary = (doc->>'canary')::integer
 );
 
 ALTER TABLE ledger.score_stage ADD CHECK (

@@ -4,7 +4,7 @@ ALTER TABLE catalog.thread
     ADD CONSTRAINT thread_kind_check CHECK (kind IN (
         'chunk.instructions', 'chunk.few_shot', 'chunk.prompt', 'chunk.output',
         'chunk.sampling', 'chunk.reasoning', 'chunk.passthrough', 'chunk.translations',
-        'chunk.tools', 'tool', 'skeleton', 'trial', 'judge', 'scorer', 'scoring',
+        'chunk.toolset', 'tool', 'skeleton', 'trial', 'judge', 'scorer', 'scoring',
         'appendix', 'expectation', 'model', 'engine.local', 'engine.remote',
         'expectation_schema', 'canary_set'
     ));

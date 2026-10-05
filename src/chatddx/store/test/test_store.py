@@ -7,7 +7,7 @@ from psycopg.pq import TransactionStatus
 
 from chatddx.factors.base import StructuralError, resolve
 from chatddx.factors.bundle import Registry
-from chatddx.factors.cases import CaseInput
+from chatddx.factors.cases import Case
 from chatddx.factors.engine import LocalEngine
 from chatddx.factors.request import Recipe, Skeleton
 from chatddx.factors.test.sample import NOW, RIG, fp, world
@@ -157,13 +157,13 @@ def test_run_and_score_roundtrip(conn: Connection) -> None:
         RunItem(
             run=run_id,
             key=ItemKey(case=ids["case"], replicate=r),
-            vignette=resolve(reg.get, ids["case"], CaseInput).vignette,
+            vignette=resolve(reg.get, ids["case"], Case).vignette.fingerprint,
             call=call(served),
         )
         for r in range(2)
     )
     canaries = tuple(
-        CanaryCall(run=run_id, phase=p, probe=0, call=call(served))
+        CanaryCall(run=run_id, phase=p, canary=0, call=call(served))
         for p in ("start", "end")
     )
     finished = Run(stages=(started,), items=items, canaries=canaries).finish(NOW)
@@ -226,10 +226,10 @@ def test_database_guards_the_ledger(conn: Connection) -> None:
             """,
             (run_id, ids["case"], payload, payload),
         )
-    probe = CanaryCall(run=run_id, phase="start", probe=0, call=call("m"))
-    store.append(probe)
+    canary = CanaryCall(run=run_id, phase="start", canary=0, call=call("m"))
+    store.append(canary)
     with pytest.raises(errors.UniqueViolation):
-        store.append(probe.model_copy(update={"call": call("other")}))
+        store.append(canary.model_copy(update={"call": call("other")}))
 
 
 def test_compilations_are_idempotent(conn: Connection) -> None:

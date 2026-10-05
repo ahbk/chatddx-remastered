@@ -13,6 +13,7 @@ from pydantic import (
 )
 
 from .base import (
+    Api,
     Code,
     Component,
     Digest,
@@ -26,19 +27,19 @@ from .base import (
     sorted_keys,
 )
 
-SlotName = Literal["case", "appendices", "completion", "expectation"]
+SlotName = Literal["vignette", "appendices", "completion", "expectation"]
 InsertName = Literal["schema", "output_guidance", "tool_guidance"]
-# As with NormalizeOp (cases.py), each op name pins one behavior; a changed behavior
+# As with CleanupOp (cases.py), each op name pins one behavior; a changed behavior
 # gets a new name.
 SchemaOp = Literal["inline_refs@1"]
 Purpose = Literal["generation", "judge"]
 
 SLOTS_BY_PURPOSE: dict[Purpose, frozenset[SlotName]] = {
-    "generation": frozenset({"case", "appendices"}),
-    "judge": frozenset({"case", "appendices", "completion", "expectation"}),
+    "generation": frozenset({"vignette", "appendices"}),
+    "judge": frozenset({"vignette", "appendices", "completion", "expectation"}),
 }
 REQUIRED_SLOTS: dict[Purpose, frozenset[SlotName]] = {
-    "generation": frozenset({"case"}),
+    "generation": frozenset({"vignette"}),
     "judge": frozenset({"completion"}),
 }
 INSERTS_BY_KIND: dict[str, frozenset[InsertName]] = {
@@ -247,8 +248,10 @@ class Output(Component):
     @model_validator(mode="after")
     def _schema_placement(self) -> "Output":
         if isinstance(self.contract, TextOutput):
-            if self.json_schema is not None:
-                raise ValueError("text contracts carry their schema in the contract")
+            if self.contract.json_schema is not None:
+                raise ValueError(
+                    "an output's schema goes in json_schema, not its contract"
+                )
         elif self.json_schema is None:
             raise ValueError(f"{self.contract.kind} contracts need json_schema")
         return self
@@ -264,20 +267,14 @@ class Output(Component):
 
     @model_validator(mode="after")
     def _schema_ops(self) -> "Output":
-        if self.schema_ops and self.authored_schema is None:
+        if self.schema_ops and self.json_schema is None:
             raise ValueError("schema ops need a schema")
         _ = self.output_schema
         return self
 
     @property
-    def authored_schema(self) -> dict[str, JsonValue] | None:
-        if isinstance(self.contract, TextOutput):
-            return self.contract.json_schema
-        return self.json_schema
-
-    @property
     def output_schema(self) -> dict[str, JsonValue] | None:
-        schema = self.authored_schema
+        schema = self.json_schema
         if schema is None:
             return None
         for op in self.schema_ops:
@@ -361,7 +358,7 @@ ToolRef = Annotated[Digest, RefTo("tool")]
 
 
 class Toolset(Component):
-    kind: Literal["chunk.tools"] = "chunk.tools"
+    kind: Literal["chunk.toolset"] = "chunk.toolset"
     tools: tuple[ToolRef, ...] = Field(min_length=1)
     guidance: str | None = Field(default=None, min_length=1)
     max_rounds: int = Field(default=5, ge=1)
@@ -415,7 +412,7 @@ class Recipe(Frozen):
     passthrough: Annotated[Digest, RefTo("chunk.passthrough")] | None = None
     appendix_layout: AppendixLayout = AppendixLayout()
     translations: Annotated[Digest, RefTo("chunk.translations")] | None = None
-    tools: Annotated[Digest, RefTo("chunk.tools")] | None = None
+    toolset: Annotated[Digest, RefTo("chunk.toolset")] | None = None
 
 
 # The frozen request: what a trial or judge actually references.
@@ -424,7 +421,7 @@ class Recipe(Frozen):
 class Skeleton(Component):
     kind: Literal["skeleton"] = "skeleton"
     purpose: Purpose = "generation"
-    api: Literal["chat.completions"] = "chat.completions"
+    api: Api = "chat.completions"
     messages: tuple[Message, ...] = Field(min_length=1)
     body: Settings = Field(default_factory=dict)
     contract: OutputContract
@@ -649,8 +646,6 @@ def _tr_output(output: Output, tr: Translate) -> Output:
     match output.contract:
         case ToolOutput(description=str() as description):
             doc["contract"] = {**doc["contract"], "description": _tr(description, tr)}
-        case TextOutput(json_schema=dict() as schema):
-            doc["contract"] = {**doc["contract"], "json_schema": _tr_schema(schema, tr)}
         case _:
             pass
     return Output.model_validate(doc)
@@ -667,33 +662,33 @@ class _Parts(NamedTuple):
 
 
 # The recipe's text-bearing parts, with every text passed through tr(part).
-def _parts(spec: Recipe, get: Resolver, tr: Callable[[str], Translate]) -> _Parts:
+def _parts(recipe: Recipe, get: Resolver, tr: Callable[[str], Translate]) -> _Parts:
     instructions = few_shot = None
-    if spec.instructions is not None:
-        c = resolve(get, spec.instructions, Instructions)
+    if recipe.instructions is not None:
+        c = resolve(get, recipe.instructions, Instructions)
         instructions = Instructions(
             role=c.role, text=_tr_text(c.text, tr("instructions"))
         )
-    if spec.few_shot is not None:
-        f = resolve(get, spec.few_shot, FewShot)
+    if recipe.few_shot is not None:
+        f = resolve(get, recipe.few_shot, FewShot)
         few_shot = FewShot(
             messages=tuple(
                 Example(role=m.role, content=_tr(m.content, tr("few_shot")))
                 for m in f.messages
             )
         )
-    p = resolve(get, spec.prompt, Prompt)
+    p = resolve(get, recipe.prompt, Prompt)
     prompt = Prompt(purpose=p.purpose, segments=_tr_segments(p.segments, tr("prompt")))
-    output = _tr_output(resolve(get, spec.output, Output), tr("output"))
-    layout, t = spec.appendix_layout, tr("appendix_layout")
+    output = _tr_output(resolve(get, recipe.output, Output), tr("output"))
+    layout, t = recipe.appendix_layout, tr("appendix_layout")
     appendix_layout = AppendixLayout(
         before=_tr(layout.before, t),
         between=_tr(layout.between, t),
         after=_tr(layout.after, t),
     )
     toolset, tools = None, ()
-    if spec.tools is not None:
-        ts, t = resolve(get, spec.tools, Toolset), tr("tools")
+    if recipe.toolset is not None:
+        ts, t = resolve(get, recipe.toolset, Toolset), tr("toolset")
         toolset = Toolset(
             tools=ts.tools,
             guidance=None if ts.guidance is None else _tr(ts.guidance, t),
@@ -715,7 +710,7 @@ def _parts(spec: Recipe, get: Resolver, tr: Callable[[str], Translate]) -> _Part
 
 
 # What a translation of the recipe needs, per part, in order; whitespace is left out.
-def texts(spec: Recipe, get: Resolver) -> dict[str, tuple[str, ...]]:
+def texts(recipe: Recipe, get: Resolver) -> dict[str, tuple[str, ...]]:
     found: dict[str, list[str]] = {}
 
     def collect(part: str) -> Translate:
@@ -728,15 +723,15 @@ def texts(spec: Recipe, get: Resolver) -> dict[str, tuple[str, ...]]:
 
         return tr
 
-    _ = _parts(spec, get, collect)
+    _ = _parts(recipe, get, collect)
     return {part: tuple(seen) for part, seen in found.items() if seen}
 
 
-def compile_request(spec: Recipe, get: Resolver) -> Skeleton:
+def compile_request(recipe: Recipe, get: Resolver) -> Skeleton:
     entries = (
         None
-        if spec.translations is None
-        else resolve(get, spec.translations, Translations).entries
+        if recipe.translations is None
+        else resolve(get, recipe.translations, Translations).entries
     )
     missing: set[str] = set()
 
@@ -748,15 +743,15 @@ def compile_request(spec: Recipe, get: Resolver) -> Skeleton:
             return text
         return entries[text]
 
-    parts = _parts(spec, get, lambda _: translate)
+    parts = _parts(recipe, get, lambda _: translate)
     if missing:
         raise StructuralError(
             "no translation for " + ", ".join(repr(t) for t in sorted(missing))
         )
     prompt, output = parts.prompt, parts.output
-    sampling = resolve(get, spec.sampling, Sampling)
-    if prompt.purpose != spec.purpose:
-        raise StructuralError(f"{prompt.purpose} prompt in a {spec.purpose} recipe")
+    sampling = resolve(get, recipe.sampling, Sampling)
+    if prompt.purpose != recipe.purpose:
+        raise StructuralError(f"{prompt.purpose} prompt in a {recipe.purpose} recipe")
 
     toolset = parts.toolset
     fills: dict[InsertName, str] = {
@@ -793,12 +788,12 @@ def compile_request(spec: Recipe, get: Resolver) -> Skeleton:
     messages.append(Message(role="user", content=_fill(prompt.segments, fills)))
 
     body: dict[str, JsonValue] = {}
-    if spec.passthrough is not None:
-        passthrough = resolve(get, spec.passthrough, Passthrough)
+    if recipe.passthrough is not None:
+        passthrough = resolve(get, recipe.passthrough, Passthrough)
         body.update(passthrough.body)
     managed = sampling.body()
-    if spec.reasoning is not None:
-        reasoning = resolve(get, spec.reasoning, Reasoning)
+    if recipe.reasoning is not None:
+        reasoning = resolve(get, recipe.reasoning, Reasoning)
         if reasoning.effort is not None:
             managed["reasoning_effort"] = reasoning.effort
         if reasoning.thinking_token_budget is not None:
@@ -851,7 +846,7 @@ def compile_request(spec: Recipe, get: Resolver) -> Skeleton:
     body.update(managed)
 
     return Skeleton(
-        purpose=spec.purpose,
+        purpose=recipe.purpose,
         messages=tuple(messages),
         body=body,
         contract=contract,

@@ -35,6 +35,7 @@ from pydantic_core import CoreSchema
 Digest = Annotated[str, StringConstraints(pattern=r"^sha256:[0-9a-f]{64}$")]
 Sha256Hex = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 JsonPointer = Annotated[str, StringConstraints(pattern=r"^(/([^~/]|~[01])*)*$")]
+Api = Literal["chat.completions"]
 
 
 class StructuralError(ValueError):

@@ -6,7 +6,7 @@ from typing import Annotated, Literal, override
 from pydantic import AfterValidator, Field, JsonValue, field_validator, model_validator
 
 from .base import Component, Digest, Frozen, RefTo, Resolver, Settings, distinct
-from .cases import CaseInputRef, NormalizeOp
+from .cases import CaseRef, CleanupOp
 from .engine import EngineRef
 from .request import RUNTIME_KEYS, Skeleton, SkeletonRef
 
@@ -17,10 +17,10 @@ class Trial(Component):
     kind: Literal["trial"] = "trial"
     skeleton: SkeletonRef
     engine: EngineRef
-    cases: Annotated[tuple[CaseInputRef, ...], AfterValidator(distinct)] = Field(
+    cases: Annotated[tuple[CaseRef, ...], AfterValidator(distinct)] = Field(
         min_length=1
     )
-    normalization: tuple[NormalizeOp, ...] = ()
+    cleanup: tuple[CleanupOp, ...] = ()
     seeds: Annotated[tuple[int, ...], AfterValidator(distinct)] = Field(min_length=1)
 
     @override
@@ -55,7 +55,7 @@ class Canary(Frozen):
 
 class CanarySet(Component):
     kind: Literal["canary_set"] = "canary_set"
-    probes: tuple[Canary, ...] = Field(min_length=1)
+    canaries: tuple[Canary, ...] = Field(min_length=1)
 
 
 CanarySetRef = Annotated[Digest, RefTo("canary_set")]

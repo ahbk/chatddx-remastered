@@ -7,8 +7,8 @@ from chatddx.factors.base import (
 from chatddx.factors.bundle import Registry
 from chatddx.factors.cases import (
     Appendix,
-    CaseInput,
-    SourceCase,
+    Case,
+    Vignette,
 )
 from chatddx.factors.engine import (
     FileDigest,
@@ -84,7 +84,7 @@ def generation_recipe(
             Prompt(
                 segments=(
                     "Case:\n",
-                    Slot(slot="case"),
+                    Slot(slot="vignette"),
                     Slot(slot="appendices"),
                     "\n\nDifferential?",
                 )
@@ -114,31 +114,30 @@ def generation_skeleton(reg: Registry) -> Skeleton:
 
 
 def world(reg: Registry) -> dict[str, str]:
-    case = SourceCase(source="registry", id="c1")
-    vignette = fp("A 54-year-old with chest pain.")
-    appendix = reg.add(Appendix(case=case, vignette=vignette, text="Troponin 80 ng/L."))
-    case_input = reg.add(
-        CaseInput(case=case, vignette=vignette, appendices=(appendix,))
+    vignette = Vignette(
+        source="registry", id="c1", fingerprint=fp("A 54-year-old with chest pain.")
     )
+    appendix = reg.add(Appendix(vignette=vignette, text="Troponin 80 ng/L."))
+    case = reg.add(Case(vignette=vignette, appendices=(appendix,)))
     engine = reg.add(local_engine(reg))
     skeleton = reg.add(generation_skeleton(reg))
     trial = reg.add(
         Trial(
             skeleton=skeleton,
             engine=engine,
-            cases=(case_input,),
-            normalization=("newlines.lf@1", "strip@1"),
+            cases=(case,),
+            cleanup=("newlines.lf@1", "strip@1"),
             seeds=(1, 2),
         )
     )
     canaries = reg.add(
         CanarySet(
-            probes=(Canary(messages=({"role": "user", "content": "2+2?"},), seed=0),)
+            canaries=(Canary(messages=({"role": "user", "content": "2+2?"},), seed=0),)
         )
     )
     schema = reg.add(ExpectationSchema(json_schema={"type": "object"}))
     expectation = reg.add(
-        Expectation(case=case_input, json_schema=schema, data={"ddx": ["ACS"]})
+        Expectation(case=case, expectation_schema=schema, data={"ddx": ["ACS"]})
     )
     judge_skeleton = reg.add(
         Skeleton(
@@ -156,7 +155,7 @@ def world(reg: Registry) -> dict[str, str]:
             scorer=reg.add(
                 Scorer(
                     code=RIG,
-                    consumes=schema,
+                    expectation_schema=schema,
                     views=(
                         View(
                             output="/ddx/0",
@@ -174,7 +173,7 @@ def world(reg: Registry) -> dict[str, str]:
     return {
         "trial": trial,
         "canaries": canaries,
-        "case": case_input,
+        "case": case,
         "scoring": scoring,
         "judge": judge,
         "engine": engine,

@@ -15,9 +15,9 @@ from chatddx.factors.base import (
 from chatddx.factors.bundle import Bundle, Registry
 from chatddx.factors.cases import (
     Appendix,
-    CaseInput,
-    SourceCase,
-    normalize,
+    Case,
+    Vignette,
+    clean,
     prepare_case,
 )
 from chatddx.factors.engine import (
@@ -124,7 +124,7 @@ def test_json_data_keeps_its_order(reg: Registry) -> None:
         },
     }
     recipe = Recipe(
-        prompt=reg.add(Prompt(segments=(Slot(slot="case"),))),
+        prompt=reg.add(Prompt(segments=(Slot(slot="vignette"),))),
         output=reg.add(Output(contract=NativeOutput(), json_schema=schema)),
         sampling=reg.add(Sampling()),
     )
@@ -176,7 +176,7 @@ def test_references_come_from_field_types(reg: Registry) -> None:
     }
     schema = Trial.model_json_schema()
     assert schema["properties"]["engine"]["x-ref"] == ["engine.local", "engine.remote"]
-    appendices = CaseInput.model_json_schema()["properties"]["appendices"]
+    appendices = Case.model_json_schema()["properties"]["appendices"]
     assert appendices["items"]["x-ref"] == ["appendix"]
 
 
@@ -186,12 +186,12 @@ def test_greedy_drops_sampling_noise() -> None:
         == Sampling(temperature=0).digest
     )
     skeleton = Skeleton(
-        messages=(Message(role="user", content=(Slot(slot="case"),)),),
+        messages=(Message(role="user", content=(Slot(slot="vignette"),)),),
         body={"temperature": 0, "min_p": 0.1},
         contract=TextOutput(),
     )
     assert "min_p" not in skeleton.body
-    body = render(skeleton, model="m", seed=42, fills={"case": "x"})
+    body = render(skeleton, model="m", seed=42, fills={"vignette": "x"})
     assert "seed" not in body
 
 
@@ -212,7 +212,7 @@ def test_compile_and_render(reg: Registry) -> None:
         skeleton,
         model="served",
         seed=3,
-        fills={"case": "{{not a template}}", "appendices": appendices},
+        fills={"vignette": "{{not a template}}", "appendices": appendices},
     )
     assert body["seed"] == 3
     assert body["return_token_ids"] is True
@@ -242,7 +242,7 @@ def test_outputs_show_their_schema(reg: Registry) -> None:
         Insert(insert="schema"),
         "\n\nNo prose.",
     )
-    prompt = reg.add(Prompt(segments=(Slot(slot="case"),)))
+    prompt = reg.add(Prompt(segments=(Slot(slot="vignette"),)))
     sampling = reg.add(Sampling())
 
     output = Output(contract=NativeOutput(), json_schema=schema, guidance=guidance)
@@ -259,7 +259,7 @@ def test_outputs_show_their_schema(reg: Registry) -> None:
         Recipe(
             prompt=prompt,
             output=reg.add(
-                Output(contract=TextOutput(json_schema=schema), guidance=guidance)
+                Output(contract=TextOutput(), json_schema=schema, guidance=guidance)
             ),
             sampling=sampling,
         ),
@@ -271,6 +271,10 @@ def test_outputs_show_their_schema(reg: Registry) -> None:
 
 def test_schema_inserts_are_checked() -> None:
     schema: dict[str, JsonValue] = {"type": "object"}
+    with pytest.raises(ValidationError, match="goes in json_schema"):
+        _ = Output(contract=TextOutput(json_schema=schema))
+    with pytest.raises(ValidationError, match="native contracts need json_schema"):
+        _ = Output(contract=NativeOutput())
     with pytest.raises(ValidationError, match="only an output with a schema"):
         _ = Output(contract=TextOutput(), guidance=(Insert(insert="schema"),))
     with pytest.raises(ValidationError, match="used more than once"):
@@ -290,7 +294,7 @@ def test_output_guidance_goes_where_it_is_inserted(reg: Registry) -> None:
     guided = reg.add(Output(contract=TextOutput(), guidance="Answer in JSON."))
     unguided = reg.add(Output(contract=TextOutput()))
     sampling = reg.add(Sampling())
-    case = reg.add(Prompt(segments=(Slot(slot="case"),)))
+    case = reg.add(Prompt(segments=(Slot(slot="vignette"),)))
     first = reg.add(
         Instructions(text=(Insert(insert="output_guidance", after="\n\n"), "Be terse."))
     )
@@ -305,18 +309,18 @@ def test_output_guidance_goes_where_it_is_inserted(reg: Registry) -> None:
 
     assert system_and_user(first, case, guided) == [
         ("Answer in JSON.\n\nBe terse.",),
-        (Slot(slot="case"),),
+        (Slot(slot="vignette"),),
     ]
     assert system_and_user(first, case, unguided) == [
         ("Be terse.",),
-        (Slot(slot="case"),),
+        (Slot(slot="vignette"),),
     ]
 
     last = reg.add(
         Prompt(
             segments=(
                 "Case: ",
-                Slot(slot="case"),
+                Slot(slot="vignette"),
                 Insert(insert="output_guidance", before="\n\n"),
                 "\n\nDifferential?",
             )
@@ -325,14 +329,14 @@ def test_output_guidance_goes_where_it_is_inserted(reg: Registry) -> None:
     terse = reg.add(Instructions(text="Be terse."))
     assert system_and_user(terse, last, guided) == [
         ("Be terse.",),
-        ("Case: ", Slot(slot="case"), "\n\nAnswer in JSON.\n\nDifferential?"),
+        ("Case: ", Slot(slot="vignette"), "\n\nAnswer in JSON.\n\nDifferential?"),
     ]
     assert system_and_user(None, last, unguided) == [
-        ("Case: ", Slot(slot="case"), "\n\nDifferential?"),
+        ("Case: ", Slot(slot="vignette"), "\n\nDifferential?"),
     ]
     assert system_and_user(terse, case, guided) == [
         ("Be terse.\n\nAnswer in JSON.",),
-        (Slot(slot="case"),),
+        (Slot(slot="vignette"),),
     ]
 
     with pytest.raises(StructuralError, match="both the instructions and the prompt"):
@@ -348,7 +352,7 @@ def test_inserts_are_checked_per_chunk() -> None:
         _ = Prompt(
             segments=(
                 Insert(insert="output_guidance"),
-                Slot(slot="case"),
+                Slot(slot="vignette"),
                 Insert(insert="output_guidance"),
             )
         )
@@ -359,7 +363,7 @@ def test_inserts_are_checked_per_chunk() -> None:
 
 
 def test_few_shot_developer_role_and_budgets(reg: Registry) -> None:
-    spec = Recipe(
+    recipe = Recipe(
         instructions=reg.add(Instructions(role="developer", text="Be terse.")),
         few_shot=reg.add(
             FewShot(
@@ -369,14 +373,14 @@ def test_few_shot_developer_role_and_budgets(reg: Registry) -> None:
                 )
             )
         ),
-        prompt=reg.add(Prompt(segments=(Slot(slot="case"),))),
+        prompt=reg.add(Prompt(segments=(Slot(slot="vignette"),))),
         output=reg.add(Output(contract=TextOutput())),
         sampling=reg.add(
             Sampling(temperature=0, max_output_tokens=64, max_tokens_key="max_tokens")
         ),
         reasoning=reg.add(Reasoning(effort="low", thinking_token_budget=256)),
     )
-    skeleton = compile_request(spec, reg.get)
+    skeleton = compile_request(recipe, reg.get)
     assert [m.role for m in skeleton.messages] == [
         "developer",
         "user",
@@ -392,7 +396,7 @@ def test_few_shot_developer_role_and_budgets(reg: Registry) -> None:
 
 
 def test_skeleton_structure_is_enforced() -> None:
-    user = Message(role="user", content=(Slot(slot="case"),))
+    user = Message(role="user", content=(Slot(slot="vignette"),))
     with pytest.raises(ValidationError, match="may not set"):
         _ = Skeleton(messages=(user,), body={"seed": 1}, contract=TextOutput())
     with pytest.raises(ValidationError, match="need slots"):
@@ -403,7 +407,8 @@ def test_skeleton_structure_is_enforced() -> None:
         _ = Skeleton(
             messages=(
                 Message(
-                    role="user", content=(Slot(slot="case"), Slot(slot="completion"))
+                    role="user",
+                    content=(Slot(slot="vignette"), Slot(slot="completion")),
                 ),
             ),
             contract=TextOutput(),
@@ -431,7 +436,7 @@ def test_skeleton_structure_is_enforced() -> None:
 
 
 def test_malformed_skeleton_bodies_are_validation_errors() -> None:
-    user = Message(role="user", content=(Slot(slot="case"),))
+    user = Message(role="user", content=(Slot(slot="vignette"),))
     with pytest.raises(ValidationError, match="needs a function with a name"):
         _ = Skeleton(
             messages=(user,),
@@ -506,7 +511,7 @@ def test_schema_ops_inline_refs(reg: Registry) -> None:
         },
     }
     ops: tuple[Literal["inline_refs@1"], ...] = ("inline_refs@1",)
-    prompt = reg.add(Prompt(segments=(Slot(slot="case"),)))
+    prompt = reg.add(Prompt(segments=(Slot(slot="vignette"),)))
     sampling = reg.add(Sampling())
 
     def compiled(output: Output) -> Skeleton:
@@ -530,7 +535,10 @@ def test_schema_ops_inline_refs(reg: Registry) -> None:
         )
     text = compiled(
         Output(
-            contract=TextOutput(json_schema=authored), guidance=shown, schema_ops=ops
+            contract=TextOutput(),
+            json_schema=authored,
+            guidance=shown,
+            schema_ops=ops,
         )
     )
     assert json.dumps(text.output_schema) == json.dumps(inlined)
@@ -573,7 +581,7 @@ def test_tool_contracts_carry_a_description(reg: Registry) -> None:
     described = ToolOutput(name="final_result", description="Answer by calling this.")
     skeleton = compile_request(
         Recipe(
-            prompt=reg.add(Prompt(segments=(Slot(slot="case"),))),
+            prompt=reg.add(Prompt(segments=(Slot(slot="vignette"),))),
             output=reg.add(
                 Output(contract=described, json_schema=schema, guidance="Use the tool.")
             ),
@@ -639,7 +647,7 @@ def test_translations_apply_at_compile_time(reg: Registry) -> None:
                 )
             )
         ),
-        prompt=reg.add(Prompt(segments=("Case:\n", Slot(slot="case")))),
+        prompt=reg.add(Prompt(segments=("Case:\n", Slot(slot="vignette")))),
         output=reg.add(
             Output(
                 contract=ToolOutput(name="plan", description="The plan."),
@@ -685,7 +693,7 @@ def test_translations_apply_at_compile_time(reg: Registry) -> None:
         + json.dumps(skeleton.output_schema, indent=2, ensure_ascii=False)
     )
     assert (user.content, assistant.content) == (("Bröstsmärta.",), ("AKS.",))
-    assert prompt.content == ("Fall:\n", Slot(slot="case"))
+    assert prompt.content == ("Fall:\n", Slot(slot="vignette"))
     assert skeleton.appendix_layout.before == "\n\nLabb:\n"
     assert skeleton.output_schema == {
         "type": "object",
@@ -741,7 +749,7 @@ def web_search(reg: Registry) -> str:
 def test_tools_compile_into_the_request(reg: Registry) -> None:
     web = web_search(reg)
     tools = reg.add(Toolset(tools=(web,), guidance="Search when unsure.", max_rounds=3))
-    base = generation_recipe(reg).model_copy(update={"tools": tools})
+    base = generation_recipe(reg).model_copy(update={"toolset": tools})
     web_function: dict[str, JsonValue] = {
         "type": "function",
         "function": {
@@ -781,7 +789,7 @@ def test_tools_compile_into_the_request(reg: Registry) -> None:
         Prompt(
             segments=(
                 "Case:\n",
-                Slot(slot="case"),
+                Slot(slot="vignette"),
                 Insert(insert="tool_guidance", before="\n\n"),
             )
         )
@@ -789,14 +797,14 @@ def test_tools_compile_into_the_request(reg: Registry) -> None:
     inserted = compile_request(base.model_copy(update={"prompt": placed}), reg.get)
     assert inserted.messages[-1].content == (
         "Case:\n",
-        Slot(slot="case"),
+        Slot(slot="vignette"),
         "\n\nSearch when unsure.",
     )
     assert "Search when unsure." not in str(inserted.messages[0].content)
     bare = compile_request(
         generation_recipe(reg).model_copy(update={"prompt": placed}), reg.get
     )
-    assert bare.messages[-1].content == ("Case:\n", Slot(slot="case"))
+    assert bare.messages[-1].content == ("Case:\n", Slot(slot="vignette"))
 
     clash = reg.add(
         Output(
@@ -807,7 +815,7 @@ def test_tools_compile_into_the_request(reg: Registry) -> None:
     with pytest.raises(StructuralError, match="web_search"):
         _ = compile_request(base.model_copy(update={"output": clash}), reg.get)
 
-    assert texts(base, reg.get)["tools"] == (
+    assert texts(base, reg.get)["toolset"] == (
         "Search when unsure.",
         "Search the web.",
         "What to look up.",
@@ -828,10 +836,10 @@ def test_tool_rounds_continue_the_request(reg: Registry) -> None:
     web = web_search(reg)
     tools = reg.add(Toolset(tools=(web,)))
     skeleton = compile_request(
-        generation_recipe(reg).model_copy(update={"tools": tools}), reg.get
+        generation_recipe(reg).model_copy(update={"toolset": tools}), reg.get
     )
     body = render(
-        skeleton, model="m", seed=1, fills={"case": "Chest pain.", "appendices": ""}
+        skeleton, model="m", seed=1, fills={"vignette": "Chest pain.", "appendices": ""}
     )
     called: dict[str, JsonValue] = {
         "role": "assistant",
@@ -905,16 +913,19 @@ def test_dangling_and_mistyped_refs(reg: Registry) -> None:
 
 
 def test_cross_checks(reg: Registry) -> None:
-    case = SourceCase(source="registry", id="c1")
     other = reg.add(
         Appendix(
-            case=SourceCase(source="registry", id="c2"), vignette=fp("v"), text="x"
+            vignette=Vignette(source="registry", id="c2", fingerprint=fp("v")),
+            text="x",
         )
     )
-    ci = CaseInput(case=case, vignette=fp("v"), appendices=(other,))
-    _ = reg.add(ci)
-    with pytest.raises(StructuralError, match="bound to another case"):
-        reg.check([ci.digest])
+    case = Case(
+        vignette=Vignette(source="registry", id="c1", fingerprint=fp("v")),
+        appendices=(other,),
+    )
+    _ = reg.add(case)
+    with pytest.raises(StructuralError, match="bound to another vignette"):
+        reg.check([case.digest])
 
 
 def test_each_component_is_checked_on_its_own(reg: Registry) -> None:
@@ -923,48 +934,47 @@ def test_each_component_is_checked_on_its_own(reg: Registry) -> None:
     )
     other = reg.add(
         Appendix(
-            case=SourceCase(source="registry", id="c2"), vignette=fp("v"), text="x"
+            vignette=Vignette(source="registry", id="c2", fingerprint=fp("v")),
+            text="x",
         )
     )
     misbound = reg.add(
-        CaseInput(
-            case=SourceCase(source="registry", id="c1"),
-            vignette=fp("v"),
+        Case(
+            vignette=Vignette(source="registry", id="c1", fingerprint=fp("v")),
             appendices=(other,),
         )
     )
     with pytest.raises(StructuralError) as raised:
         reg.check([dangling, misbound])
     assert "is missing" in str(raised.value)
-    assert "bound to another case" in str(raised.value)
+    assert "bound to another vignette" in str(raised.value)
 
 
 def test_prepare_case(reg: Registry) -> None:
     raw = b"A 54-year-old\r\nwith chest pain.\n"
-    case = SourceCase(source="registry", id="c1")
-    vignette = Fingerprint.of(raw)
+    vignette = Vignette(source="registry", id="c1", fingerprint=Fingerprint.of(raw))
     appendices = tuple(
-        reg.add(Appendix(case=case, vignette=vignette, text=text))
+        reg.add(Appendix(vignette=vignette, text=text))
         for text in ("Troponin 80 ng/L.", "ECG: ST elevation.")
     )
-    case_input = CaseInput(case=case, vignette=vignette, appendices=appendices)
+    case = Case(vignette=vignette, appendices=appendices)
     prepared = prepare_case(
-        case_input, raw, reg.get, AppendixLayout(), ("newlines.lf@1", "strip@1")
+        case, raw, reg.get, AppendixLayout(), ("newlines.lf@1", "strip@1")
     )
     assert prepared.fills == {
-        "case": "A 54-year-old\nwith chest pain.",
+        "vignette": "A 54-year-old\nwith chest pain.",
         "appendices": "\n\nTroponin 80 ng/L.\n\nECG: ST elevation.",
     }
-    assert (prepared.vignette, prepared.findings) == (vignette, ())
+    assert (prepared.fingerprint, prepared.findings) == (vignette.fingerprint, ())
 
-    edited = prepare_case(
-        case_input, b"Edited at the source.", reg.get, AppendixLayout()
-    )
-    assert edited.vignette == Fingerprint.of(b"Edited at the source.")
+    edited = prepare_case(case, b"Edited at the source.", reg.get, AppendixLayout())
+    assert edited.fingerprint == Fingerprint.of(b"Edited at the source.")
     assert [f.code for f in edited.findings] == ["case.drift"]
 
-    keyed = case_input.model_copy(
-        update={"vignette": Fingerprint.of(raw, ("k1", b"secret")), "appendices": ()}
+    keyed = Case(
+        vignette=vignette.model_copy(
+            update={"fingerprint": Fingerprint.of(raw, ("k1", b"secret"))}
+        )
     )
     with pytest.raises(StructuralError, match="k1"):
         _ = prepare_case(keyed, raw, reg.get, AppendixLayout())
@@ -972,13 +982,13 @@ def test_prepare_case(reg: Registry) -> None:
         keyed, raw, reg.get, AppendixLayout(), key=("k1", b"secret")
     ).findings
     with pytest.raises(UnicodeDecodeError):
-        _ = prepare_case(case_input, b"\xff", reg.get, AppendixLayout())
+        _ = prepare_case(case, b"\xff", reg.get, AppendixLayout())
 
 
-def test_normalization_ops_are_pinned() -> None:
+def test_cleanup_ops_are_pinned() -> None:
     text = "\r\n  line one\r\n\r\n\r\nline two  \n"
     ops = ("newlines.lf@1", "blank_lines.collapse@1", "strip@1")
-    assert normalize(text, ops) == "line one\n\nline two"
+    assert clean(text, ops) == "line one\n\nline two"
 
 
 def test_remote_engine_identity() -> None:
@@ -1020,7 +1030,7 @@ def test_lint(reg: Registry) -> None:
     assert codes == {"model.revision", "engine.closure"}
     skeleton = reg.add(
         Skeleton(
-            messages=(Message(role="user", content=(Slot(slot="case"),)),),
+            messages=(Message(role="user", content=(Slot(slot="vignette"),)),),
             body={"temperature": 0.005},
             contract=TextOutput(),
         )
@@ -1045,7 +1055,7 @@ def test_expectations_are_linted_against_their_schema(reg: Registry) -> None:
 
     def findings(data: JsonValue, schema: str = ddx) -> list[tuple[str, str]]:
         expectation = reg.add(
-            Expectation(case=ids["case"], json_schema=schema, data=data)
+            Expectation(case=ids["case"], expectation_schema=schema, data=data)
         )
         return [(f.code, f.message) for f in lint(reg, [expectation])]
 
@@ -1108,7 +1118,7 @@ def test_views_are_checked_against_the_expectation_schema(reg: Registry) -> None
     scorer = reg.add(
         Scorer(
             code=RIG,
-            consumes=closed,
+            expectation_schema=closed,
             views=(
                 View(expectation="$.ddx[*]", metric="m"),
                 View(expectation="$.targets", metric="m"),
@@ -1168,7 +1178,7 @@ def test_skeleton_and_engine_compatibility(reg: Registry) -> None:
     remote = reg.add(
         RemoteEngine(base_url=HttpUrl("https://example.org/v1"), model="gemma")
     )
-    user = Message(role="user", content=(Slot(slot="case"),))
+    user = Message(role="user", content=(Slot(slot="vignette"),))
     schema: dict[str, JsonValue] = {
         "type": "object",
         "properties": {"a": {"$ref": "#/$defs/A"}},
@@ -1213,7 +1223,7 @@ def test_skeleton_and_engine_compatibility(reg: Registry) -> None:
     assert findings(tool, bare) == {"vllm.tools_refused": "warning"}
     assert findings(tool, parsers) == {}
     with_tools = generation_recipe(reg).model_copy(
-        update={"tools": reg.add(Toolset(tools=(web_search(reg),)))}
+        update={"toolset": reg.add(Toolset(tools=(web_search(reg),)))}
     )
     native_tools = reg.add(compile_request(with_tools, reg.get))
     text = reg.add(Output(contract=TextOutput()))

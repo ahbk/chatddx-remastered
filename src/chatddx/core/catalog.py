@@ -8,7 +8,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, JsonValue, model_validator
 
 from chatddx.factors.base import Fingerprint
-from chatddx.factors.cases import SourceCase
+from chatddx.factors.cases import Vignette
 
 # src/chatddx/store/migrations/0021-t2-catalog-tools.sql repeats these kinds.
 THREAD_KINDS = frozenset(
@@ -21,7 +21,7 @@ THREAD_KINDS = frozenset(
         "chunk.reasoning",
         "chunk.passthrough",
         "chunk.translations",
-        "chunk.tools",
+        "chunk.toolset",
         "tool",
         "skeleton",
         "trial",
@@ -91,8 +91,7 @@ class Variation(_Frozen):
 class Binding(_Frozen):
     id: int
     family: int
-    case: SourceCase
-    vignette: Fingerprint
+    vignette: Vignette
     by: int
     at: datetime
 

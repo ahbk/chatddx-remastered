@@ -12,7 +12,7 @@ from .base import (
     Settings,
     distinct,
 )
-from .cases import CaseInputRef
+from .cases import CaseRef
 from .engine import EngineRef
 from .request import Skeleton, SkeletonRef
 from .select import SplitOp, check_selector, select, split
@@ -28,8 +28,8 @@ ExpectationSchemaRef = Annotated[Digest, RefTo("expectation_schema")]
 
 class Expectation(Component):
     kind: Literal["expectation"] = "expectation"
-    case: CaseInputRef
-    json_schema: ExpectationSchemaRef
+    case: CaseRef
+    expectation_schema: ExpectationSchemaRef
     data: JsonValue
 
 
@@ -77,7 +77,7 @@ class View(Frozen):
 class Scorer(Component):
     kind: Literal["scorer"] = "scorer"
     code: Code
-    consumes: ExpectationSchemaRef
+    expectation_schema: ExpectationSchemaRef
     views: tuple[View, ...] = Field(min_length=1)
     resources: tuple[str, ...] = ()
     params: Settings = Field(default_factory=dict)
@@ -104,7 +104,7 @@ class Scoring(Component):
         for ref in self.expectations:
             e = get(ref)
             assert isinstance(e, Expectation)
-            if e.json_schema != scorer.consumes:
+            if e.expectation_schema != scorer.expectation_schema:
                 problems.append(f"expectation {ref} is not in the scorer's schema")
             if e.case in cases:
                 problems.append(f"case {e.case} has more than one expectation")

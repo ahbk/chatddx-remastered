@@ -19,7 +19,7 @@ from chatddx.factors.base import (
     sorted_keys,
 )
 from chatddx.factors.bundle import Registry
-from chatddx.factors.cases import CaseInput, CaseInputRef
+from chatddx.factors.cases import Case, CaseRef
 from chatddx.factors.engine import LocalEngine, RemoteEngine
 from chatddx.factors.request import (
     Recipe,
@@ -136,7 +136,7 @@ class Turn(Frozen):
 
 
 class ItemKey(Frozen):
-    case: CaseInputRef
+    case: CaseRef
     replicate: int = Field(ge=0)
 
     @override
@@ -185,7 +185,7 @@ class RunItem(Record):
 class CanaryCall(Record):
     run: UUID
     phase: Phase
-    probe: int = Field(ge=0)
+    canary: int = Field(ge=0)
     call: Call
 
 
@@ -361,10 +361,12 @@ def check_run(run: Run, registry: Registry) -> list[Finding]:
     started = run.started
     trial = resolve(registry.get, started.trial, Trial)
     if started.canaries is not None:
-        canaries = resolve(registry.get, started.canaries, CanarySet)
+        canary_set = resolve(registry.get, started.canaries, CanarySet)
         for c in run.canaries:
-            if c.phase not in started.verify_at or c.probe >= len(canaries.probes):
-                raise StructuralError(f"canary call {c.phase}/{c.probe} is not planned")
+            if c.phase not in started.verify_at or c.canary >= len(canary_set.canaries):
+                raise StructuralError(
+                    f"canary call {c.phase}/{c.canary} is not planned"
+                )
     elif run.canaries:
         raise StructuralError("canary calls in a run without canaries")
 
@@ -385,8 +387,8 @@ def check_run(run: Run, registry: Registry) -> list[Finding]:
             Finding(code="run.incomplete", message=f"{len(missing)} items missing")
         )
     for item in run.items:
-        case = resolve(registry.get, item.key.case, CaseInput)
-        if item.vignette != case.vignette:
+        case = resolve(registry.get, item.key.case, Case)
+        if item.vignette != case.vignette.fingerprint:
             findings.append(
                 Finding(
                     code="case.drift",

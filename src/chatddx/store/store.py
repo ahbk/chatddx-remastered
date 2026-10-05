@@ -118,10 +118,10 @@ class Store:
                     case CanaryCall():
                         _ = cur.execute(
                             """
-                            INSERT INTO ledger.canary_call (run, phase, probe, payload, doc)
+                            INSERT INTO ledger.canary_call (run, phase, canary, payload, doc)
                             VALUES (%s, %s, %s, %s, %s::jsonb)
                             """,
-                            (record.run, record.phase, record.probe, payload, payload),
+                            (record.run, record.phase, record.canary, payload, payload),
                         )
                     case ScoreStarted():
                         _ = cur.execute(

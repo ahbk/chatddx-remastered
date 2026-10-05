@@ -36,7 +36,7 @@ def test_unnamed_components_are_described_by_what_they_hold() -> None:
     title = titler(reg)
     recipe = generation_recipe(reg)
     assert describe_recipe(recipe, title) == (
-        '"You are an emergency physician." · "Case: {case}{appendices} Differential?"'
+        '"You are an emergency physician." · "Case: {vignette}{appendices}…"'
         + " · native output: ddx · temperature 0.7, top_p 0.9, max_output_tokens 1024"
         + " · enable_thinking false"
     )

@@ -19,25 +19,24 @@ from .base import (
 from .request import AppendixLayout, SlotName
 
 
-class SourceCase(Frozen):
+class Vignette(Frozen):
     source: str
     id: str
+    fingerprint: Fingerprint
 
 
 class Appendix(Component):
     kind: Literal["appendix"] = "appendix"
-    case: SourceCase
-    vignette: Fingerprint
+    vignette: Vignette
     text: str = Field(min_length=1)
 
 
 AppendixRef = Annotated[Digest, RefTo("appendix")]
 
 
-class CaseInput(Component):
+class Case(Component):
     kind: Literal["case"] = "case"
-    case: SourceCase
-    vignette: Fingerprint
+    vignette: Vignette
     appendices: tuple[AppendixRef, ...] = ()
 
     @override
@@ -46,15 +45,15 @@ class CaseInput(Component):
         for ref in self.appendices:
             a = get(ref)
             assert isinstance(a, Appendix)
-            if (a.case, a.vignette) != (self.case, self.vignette):
-                problems.append(f"appendix {ref} is bound to another case or vignette")
+            if a.vignette != self.vignette:
+                problems.append(f"appendix {ref} is bound to another vignette")
         return problems
 
 
-CaseInputRef = Annotated[Digest, RefTo("case")]
+CaseRef = Annotated[Digest, RefTo("case")]
 
 # Each op name pins one behavior; a changed behavior gets a new name.
-NormalizeOp = Literal[
+CleanupOp = Literal[
     "newlines.lf@1", "unicode.nfc@1", "strip@1", "blank_lines.collapse@1"
 ]
 
@@ -66,7 +65,7 @@ _OPS: dict[str, Callable[[str], str]] = {
 }
 
 
-def normalize(text: str, ops: Sequence[NormalizeOp]) -> str:
+def clean(text: str, ops: Sequence[CleanupOp]) -> str:
     for op in ops:
         text = _OPS[op](text)
     return text
@@ -74,27 +73,28 @@ def normalize(text: str, ops: Sequence[NormalizeOp]) -> str:
 
 class Prepared(Frozen):
     fills: dict[SlotName, str]
-    vignette: Fingerprint
+    fingerprint: Fingerprint
     findings: tuple[Finding, ...] = ()
 
 
 def prepare_case(
-    case: CaseInput,
+    case: Case,
     raw: bytes,
     get: Resolver,
     layout: AppendixLayout,
-    normalization: Sequence[NormalizeOp] = (),
+    cleanup: Sequence[CleanupOp] = (),
     key: tuple[str, bytes] | None = None,
 ) -> Prepared:
+    expected = case.vignette.fingerprint
     given = None if key is None else key[0]
-    if case.vignette.key_id != given:
+    if expected.key_id != given:
         raise StructuralError(
-            f"the case's vignette is fingerprinted with key {case.vignette.key_id!r}, "
+            f"the case's vignette is fingerprinted with key {expected.key_id!r}, "
             + f"not {given!r}"
         )
     observed = Fingerprint.of(raw, key)
     findings: tuple[Finding, ...] = ()
-    if observed != case.vignette:
+    if observed != expected:
         findings = (
             Finding(
                 code="case.drift",
@@ -105,9 +105,9 @@ def prepare_case(
     appendices = [resolve(get, a, Appendix).text for a in case.appendices]
     return Prepared(
         fills={
-            "case": normalize(raw.decode(), normalization),
+            "vignette": clean(raw.decode(), cleanup),
             "appendices": layout.join(appendices),
         },
-        vignette=observed,
+        fingerprint=observed,
         findings=findings,
     )

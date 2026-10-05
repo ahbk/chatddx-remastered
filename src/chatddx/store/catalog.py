@@ -28,7 +28,7 @@ from chatddx.factors.base import (
     resolve,
 )
 from chatddx.factors.bundle import Registry
-from chatddx.factors.cases import Appendix, CaseInput, SourceCase
+from chatddx.factors.cases import Appendix, Case, Vignette
 from chatddx.factors.request import Recipe, Skeleton, texts
 from chatddx.factors.scoring import Expectation, Scorer
 from chatddx.factors.trial import Trial
@@ -54,20 +54,23 @@ _DELETED: LiteralString = """
 
 
 def _binding(family: int, row: tuple[Any, ...]) -> Binding:
-    id, source, source_id, vignette, by, at = row
+    id, source, source_id, fingerprint, by, at = row
     return Binding(
         id=id,
         family=family,
-        case=SourceCase(source=source, id=source_id),
-        vignette=Fingerprint.model_validate(vignette),
+        vignette=Vignette(
+            source=source,
+            id=source_id,
+            fingerprint=Fingerprint.model_validate(fingerprint),
+        ),
         by=by,
         at=at,
     )
 
 
-def _jsonb(vignette: Fingerprint) -> str:
+def _jsonb(fingerprint: Fingerprint) -> str:
     return canonical_bytes(
-        vignette.model_dump(mode="json", context={"canonical": True})
+        fingerprint.model_dump(mode="json", context={"canonical": True})
     ).decode()
 
 
@@ -397,13 +400,16 @@ class Catalog:
                 raise LookupError(f"{case} is not a stored case")
             conflict = self._conn.execute(
                 """
-                SELECT b.family, b.source_id = c.doc #>> '{case,id}'
+                SELECT b.family, b.source_id = c.doc #>> '{vignette,id}'
                 FROM factor.component c, catalog.family f CROSS JOIN LATERAL (
                     SELECT * FROM catalog.binding h
                     WHERE h.family = f.id ORDER BY h.id DESC LIMIT 1
                 ) b
-                WHERE c.digest = %s AND b.source = c.doc #>> '{case,source}'
-                    AND (b.source_id = c.doc #>> '{case,id}' OR b.vignette = c.doc -> 'vignette')
+                WHERE c.digest = %s AND b.source = c.doc #>> '{vignette,source}'
+                    AND (
+                        b.source_id = c.doc #>> '{vignette,id}'
+                        OR b.vignette = c.doc #> '{vignette,fingerprint}'
+                    )
                 LIMIT 1
                 """,
                 (case,),
@@ -421,7 +427,8 @@ class Catalog:
             _ = self._conn.execute(
                 """
                 INSERT INTO catalog.binding (family, source, source_id, vignette, by)
-                SELECT %s, doc #>> '{case,source}', doc #>> '{case,id}', doc -> 'vignette', %s
+                SELECT %s, doc #>> '{vignette,source}', doc #>> '{vignette,id}',
+                    doc #> '{vignette,fingerprint}', %s
                 FROM factor.component WHERE digest = %s
                 """,
                 (row[0], by, case),
@@ -433,9 +440,9 @@ class Catalog:
             """
             SELECT b.family
             FROM factor.component c JOIN catalog.binding b
-                ON b.source = c.doc #>> '{case,source}'
-                AND b.source_id = c.doc #>> '{case,id}'
-                AND b.vignette = c.doc -> 'vignette'
+                ON b.source = c.doc #>> '{vignette,source}'
+                AND b.source_id = c.doc #>> '{vignette,id}'
+                AND b.vignette = c.doc #> '{vignette,fingerprint}'
             WHERE c.digest = %s AND c.kind = 'case'
             ORDER BY b.id DESC LIMIT 1
             """,
@@ -469,26 +476,26 @@ class Catalog:
                 (source,),
             )
         ]
-        by_id = {b.case.id: b for b in current}
+        by_id = {b.vignette.id: b for b in current}
         unchanged: list[int] = []
         changed: list[tuple[int, str, Fingerprint]] = []
         renamed: list[tuple[int, str, str]] = []
         new: list[str] = []
-        for id, vignette in sorted(listing.items()):
+        for id, fingerprint in sorted(listing.items()):
             moved = [
                 b
                 for b in current
-                if b.vignette == vignette
-                and b.case.id != id
-                and b.case.id not in listing
+                if b.vignette.fingerprint == fingerprint
+                and b.vignette.id != id
+                and b.vignette.id not in listing
             ]
             if (b := by_id.get(id)) is not None:
-                if b.vignette == vignette:
+                if b.vignette.fingerprint == fingerprint:
                     unchanged.append(b.family)
                 else:
-                    changed.append((b.family, id, vignette))
+                    changed.append((b.family, id, fingerprint))
             elif len(moved) == 1:
-                renamed.append((moved[0].family, moved[0].case.id, id))
+                renamed.append((moved[0].family, moved[0].vignette.id, id))
             else:
                 new.append(id)
         seen = {*unchanged, *(f for f, *_ in changed), *(f for f, *_ in renamed)}
@@ -506,13 +513,18 @@ class Catalog:
         by: int,
         *,
         id: str | None = None,
-        vignette: Fingerprint | None = None,
+        fingerprint: Fingerprint | None = None,
     ) -> Repair:
-        old = self.bindings(family)[-1]
-        case = old.case if id is None else SourceCase(source=old.case.source, id=id)
-        new_vignette = old.vignette if vignette is None else vignette
-        if (case == old.case) == (new_vignette == old.vignette):
-            raise ValueError("a repair changes exactly one of the id or the vignette")
+        old = self.bindings(family)[-1].vignette
+        vignette = Vignette(
+            source=old.source,
+            id=old.id if id is None else id,
+            fingerprint=old.fingerprint if fingerprint is None else fingerprint,
+        )
+        if (vignette.id == old.id) == (vignette.fingerprint == old.fingerprint):
+            raise ValueError(
+                "a repair changes exactly one of the id or the fingerprint"
+            )
         store = Store(self._conn)
         reg = Registry()
         appendices: dict[str, str] = {}
@@ -520,20 +532,17 @@ class Catalog:
         def rebind(appendix: str) -> str:
             if appendix not in appendices:
                 text = resolve(store.get, appendix, Appendix).text
-                appendices[appendix] = reg.add(
-                    Appendix(case=case, vignette=new_vignette, text=text)
-                )
+                appendices[appendix] = reg.add(Appendix(vignette=vignette, text=text))
             return appendices[appendix]
 
         with self._conn.transaction():
-            binding = self._bind(family, case, new_vignette, by)
+            binding = self._bind(family, vignette, by)
             cases: dict[str, str] = {}
             for digest in self._at(old, "case"):
-                c = resolve(store.get, digest, CaseInput)
+                c = resolve(store.get, digest, Case)
                 cases[digest] = reg.add(
-                    CaseInput(
-                        case=case,
-                        vignette=new_vignette,
+                    Case(
+                        vignette=vignette,
                         appendices=tuple(rebind(a) for a in c.appendices),
                     )
                 )
@@ -541,9 +550,11 @@ class Catalog:
             if id is not None:
                 for t, d in self._expectation_heads(list(cases)):
                     e = resolve(store.get, d, Expectation)
-                    _ = reg.add(store.get(e.json_schema))
+                    _ = reg.add(store.get(e.expectation_schema))
                     rekeyed = Expectation(
-                        case=cases[e.case], json_schema=e.json_schema, data=e.data
+                        case=cases[e.case],
+                        expectation_schema=e.expectation_schema,
+                        data=e.data,
                     )
                     moves.append((t, reg.add(rekeyed)))
             _ = store.add(reg, list(reg))
@@ -686,35 +697,42 @@ class Catalog:
         return "score", subject.score
 
     # src/chatddx/store/migrations/0018-t2-catalog-bindings.sql keeps each binding's id or vignette.
-    def _bind(
-        self, family: int, case: SourceCase, vignette: Fingerprint, by: int
-    ) -> Binding:
+    def _bind(self, family: int, vignette: Vignette, by: int) -> Binding:
         row = self._conn.execute(
             """
             INSERT INTO catalog.binding (family, source, source_id, vignette, by)
             VALUES (%s, %s, %s, %s::jsonb, %s)
             RETURNING id, source, source_id, vignette, by, at
             """,
-            (family, case.source, case.id, _jsonb(vignette), by),
+            (
+                family,
+                vignette.source,
+                vignette.id,
+                _jsonb(vignette.fingerprint),
+                by,
+            ),
         ).fetchone()
         assert row is not None
         return _binding(family, row)
 
-    def _at(self, binding: Binding, kind: LiteralString) -> list[str]:
+    def _at(self, vignette: Vignette, kind: LiteralString) -> list[str]:
         return [
             str(d)
             for (d,) in self._conn.execute(
                 """
                 SELECT digest FROM factor.component
-                WHERE kind = %s AND doc #>> '{case,source}' = %s
-                    AND doc #>> '{case,id}' = %s AND doc -> 'vignette' = %s::jsonb
+                WHERE kind = %s AND doc #>> '{vignette,source}' = %s
+                    AND doc #>> '{vignette,id}' = %s
+                    AND doc #> '{vignette,fingerprint}' = %s::jsonb
                 ORDER BY digest
                 """,
-                (kind, binding.case.source, binding.case.id, _jsonb(binding.vignette)),
+                (kind, vignette.source, vignette.id, _jsonb(vignette.fingerprint)),
             )
         ]
 
-    def _heads_at(self, binding: Binding, kind: LiteralString) -> list[tuple[int, str]]:
+    def _heads_at(
+        self, vignette: Vignette, kind: LiteralString
+    ) -> list[tuple[int, str]]:
         return [
             (int(t), str(d))
             for t, d in self._conn.execute(
@@ -723,7 +741,7 @@ class Catalog:
                 WHERE t.kind = %s AND e.digest = ANY(%s)
                 ORDER BY t.id
                 """,
-                (kind, self._at(binding, kind)),
+                (kind, self._at(vignette, kind)),
             )
         ]
 
@@ -748,8 +766,8 @@ class Catalog:
             if self._kind(digest) != "case" or (family := self.family(digest)) is None:
                 continue
             current = self.bindings(family)[-1]
-            case = resolve(store.get, digest, CaseInput)
-            stale = (case.case, case.vignette) != (current.case, current.vignette)
+            case = resolve(store.get, digest, Case)
+            stale = case.vignette != current.vignette
             if stale and not self.about(Subject(family=family)).deleted:
                 behind.append(Behind(path=path, digest=digest, binding=current))
         return behind

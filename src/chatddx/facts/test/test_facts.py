@@ -116,7 +116,7 @@ def test_facts_check_pairs(facts: Facts) -> None:
             )
         )
 
-    user = Message(role="user", content=(Slot(slot="case"),))
+    user = Message(role="user", content=(Slot(slot="vignette"),))
     response_format: dict[str, JsonValue] = {
         "type": "json_schema",
         "json_schema": {"name": "output", "schema": {"type": "object"}},

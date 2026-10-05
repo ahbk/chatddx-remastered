@@ -47,7 +47,7 @@ def _scorer(c: Scorer, registry: Registry) -> Iterable[Finding]:
             message="scorer code has no revision",
             subject=c.digest,
         )
-    schema = resolve(registry.get, c.consumes, ExpectationSchema).json_schema
+    schema = resolve(registry.get, c.expectation_schema, ExpectationSchema).json_schema
     for i, view in enumerate(c.views):
         if not reaches(schema, view.expectation):
             yield Finding(
@@ -99,7 +99,7 @@ def _expectation_schema(c: ExpectationSchema, _: Registry) -> Iterable[Finding]:
 
 
 def _expectation(c: Expectation, registry: Registry) -> Iterable[Finding]:
-    schema = resolve(registry.get, c.json_schema, ExpectationSchema).json_schema
+    schema = resolve(registry.get, c.expectation_schema, ExpectationSchema).json_schema
     cls = _validator(schema)
     if isinstance(cls, str):
         return
@@ -182,7 +182,7 @@ def _runtime(
     constrained = isinstance(skeleton.contract, NativeOutput | ToolOutput)
     if not (
         isinstance(engine, LocalEngine)
-        and engine.runtime.engine == "vllm"
+        and engine.runtime.server == "vllm"
         and engine.runtime.version.startswith("0.24.")
     ):
         if constrained and _has_ref(skeleton.output_schema):
