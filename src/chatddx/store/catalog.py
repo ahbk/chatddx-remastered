@@ -17,6 +17,7 @@ from chatddx.core.catalog import (
     Survey,
     Thread,
     Variation,
+    language_tag,
 )
 from chatddx.core.titles import (
     describe,
@@ -559,6 +560,12 @@ class Catalog:
         return Repair(binding=binding, cases=cases, appendices=appendices, edits=edits)
 
     def note(self, subject: Subject, entry: Entry, by: int) -> None:
+        # src/chatddx/store/migrations/0024-t2-catalog-languages.sql repeats this check.
+        if entry.field == EntryField.LANGUAGE and subject.family is None:
+            raise ValueError(
+                "a language entry is for a family's vignette; "
+                + "a component's language is kept on its digest"
+            )
         _ = self._conn.execute(
             """
             INSERT INTO catalog.entry (
@@ -580,6 +587,14 @@ class Catalog:
                 entry.present,
                 by,
             ),
+        )
+
+    def language(self, digest: str, value: str, by: int) -> None:
+        if self._kind(digest) is None:
+            raise LookupError(f"{digest} is not in the store")
+        _ = self._conn.execute(
+            "INSERT INTO catalog.language (digest, value, by) VALUES (%s, %s, %s)",
+            (digest, language_tag(value), by),
         )
 
     def about(self, subject: Subject) -> About:
@@ -637,20 +652,10 @@ class Catalog:
 
     def _language(self, digest: str) -> str | None:
         rows = self._conn.execute(
-            f"""
-            SELECT DISTINCT (
-                SELECT l.value FROM catalog.entry l
-                WHERE l.thread = t.id AND l.field = 'language'
-                ORDER BY l.id DESC LIMIT 1
-            )
-            FROM catalog.thread t
-            WHERE NOT {_DELETED} AND EXISTS (
-                SELECT FROM catalog.edit x WHERE x.thread = t.id AND x.digest = %s
-            )
-            """,
+            "SELECT value FROM catalog.language WHERE digest = %s ORDER BY id",
             (digest,),
         ).fetchall()
-        return str(rows[0][0]) if len(rows) == 1 and rows[0][0] is not None else None
+        return str(rows[-1][0]) if rows else None
 
     def _derive(self, digest: str, compilation: str | None = None) -> str:
         store = Store(self._conn)

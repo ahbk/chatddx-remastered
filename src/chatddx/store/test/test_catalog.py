@@ -630,33 +630,29 @@ def test_cases_have_a_language(conn: Connection) -> None:
         )
 
 
-def test_languages_come_from_entries(conn: Connection) -> None:
+def test_languages_are_kept_on_digests(conn: Connection) -> None:
     catalog, store, reg, ids, alice = stored_world(conn)
     base = generation_recipe(reg)
     plan = compiled_recipe(store, reg, base)
 
-    def in_language(digest: str, language: str) -> int:
-        thread = catalog.create(digest, alice.id).thread
-        catalog.note(
-            Subject(thread=thread),
-            Entry(field=EntryField.LANGUAGE, value=language),
-            alice.id,
-        )
-        return thread
+    def in_language(digest: str, language: str) -> None:
+        catalog.language(digest, language, alice.id)
 
     assert set(texts(base, reg.get)) == {"instructions", "prompt", "output"}
     assert catalog.language_of(plan.skeleton) is None
     assert base.instructions is not None
-    _ = in_language(base.instructions, "en")
-    _ = in_language(base.prompt, "en")
+    in_language(base.instructions, "en")
+    in_language(base.prompt, "en")
     assert catalog.language_of(plan.skeleton) is None
-    _ = in_language(base.output, "en")
+    in_language(base.output, "en")
     assert catalog.language_of(plan.skeleton) == "en"
     assert catalog.language_of(ids["trial"]) == "en"
-    conflicting = in_language(base.output, "sv")
-    assert catalog.language_of(base.output) is None
+    origin = catalog.create(base.output, alice.id)
+    _ = catalog.create(base.output, alice.id, forked_from=origin.id)
+    assert catalog.language_of(base.output) == "en"
+    in_language(base.output, "sv")
     assert catalog.language_of(plan.skeleton) is None
-    catalog.note(Subject(thread=conflicting), Entry(field=EntryField.DELETED), alice.id)
+    in_language(base.output, "en")
     assert catalog.language_of(plan.skeleton) == "en"
 
     needed = [t for part in texts(base, reg.get).values() for t in part]
@@ -665,12 +661,12 @@ def test_languages_come_from_entries(conn: Connection) -> None:
         store, reg, base.model_copy(update={"translations": swedish})
     )
     assert catalog.language_of(translated.skeleton) is None
-    _ = in_language(swedish, "sv")
+    in_language(swedish, "sv")
     assert catalog.language_of(translated.skeleton) == "sv"
 
     hand_written = resolve(reg.get, ids["judge"], Judge).skeleton
     assert catalog.language_of(hand_written) is None
-    _ = in_language(hand_written, "en")
+    in_language(hand_written, "en")
     assert catalog.language_of(hand_written) == "en"
 
     scoring = resolve(reg.get, ids["scoring"], Scoring)
@@ -685,6 +681,30 @@ def test_languages_come_from_entries(conn: Connection) -> None:
     assert [(f.code, f.message) for f in findings] == [
         ("language.mixed", "the request is en, but 1 of 1 cases is sv")
     ]
+
+    with pytest.raises(ValueError, match="not a language tag"):
+        catalog.language(base.output, "Swedish", alice.id)
+    with pytest.raises(LookupError):
+        catalog.language("sha256:" + "9" * 64, "en", alice.id)
+    thread = Subject(thread=origin.thread)
+    with pytest.raises(ValueError, match="kept on its digest"):
+        catalog.note(thread, Entry(field=EntryField.LANGUAGE, value="en"), alice.id)
+    with pytest.raises(errors.CheckViolation), conn.transaction():
+        _ = conn.execute(
+            """
+            INSERT INTO catalog.entry (thread, field, value, by)
+            VALUES (%s, 'language', 'en', %s)
+            """,
+            (origin.thread, alice.id),
+        )
+    with pytest.raises(errors.CheckViolation), conn.transaction():
+        _ = conn.execute(
+            """
+            INSERT INTO catalog.language (digest, value, by)
+            VALUES (%s, 'Swedish', %s)
+            """,
+            (base.output, alice.id),
+        )
 
 
 def test_subject_is_one_thing() -> None:
@@ -726,21 +746,22 @@ def test_labels(conn: Connection) -> None:
 
 
 def test_database_guards_the_catalog(conn: Connection, admin: Connection) -> None:
-    catalog, _, _, ids, alice = stored_world(conn)
+    catalog, _, reg, ids, alice = stored_world(conn)
     trial = catalog.create(ids["trial"], alice.id)
     family = catalog.adopt(ids["case"], alice.id)
+    catalog.language(resolve(reg.get, ids["judge"], Judge).skeleton, "en", alice.id)
     catalog.note(
         Subject(thread=trial.thread),
         Entry(field=EntryField.NAME, value="x"),
         alice.id,
     )
     conn.commit()
-    for table in ("thread", "edit", "entry", "label", "family", "binding"):
+    for table in ("thread", "edit", "entry", "label", "family", "binding", "language"):
         with pytest.raises(errors.InsufficientPrivilege), conn.transaction():
             _ = conn.execute(
                 sql.SQL("DELETE FROM catalog.{}").format(sql.Identifier(table))
             )
-    for table in ("edit", "binding"):
+    for table in ("edit", "binding", "language"):
         with pytest.raises(errors.RaiseException, match="insert-only"):
             _ = admin.execute(
                 sql.SQL("UPDATE catalog.{} SET by = by").format(sql.Identifier(table))

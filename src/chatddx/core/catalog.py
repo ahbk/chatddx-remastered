@@ -39,8 +39,14 @@ THREAD_KINDS = frozenset(
 )
 
 
-# src/chatddx/store/migrations/0019-t2-catalog-name-removal.sql repeats these fields and the pattern.
+# src/chatddx/store/migrations/: 0017 repeats these fields, 0019 and 0024 the pattern.
 LANGUAGE = re.compile(r"^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$")
+
+
+def language_tag(value: str) -> str:
+    if not LANGUAGE.match(value):
+        raise ValueError(f"{value!r} is not a language tag such as 'sv' or 'pt-BR'")
+    return value
 
 
 class EntryField(StrEnum):
@@ -171,10 +177,8 @@ class Entry(_Frozen):
             raise ValueError(f"{self.field} can't be removed, only replaced")
         if self.field in (EntryField.NAME, EntryField.TAG) and self.value == "":
             raise ValueError(f"{self.field} can't be empty")
-        if self.field == EntryField.LANGUAGE and not LANGUAGE.match(self.value or ""):
-            raise ValueError(
-                f"{self.value!r} is not a language tag such as 'sv' or 'pt-BR'"
-            )
+        if self.field == EntryField.LANGUAGE:
+            _ = language_tag(self.value or "")
         return self
 
 

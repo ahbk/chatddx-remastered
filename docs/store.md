@@ -201,3 +201,7 @@ tier-2 triggers).
 - ADD to "Tiers", "Tier 2", the migration list: "`0022-t2-catalog-binding-source.sql`", and to its endowments: "`0022`
   makes a new binding keep the previous one's source; `0018` let it change source as long as it kept the vignette
   (`src/chatddx/store/migrations/0022-t2-catalog-binding-source.sql`, `src/chatddx/store/catalog.py:Catalog.repair`)."
+- ADD to "Layout", schema `catalog`: "`language (id, digest, value, by, at)`: a component's language, kept on its
+  digest; the latest row wins." ADD to "Tiers", "Tier 0": "`0023-t0-catalog-languages.sql`", and to "Tier 2":
+  "`0024-t2-catalog-languages.sql`: language tags in `catalog.language`, a `language` entry only on a family, and
+  insert-only triggers for `catalog.language`" (`src/chatddx/store/catalog.py:Catalog.language`).
