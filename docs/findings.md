@@ -14,26 +14,29 @@ some run items have no prompt-token fingerprint, for example because the engine 
 - `attestation.prompt_tokens_drift`:
 an item read different prompt tokens than the same item in another run (`compare_prompt_tokens`).
 
-- `run.incomplete`:
-a finished run lacks some of the trial's items (`check_run`).
+`run.incomplete`:
+a finished run lacks some of the trial's items, or some planned canary calls (`check_run`).
 
 - `ledger.seal`:
 a run's or score's rows no longer match the seal in its finished row (`check_run`, `check_score`).
 
-- `engine.chat_template` and `engine.chat_template_date`:
-the chat-template file doesn't match the engine's declared digest, or reads the current date (`check_chat_template`).
+- `tools.unanswered`:
+an item's last response still calls tools, after its rounds ran out or the run stopped (`check_run`).
+
+- `judge.incomplete`:
+a scored item's judge was called with fewer seeds than the judge has (`check_score`);
+
+- `score.incomplete`:
+a finished score lacks items for some pairs of run item and view (`check_score`).
+
+## Factors
+Factors are "linted" in one sweep by passing a registry (of factors) to `lint(registry, digests, facts=)`
 
 - `bundle.recanonicalized`:
 the current code would serialize a bundled component differently from its stored bytes, which remain authoritative (`Bundle.load`).
 
-- `model.revision`, `engine.closure`, `scorer.revision`:
-kand the pair rules for trials and judges
-
-- `case.drift`:
-the vignette read at the source differs from the case's fingerprint (`prepare_case`, `check_run`).
-
-## Factors
-Factors are "linted" in one sweep by passing a registry (of factors) to `lint(registry, digests, facts=)`
+- `engine.chat_template` and `engine.chat_template_date`:
+the chat-template file doesn't match the engine's declared digest, or reads the current date (`check_chat_template`).
 
 - `vllm.temperature_clamped`:
 the skeleton sets a temperature between 0 and 0.01, which vLLM 0.24 raises to 0.01.
@@ -55,14 +58,8 @@ vLLM 0.24 refuses it, or sends it unconstrained for harmony and Mistral models.
 - `vllm.native_tools_uncallable`: a `native` contract with tools; on vLLM 0.24 the schema constrains the whole
   answer, so no tool can be called.
 
-- `tools.unanswered`: an item's last response still calls tools, after its rounds ran out or the run stopped
-  (`check_run`).
-
-- `model.revision`:
-
-- `engine.closure`:
-
-- `scorer.revision`:
+- `model.revision`, `engine.closure`, `scorer.revision`:
+kand the pair rules for trials and judges
 
 - `expectation_schema.invalid`:
 
@@ -95,20 +92,11 @@ a view's selector can't pick anything from documents that follow the schema: the
 expectation schema for its expectation selector (`lint`, on scorers), or the run's output schema for its output
 selector (`check_score`).
 
+- `case.drift`:
+the vignette read at the source differs from the case's fingerprint (`prepare_case`, `check_run`).
+
 ## Proposed amendments
 
-- CHANGE: keep "Ledger" to the codes of `check_run`, `check_score` and `compare_prompt_tokens`
-  (`src/chatddx/ledger/ledger.py`):
-  - move `tools.unanswered` from "Factors" to "Ledger" (`check_run`);
-  - move `engine.chat_template`, `engine.chat_template_date` (`src/chatddx/factors/engine.py:check_chat_template`),
-    `bundle.recanonicalized` (`src/chatddx/factors/bundle.py:Bundle.load`) and `model.revision`,
-    `engine.closure`, `scorer.revision` (`src/chatddx/factors/lint.py`; their entry reads "kand the pair rules for
-    trials and judges") from "Ledger" to "Factors";
-  - move `case.drift` to "Both" (`src/chatddx/factors/cases.py:prepare_case`, `check_run`).
-- CHANGE: `run.incomplete`: "a finished run lacks some of the trial's items, or some planned canary calls
-  (`check_run`)".
-- ADD to "Ledger":
-  - `judge.incomplete`: a scored item's judge was called with fewer seeds than the judge has (`check_score`);
-  - `score.incomplete`: a finished score lacks items for some pairs of run item and view (`check_score`).
+- keep "Ledger" to the codes of `check_run`, `check_score` and `compare_prompt_tokens` (`src/chatddx/ledger/ledger.py`):
 - The ledger doc now lists its codes with their subjects (`agents/ledger.md`, "Findings", the replacement for
   `docs/ledger.md`); "Ledger" here could point there instead of repeating them.

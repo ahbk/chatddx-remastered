@@ -47,7 +47,7 @@ It must be possible to deliver the cage together with the results, for scientifi
 - **Compilation:** the record of which recipe and compiler produced a skeleton.
 - **Run** and **Score:** a stage log.
 - **Record** / **ledger:** events logged while compiling, running or scoring.
-- **Seal:** the hash over a finished log.
+- **Seal:** the hash over a log's started row and item rows, kept in its finished row.
 - **Finding:** a warning or info produced when something declared doesn't match what was observed, or when a setting is risky.
 - **Canary:** a fixed, non-sensitive probe request.
 - **Case-derived:** content produced from a vignette.
@@ -146,6 +146,10 @@ Canaries, prompt-token fingerprints and comparing completions show which one app
  - `ledger.seal`: rows changed after sealing;
  - `engine.chat_template`, `engine.chat_template_date`;
  - `bundle.recanonicalized`;
+ - `case.drift`
+ - `tools.unanswered`
+ - `judge.incomplete`
+ - `score.incomplete`
  - plus the lints in `lint.py`.
 
 The runner warns; it does not refuse. Only structurally malformed specs and records raise errors:
@@ -234,17 +238,21 @@ There is however an intended flow of data behind the pieces, which is described 
   - optional detail;
   - the judge calls.
 7. Close the log. Score.finish() computes the seal over the started row and all item rows, then write the ScoreFinished row with any warnings.
-8. Check it. check_score(score, run, registry):
+8. Check it (`src/chatddx/ledger/ledger.py:check_score`):
  - raises if the score belongs to another run;
  - raises if a view position is out of range;
  - raises if an item isn't in the run;
  - raises if a judge isn't one the scorer's views name, or a seed index is out of range;
  - warns if rows changed after sealing.
+ - raises for duplicate score items
+ - raises for a judge call whose judge isn't its item's view's judge
+ - raises if a seed index out of range or one used twice in an item;
+ - warns `judge.incomplete` and `score.incomplete`.
 
 The "scored results" are just those ScoreItem rows. What aggregates them isn't named yet.
 
 ## Findings and errors
-A finding (`src/chatddx/factors/base.py: Finding`) has a level (`warning` by default, or `info`), a code, a message and optionally the subject it concerns. Findings are how "warnings, not crashes" is implemented: anything declared that doesn't match what was observed, and anything risky, becomes a finding. The run and score checks return their findings, and a run's or score's findings are stored in its finished row. The codes are:
+A finding (`src/chatddx/factors/base.py: Finding`) has a level (`warning` by default, or `info`), a code, a message and optionally the subject it concerns. Findings are how "warnings, not crashes" is implemented: anything declared that doesn't match what was observed, and anything risky, becomes a finding. The run and score checks return their findings, and a finished row holds the findings the runner or scorer saw while working, such as `case.drift`; the run and score checks can be repeated from the stored rows at any time, so their findings aren't stored.
 
 Structurally malformed input raises instead. Constructing a component, canary or record that breaks its own rules raises pydantic's `ValidationError`: for example flags the start-up script owns in `argv`, slots unsuitable for the purpose, a skeleton body at odds with its contract, runtime keys in a body, duplicate seeds or cases, a shuffle seed without shuffled order, or a stage log out of order. Problems that need other components or records to see raise `StructuralError`: a digest that doesn't match its bytes, an unknown kind or schema version, a missing or wrongly typed reference, a failed `cross_check`, a recipe whose prompt purpose differs from its own or whose passthrough overrides a managed key, and the run and score checks' own violations (items outside the trial, unplanned canary calls, a score of another run, views, items, judges or seeds that don't exist).
 
@@ -257,16 +265,3 @@ See `docs/findings.md` for a list of all findings and what they mean.
 **Canary drift are not implemented:** nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
-
-- CHANGE: in "Findings and errors", "a run's or score's findings are stored in its finished row" → "a finished row
-  holds the findings the runner or scorer saw while working, such as `case.drift`; the run and score checks can be
-  repeated from the stored rows at any time, so their findings aren't stored". `check_run` runs after `finish()`
-  ("After the run", step 2), and `run.incomplete` and `ledger.seal` need the finished row to exist, so they can't be
-  in it (`src/chatddx/ledger/ledger.py:check_run`, `Run.finish`).
-- CHANGE: glossary, "Seal: the hash over a finished log" → "the hash over a log's started row and item rows, kept in
-  its finished row" (`src/chatddx/ledger/ledger.py:_seal`).
-- CHANGE: "Scoring records", step 8, to match `src/chatddx/ledger/ledger.py:check_score`: it raises for duplicate
-  score items, and for a judge call whose judge isn't its item's view's judge, a seed index out of range or one
-  used twice in an item; it warns `judge.incomplete` and `score.incomplete`.
-- ADD to the "Frictionless development" examples: `case.drift`, `tools.unanswered`, `judge.incomplete`,
-  `score.incomplete`.
