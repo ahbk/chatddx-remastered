@@ -4,7 +4,7 @@ CREATE TABLE catalog.family (
     at timestamptz NOT NULL DEFAULT now()
 );
 
--- src/chatddx/store/catalog.py: Catalog.family matches a case to a binding by source, id and
+-- src/chatddx/catalog/families.py: family_of matches a case to a binding by source, id and
 -- vignette fingerprint; the binding with the highest id is where the family's vignette is now.
 CREATE TABLE catalog.binding (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

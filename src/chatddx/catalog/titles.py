@@ -1,15 +1,15 @@
-"""Transient titles for unnamed things: built from what they hold, never stored."""
-
 import json
 import re
 from collections.abc import Callable, Iterable
+from functools import partial
 
 from pydantic import JsonValue
 
-from chatddx.factors.base import Component
+from chatddx.factors.base import Component, resolve
 from chatddx.factors.cases import Appendix, Case
 from chatddx.factors.engine import LocalEngine, ModelArtifact, RemoteEngine
 from chatddx.factors.request import (
+    Compilation,
     FewShot,
     Insert,
     Instructions,
@@ -33,6 +33,12 @@ from chatddx.factors.scoring import (
     Scoring,
 )
 from chatddx.factors.trial import CanarySet, Trial
+
+from .families import bindings, family_of
+from .language import own
+from .model import Subject
+from .read import Reader, about, abouts, heads_of
+from .threads import head, variation
 
 Title = Callable[[str], str]
 
@@ -188,3 +194,66 @@ def describe(component: Component, title: Title, language: str | None = None) ->
             return _count(len(canaries), "canary", "canaries")
         case _:
             return f"{component.kind_name} {short(component.digest)}"
+
+
+def title(rows: Reader, thread: int) -> str:
+    name = about(rows, Subject(thread=thread)).name
+    if name is not None:
+        return name
+    varied = variation(rows, thread)
+    if varied is not None:
+        base = title(rows, varied.base.thread)
+        changes = [
+            describe_change(path, after, partial(title_of, rows))
+            for path, (_, after) in varied.varies.items()
+        ]
+        return ", ".join([base, *changes]) if changes else f"a fork of {base}"
+    current = head(rows, thread)
+    return _derive(rows, current.digest, current.compilation)
+
+
+def title_of(rows: Reader, digest: str) -> str:
+    if rows.kind(digest) == "case":
+        return _case_title(rows, digest)
+    threads = sorted({e.thread for e in rows.edits_holding([digest])})
+    found = heads_of(rows, threads)
+    known = abouts(rows, [Subject(thread=t) for t in threads])
+    for deleted in (False, True):
+        group = [t for t in threads if known[Subject(thread=t)].deleted == deleted]
+        names = {t: known[Subject(thread=t)].name for t in group}
+        current = [t for t in group if found[t].digest == digest]
+        for t in current:
+            if (name := names[t]) is not None:
+                return name
+        for t in current:
+            return title(rows, t)
+        for t in group:
+            if (name := names[t]) is not None:
+                return f"{name} (earlier)"
+    return _derive(rows, digest)
+
+
+def _case_title(rows: Reader, digest: str) -> str:
+    family = family_of(rows, digest)
+    if family is None:
+        return _derive(rows, digest)
+    case = resolve(rows.get, digest, Case)
+    current = bindings(rows, family)[-1].vignette
+    name = about(rows, Subject(family=family)).name
+    root = name or f"{current.source}/{current.id}"
+    if case.vignette != current:
+        root += " (earlier)"
+    return describe_case(root, case.appendices, partial(title_of, rows))
+
+
+def _derive(rows: Reader, digest: str, compilation: str | None = None) -> str:
+    component = rows.get(digest)
+    if isinstance(component, Skeleton):
+        compilations = (
+            rows.compilations(digest)
+            if compilation is None
+            else [resolve(rows.get, compilation, Compilation)]
+        )
+        if compilations:
+            return describe_recipe(compilations[0].recipe, partial(title_of, rows))
+    return describe(component, partial(title_of, rows), own(rows, digest))

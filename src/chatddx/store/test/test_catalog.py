@@ -5,7 +5,7 @@ import pytest
 from psycopg import errors, sql
 from pydantic import ValidationError
 
-from chatddx.core.catalog import (
+from chatddx.catalog import (
     LANGUAGE_KINDS,
     THREAD_KINDS,
     About,
@@ -14,7 +14,6 @@ from chatddx.core.catalog import (
     Subject,
     Survey,
 )
-from chatddx.core.identity import Person
 from chatddx.factors.base import Component, StructuralError, resolve
 from chatddx.factors.bundle import Registry
 from chatddx.factors.cases import Appendix, Case, Vignette
@@ -34,6 +33,7 @@ from chatddx.factors.request import (
 )
 from chatddx.factors.scoring import Expectation, Judge, Scoring
 from chatddx.factors.test.sample import NOW, RIG, fp, generation_recipe, world
+from chatddx.identity import Person
 from chatddx.ledger import RunStarted, ScoreStarted
 from chatddx.store import Catalog, People, Store
 from chatddx.store.store import Connection

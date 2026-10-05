@@ -1,4 +1,4 @@
--- src/chatddx/core/catalog.py: EntryField, Entry._shape and LANGUAGE.
+-- src/chatddx/catalog/model.py: EntryField, Entry._shape and LANGUAGE.
 -- The shape check from 0011 has a generated name, so it is found by its definition.
 DO $$
 DECLARE

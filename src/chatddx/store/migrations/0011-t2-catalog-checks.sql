@@ -1,11 +1,11 @@
--- src/chatddx/core/catalog.py: THREAD_KINDS
+-- src/chatddx/catalog/model.py: THREAD_KINDS
 ALTER TABLE catalog.thread ADD CHECK (kind IN (
     'chunk.instructions', 'chunk.few_shot', 'chunk.prompt', 'chunk.output',
     'chunk.sampling', 'chunk.reasoning', 'chunk.passthrough', 'skeleton', 'trial',
     'judge', 'scorer', 'scoring', 'appendix', 'expectation'
 ));
 
--- src/chatddx/core/catalog.py: EntryField and Entry._shape
+-- src/chatddx/catalog/model.py: EntryField and Entry._shape
 ALTER TABLE catalog.entry
     ADD CHECK (field IN ('name', 'description', 'tag', 'owner', 'collaborator', 'deleted')),
     ADD CHECK (CASE field

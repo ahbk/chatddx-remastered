@@ -1,6 +1,6 @@
 from pydantic import HttpUrl
 
-from chatddx.core.titles import (
+from chatddx.catalog.titles import (
     Title,
     describe,
     describe_change,

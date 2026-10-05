@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, JsonValue, model_validator
 
 from chatddx.factors.base import Fingerprint
 from chatddx.factors.cases import Vignette
+from chatddx.factors.scoring import Scorer
 
 # src/chatddx/store/migrations/0021-t2-catalog-tools.sql repeats these kinds.
 THREAD_KINDS = frozenset(
@@ -246,3 +247,15 @@ def _toggle[T](members: set[T], member: T, present: bool) -> None:
         members.add(member)
     else:
         members.discard(member)
+
+
+# Rows are read back in the order they were written, so the last row for a key is the latest.
+def latest[K, V](rows: Iterable[tuple[K, V]]) -> dict[K, V]:
+    return dict(rows)
+
+
+# src/chatddx/store/migrations/0011-t2-catalog-checks.sql repeats this check.
+def check_label(scorer: Scorer, part: Part, position: int) -> None:
+    parts = scorer.views if part == "view" else scorer.resources
+    if not 0 <= position < len(parts):
+        raise ValueError(f"{scorer.digest} has no {part} at position {position}")

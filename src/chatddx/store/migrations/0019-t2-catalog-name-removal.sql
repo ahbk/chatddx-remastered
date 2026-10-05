@@ -1,4 +1,4 @@
--- src/chatddx/core/catalog.py: EntryField, Entry._shape and LANGUAGE.
+-- src/chatddx/catalog/model.py: EntryField, Entry._shape and LANGUAGE.
 -- A name can be removed by an entry without a value; the thread is then shown by its title.
 -- A check passes when it is NULL, so a NULL value is ruled out explicitly: 0017 let NULL
 -- names, tags and languages through.

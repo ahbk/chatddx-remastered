@@ -1,4 +1,4 @@
--- src/chatddx/store/catalog.py: Catalog.repair changes exactly one of the two.
+-- src/chatddx/catalog/families.py: plan_repair changes exactly one of the two.
 CREATE FUNCTION catalog.check_binding() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
     previous catalog.binding;

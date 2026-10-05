@@ -1,4 +1,4 @@
--- src/chatddx/store/catalog.py: Catalog.repair keeps the source and changes exactly one of the
+-- src/chatddx/catalog/families.py: plan_repair keeps the source and changes exactly one of the
 -- id or the fingerprint. 0022's check, after 0025 renamed the column.
 CREATE OR REPLACE FUNCTION catalog.check_binding() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE

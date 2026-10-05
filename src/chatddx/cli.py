@@ -6,9 +6,9 @@ from pathlib import Path
 import psycopg
 
 from chatddx.core import settings
-from chatddx.core.identity import Role
 from chatddx.core.rig import rig
 from chatddx.facts.facts import Facts
+from chatddx.identity import Role
 from chatddx.inventory.inventory import Inventory
 from chatddx.inventory.sources import DirectorySource
 from chatddx.seed import load_cases, plan_factors, seed

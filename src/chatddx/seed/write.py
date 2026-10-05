@@ -1,10 +1,10 @@
 from collections.abc import Iterable
 
-from chatddx.core.catalog import Entry, EntryField, Subject
-from chatddx.core.identity import Person
+from chatddx.catalog import Entry, EntryField, Subject
 from chatddx.factors.base import Fingerprint
 from chatddx.factors.cases import Case, Vignette
 from chatddx.factors.scoring import Expectation
+from chatddx.identity import Person
 from chatddx.inventory.sources import Source
 from chatddx.store.catalog import Catalog
 from chatddx.store.people import People

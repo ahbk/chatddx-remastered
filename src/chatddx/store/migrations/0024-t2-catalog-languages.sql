@@ -1,5 +1,5 @@
--- src/chatddx/core/catalog.py: LANGUAGE and LANGUAGE_KINDS, and Catalog.note and Catalog.language in
--- src/chatddx/store/catalog.py. A component's language is kept on its digest in catalog.language; a
+-- src/chatddx/catalog/model.py: LANGUAGE and LANGUAGE_KINDS, and check_language and check_entry in
+-- src/chatddx/catalog/language.py. A component's language is kept on its digest in catalog.language; a
 -- language entry is only for the vignette of a family.
 ALTER TABLE catalog.language
     ADD CONSTRAINT language_value_check CHECK (value ~ '^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$'),

@@ -1,4 +1,4 @@
--- src/chatddx/core/catalog.py: THREAD_KINDS
+-- src/chatddx/catalog/model.py: THREAD_KINDS
 ALTER TABLE catalog.thread
     DROP CONSTRAINT thread_kind_check,
     ADD CONSTRAINT thread_kind_check CHECK (kind IN (

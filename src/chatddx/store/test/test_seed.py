@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
+from chatddx.catalog import Subject
 from chatddx.cli import main
-from chatddx.core.catalog import Subject
 from chatddx.core.rig import rig
 from chatddx.facts.facts import Facts
 from chatddx.inventory.sources import MemorySource
