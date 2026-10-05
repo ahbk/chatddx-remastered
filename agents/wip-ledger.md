@@ -148,6 +148,11 @@ The package imports only `chatddx.factors`, so the code already leans on factors
 - Decided (B4, option b): `check_run` warns `execution.retries`, `execution.order` and `execution.concurrency`.
   "Order" means send order: an item is sent when its first call starts. With retries, a call's times run from the
   first attempt's start to the last attempt's end. Timeouts stay unchecked.
+- Decided (O1, option a): a trial keeps its cases sorted by digest, so case order is no part of its identity; the
+  send order is the run's alone. Trial digests change; no data to keep, so `Trial.schema_version` stays 1.
+- Decided (B5, option a): `check_score` warns `score.scorer_code` when the scorer code that ran isn't the pinned
+  one; the revision counts only when the scorer pins one.
+- Decided: O2 and the unrecorded tool code are items of their own (B14, B15).
 
 ## Status
 Draft: `agents/ledger.md`.
@@ -161,7 +166,8 @@ Draft: `agents/ledger.md`.
 | B1 | Decided (4a). Doc; `docs/chatddx.md` amendment. The finished row being outside the seal is an open issue. |
 | B2, B3, B6, B12 | Code and tests: `score.incomplete`, `judge.incomplete`, `run.incomplete` for canaries, duplicate checks, record validation. `docs/findings.md`, `docs/chatddx.md` amendments. |
 | B4 | Decided (b). Code and tests (`_executed`); draft updated; `docs/findings.md`, `docs/factors.md` (send-order wording), `docs/chatddx.md` amendments. Timeouts stay an open issue. |
-| B5, B7–B10, B13 | Open, one by one. Listed in the draft's "Open design issues" meanwhile. |
+| B5 | Decided (a). Code and tests; draft updated; `docs/findings.md`, `docs/factors.md`, `docs/chatddx.md` amendments. |
+| B7–B10, B13, B14, B15 | Open, one by one. Listed in the draft's "Open design issues" meanwhile. |
 | B11 | Moved to factors with the compilation; the proposed `docs/factors.md` "Compilation" section states it. Still open. |
 | C1 | Decided (A). Code: `Compilation` in factors, `factor.compilation` dropped, the catalog's foreign keys retargeted, the seeder adds compilations as components. Doc: the draft drops its Compilation section. Amendments: `docs/factors.md`, `docs/store.md`, `docs/chatddx.md`. |
 | C2 | Decided (a). The draft already avoids "tier"; `docs/chatddx.md` amendment. Also proposed: `docs/store.md` wording for schema `ledger` (only `run_item` and `score_item` are case-derived). |
@@ -176,8 +182,11 @@ Draft: `agents/ledger.md`.
   `cases`), but the only thing that reads that order is `Execution.schedule` (`case_major@1`, `replicate_major@1`).
   So part of the send order is pinned, though send order is meant to be a recorded setting outside the trial's
   identity (`docs/chatddx.md`, "execution settings are not part of trial identity"). Two trials with the same cases
-  in another order are different trials. Open.
-- **O2** Not checked: that start-phase canary calls precede the items and end-phase ones follow them.
+  in another order are different trials.
+  Decided (a): code and test in `src/chatddx/factors/trial.py`; `docs/factors.md` amendment.
+- **O2** Not checked: that start-phase canary calls precede the items and end-phase ones follow them. Now **B14**.
+- **B15** The tool code that ran isn't recorded: `Tool` pins `code` like `Scorer` does, but `ToolRun` has no field
+  for the code that ran, so a check like `score.scorer_code` is impossible for tools.
 
 ## Surprises
 - `ruff check src` fails on `src/chatddx/inventory/test/test_inventory.py` (import order) at `e635b97`, before

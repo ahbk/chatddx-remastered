@@ -892,3 +892,11 @@ reference, straight from the schema. `RefTo` used to do this, and was stopped be
 Schema plays no part in a component's digest, so adding it back changes no digest.
 
 ## Proposed amendments
+- CHANGE "Trial": "Cases and seeds are listed without duplicates." → "Cases and seeds are listed without duplicates.
+  Cases are kept sorted by digest, so their order is no part of the trial: the order items are sent in is the
+  run's (see "Execution"). Seeds keep their order, since each seed's position names a replicate."
+  (`src/chatddx/factors/trial.py:Trial`, `cases`). And in "Execution", `case_major@1` "(the default: every replicate
+  of a case before the next case)" → "(the default: every replicate of a case before the next case, cases in digest
+  order)".
+- CHANGE "What a factor is", "Recorded": "it shows whether what ran is what should have run." → "it shows whether
+  what ran is what should have run, and `check_score` warns when they differ (`docs/ledger.md`, "Score")."

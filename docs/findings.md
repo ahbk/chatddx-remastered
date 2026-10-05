@@ -105,3 +105,5 @@ the vignette read at the source differs from the case's fingerprint (`prepare_ca
   - `execution.order`: some items were sent before items the run's order schedules ahead of them;
   - `execution.concurrency`: more calls were in flight at once than the run's `concurrency` allows, canary calls
     included.
+- ADD to "Ledger": `score.scorer_code`: the scorer code that ran isn't the code the scorer pins; the revision counts
+  only when the scorer pins one (`src/chatddx/ledger/ledger.py:check_score`).

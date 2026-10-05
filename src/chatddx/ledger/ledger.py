@@ -592,6 +592,18 @@ def check_score(score: Score, run: Run, registry: Registry) -> list[Finding]:
         if item.key not in run_keys:
             raise StructuralError(f"score item {item.key} is not in the run")
         findings.extend(_judged(item, scorer.views[item.view].judge, judges))
+    pinned, ran = scorer.code, started.scorer_code
+    if (ran.distribution, ran.version) != (pinned.distribution, pinned.version) or (
+        pinned.revision is not None and ran.revision != pinned.revision
+    ):
+        findings.append(
+            Finding(
+                code="score.scorer_code",
+                message=f"the scorer code that ran ({_named(ran)}) isn't the code the "
+                + f"scorer pins ({_named(pinned)})",
+                subject=str(started.score),
+            )
+        )
     findings.extend(_sealed(score, str(started.score)))
     expected = {(k, v) for k in run_keys for v in range(len(scorer.views))}
     if score.finished is not None and (missing := expected - set(scored)):
@@ -599,6 +611,11 @@ def check_score(score: Score, run: Run, registry: Registry) -> list[Finding]:
             Finding(code="score.incomplete", message=f"{len(missing)} items missing")
         )
     return findings
+
+
+def _named(code: Code) -> str:
+    revision = "" if code.revision is None else f" {code.revision}"
+    return f"{code.distribution} {code.version}{revision}"
 
 
 def _judged(

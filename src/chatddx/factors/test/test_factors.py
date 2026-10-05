@@ -1387,6 +1387,18 @@ def test_skeleton_and_engine_compatibility(reg: Registry) -> None:
     assert [f.code for f in lint(reg, [judge])] == ["schema.ref_unverified"]
 
 
+def test_trials_keep_their_cases_sorted() -> None:
+    a, b = "sha256:" + "a" * 64, "sha256:" + "b" * 64
+
+    def trial(*cases: str) -> Trial:
+        return Trial(
+            skeleton="sha256:" + SHA, engine="sha256:" + SHA, cases=cases, seeds=(1,)
+        )
+
+    assert trial(b, a).cases == (a, b)
+    assert trial(b, a).digest == trial(a, b).digest
+
+
 def test_execution_schedule() -> None:
     cases = ["a", "b"]
     assert Execution().schedule(cases, 2) == [("a", 0), ("a", 1), ("b", 0), ("b", 1)]

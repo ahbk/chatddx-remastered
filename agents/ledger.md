@@ -248,7 +248,7 @@ A score grades one run with one scoring (`docs/factors.md`, "Scoring"). Its log 
 the scorer code that actually runs (`scorer_code`), and the scoring.
 
 `scorer_code` is a recorded factor. Set beside the code the scorer pins (`Scorer.code`), it shows whether what ran
-is what should have run; nothing compares the two yet (see "Open design issues").
+is what should have run, and `check_score` compares the two (see "Score").
 
 ### ScoreItem
 - principal author: none; written by the scorer
@@ -295,6 +295,8 @@ It warns when
 - an item has a value, but its view's judge was called with fewer seeds than the judge has (`judge.incomplete`). An
   item without a value may have stopped before calling the judge, so it isn't flagged;
 - a finished score lacks an item for some run item and view (`score.incomplete`);
+- the scorer code that ran isn't the code the scorer pins (`score.scorer_code`): the distribution and the version
+  must match, and the revision too when the scorer pins one;
 - the rows no longer match the seal (`ledger.seal`).
 
 ## Findings
@@ -316,6 +318,7 @@ of the ledger's findings are warnings.
 | `view.unreachable` | `check_score` | scorer digest | A view's output selector reaches nothing in the run's output schema. A lint reports the same code for a view's expectation selector (`docs/factors.md`, "Lints"). |
 | `judge.incomplete` | `check_score` | item key | A scored item's judge was called with fewer seeds than the judge has. |
 | `score.incomplete` | `check_score` | none | A finished score lacks items for some pairs of run item and view. |
+| `score.scorer_code` | `check_score` | score id | The scorer code that ran isn't the code the scorer pins. |
 
 ## Terms
 
@@ -338,13 +341,16 @@ of the ledger's findings are warnings.
 Some records state what should happen and others what did, but nothing compares them:
 - `timeout_s` and the calls: a call's times span all its attempts, so an attempt that ran past the timeout can't
   be told from them;
-- `ScoreStarted.scorer_code` and the scorer's `Scorer.code`;
 - a call's request fingerprint and the request it should have been. A request can be rebuilt from stored data and
   the vignette, and a judge request from the scorer's parse of the answer (`docs/factors.md`, "Judge"), but nothing
   does it.
 
 ### Smaller issues
 - **Canary drift isn't checked.** Nothing compares canary outputs between phases or between runs.
+- **Canary phases aren't checked against the items.** Nothing checks that start-phase canary calls come before the
+  items and end-phase ones after them.
+- **The tool code that ran isn't recorded.** A tool pins its code like a scorer (`docs/factors.md`, "Tool"), but a
+  `ToolRun` doesn't say which code ran, so nothing like `score.scorer_code` is possible for tools.
 - **Only run items are attested.** Canary calls and judge calls get no model check and no prompt-token check.
 - **A response without a model name passes** the model check.
 - **`system_fingerprint` is kept but never compared** between calls or runs.

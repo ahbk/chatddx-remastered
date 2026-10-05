@@ -267,3 +267,4 @@ See `docs/findings.md` for a list of all findings and what they mean.
 **Canary drift are not implemented:** nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
+- ADD to the "Frictionless development" examples: `score.scorer_code` (`src/chatddx/ledger/ledger.py:check_score`).

@@ -175,6 +175,18 @@ def test_run_and_score_checks(reg: Registry) -> None:
             run,
             reg,
         )
+    other_code = RIG.model_copy(update={"version": "0.0.1"})
+    elsewhere = score(ok).started.model_copy(update={"scorer_code": other_code})
+    assert [
+        (f.code, f.message)
+        for f in check_score(Score(stages=(elsewhere,), items=(ok,)), run, reg)
+    ] == [
+        (
+            "score.scorer_code",
+            "the scorer code that ran (chatddx 0.0.1 abc123) isn't the code the scorer "
+            + "pins (chatddx 0.0.0+dev abc123)",
+        )
+    ]
     with pytest.raises(StructuralError, match="view 2 is out of range"):
         _ = check_score(score(ok.model_copy(update={"view": 2})), run, reg)
     with pytest.raises(StructuralError, match="duplicate score items"):
@@ -472,7 +484,7 @@ def test_score_views_are_checked_against_the_output_schema(reg: Registry) -> Non
     expectation_schema = resolve(reg.get, scoring.scorer, Scorer).expectation_schema
     scorer = reg.add(
         Scorer(
-            code=RIG,
+            code=RIG.model_copy(update={"revision": None}),
             entry_point="chatddx_scoring.match:score",
             expectation_schema=expectation_schema,
             views=(
