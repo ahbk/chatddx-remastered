@@ -53,6 +53,29 @@ RUNTIME_KEYS = frozenset(
     {"model", "messages", "seed", "stream", "n", "return_token_ids"}
 )
 OUTPUT_KEYS = frozenset({"response_format", "tools", "tool_choice"})
+# Body keys the sampling and reasoning chunks manage, whether a recipe sets them or not.
+MANAGED_KEYS = frozenset(
+    {
+        "temperature",
+        "top_p",
+        "top_k",
+        "min_p",
+        "presence_penalty",
+        "frequency_penalty",
+        "repetition_penalty",
+        "stop",
+        "max_completion_tokens",
+        "max_tokens",
+        "reasoning_effort",
+        "thinking_token_budget",
+        "chat_template_kwargs",
+    }
+)
+# vLLM request keys that would replace the engine's chat template, constrain the answer
+# outside the output contract, or put the prompt's text in the stored response.
+BYPASS_KEYS = frozenset(
+    {"chat_template", "structured_outputs", "return_prompt_text", "prompt_logprobs"}
+)
 GREEDY_DROPS = ("top_p", "top_k", "min_p")
 
 
@@ -333,8 +356,8 @@ class Passthrough(Component):
 
     @model_validator(mode="after")
     def _no_owned_keys(self) -> "Passthrough":
-        owned = self.body.keys() & (RUNTIME_KEYS | OUTPUT_KEYS)
-        if owned:
+        reserved = RUNTIME_KEYS | OUTPUT_KEYS | MANAGED_KEYS | BYPASS_KEYS
+        if owned := self.body.keys() & reserved:
             raise ValueError(f"passthrough may not set {sorted(owned)}")
         return self
 
@@ -841,8 +864,6 @@ def compile_request(recipe: Recipe, get: Resolver) -> Skeleton:
             )
         case TextOutput():
             contract = TextOutput(json_schema=output.output_schema)
-    if clash := body.keys() & managed.keys():
-        raise StructuralError(f"passthrough overrides managed keys {sorted(clash)}")
     body.update(managed)
 
     return Skeleton(

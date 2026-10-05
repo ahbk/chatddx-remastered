@@ -248,7 +248,6 @@ Chunks affect each other only in these fixed ways, all decided in code:
 - A toolset adds `tools` and `tool_choice` to the request, which changes how the output contract is expressed (see
   "Recipe and compilation").
 - Translations replace every text the other chunks bring (see "Translations").
-- A passthrough key that another chunk also produces fails the compilation.
 - Greedy sampling (temperature 0) drops `top_p`, `top_k` and `min_p`, and no seed is sent.
 
 Compilation merges adjacent text, so without translations, how a chunk splits its text never changes the skeleton.
@@ -340,9 +339,18 @@ leaves reasoning to the model.
 - principal author: Researchers
 - defined in: `request.py:Passthrough`
 
-A passthrough chunk (kind `chunk.passthrough`) holds engine-specific request keys. It may not set runtime keys (see
-"Rendering") or output keys (`response_format`, `tools` and `tool_choice`), and compilation fails if it sets a key
-another chunk also produces.
+A passthrough chunk (kind `chunk.passthrough`) holds engine-specific request keys, such as vLLM's `min_tokens` or
+`ignore_eos`. It may not set (`request.py:Passthrough`):
+- runtime keys (see "Rendering");
+- output keys: `response_format`, `tools` and `tool_choice`;
+- any key the sampling or reasoning chunks manage (`request.py:MANAGED_KEYS`), whether the recipe sets it or not.
+  So a passthrough can't make a request greedy behind the sampling chunk's back, or add `max_tokens` beside
+  `max_completion_tokens`;
+- vLLM keys that go around other factors (`request.py:BYPASS_KEYS`): `chat_template` would replace the engine's
+  pinned template for the request, `structured_outputs` would constrain the answer outside the output contract, and
+  `return_prompt_text` and `prompt_logprobs` would put the prompt's text, and so the case's, in the stored response.
+
+Since no other chunk can produce a passthrough key, a passthrough never clashes with the rest of the recipe.
 
 ### Tool
 - principal author: Developers
@@ -398,7 +406,7 @@ A recipe is not a component. It holds:
 
 `compile_request(recipe, get)` turns a recipe into a skeleton. It fails on a missing or wrongly typed chunk, a
 prompt whose purpose differs from the recipe's, a missing translation, a guidance inserted in both the instructions
-and the prompt, a passthrough clash, or an answer tool named like one of the toolset's tools.
+and the prompt, or an answer tool named like one of the toolset's tools.
 
 The request body it builds holds the sampling, reasoning and passthrough keys, plus whatever the contract needs:
 - `native`: `response_format`;
@@ -745,11 +753,6 @@ Nothing aggregates scores today, but anything that compares or pools runs by the
 conditions without noticing. It needs to group by the recorded factors as well, and to check the evidence of the
 observed ones (prompt-token fingerprints, returned models, canaries) before pooling.
 
-### Passthrough can set keys a managed chunk left unset
-A passthrough key is refused only when another chunk also produces it. So `temperature: 0` in a passthrough makes
-the skeleton greedy when the sampling chunk sets no temperature, and `max_tokens` can sit beside
-`max_completion_tokens`.
-
 ### `x-ref` has no consumer
 `RefTo` puts `x-ref` (the allowed kinds) on each reference field when pydantic writes a component's JSON Schema.
 Nothing reads it today, and it may be dead weight if the portal doesn't need it.
@@ -837,5 +840,13 @@ another way: the distribution declares its function in its own metadata, under a
 `chatddx.tools`, and the runner looks it up with `importlib.metadata`. The pinned distribution and version would
 then decide which function runs, with no field in the component. It would keep the choice with the code's authors,
 at the cost of being less visible in the factors, and tools and scorers should switch together.
+
+### Passthrough: an allow list, or lints
+A passthrough refuses a fixed list of keys and lets everything else through. Two other ways:
+- an allow list: a passthrough may set only known engine extras. Nothing unknown gets through, but every new key
+  needs a code change, and remote engines accept other keys than vLLM, so the list would depend on the engine.
+- lints instead of refusals: risky keys would give a finding, in the spirit of "warnings, not crashes". But a
+  passthrough already refuses runtime and output keys, and keys that put case text in the stored response are
+  closer to the clearance block than to a warning.
 
 ## Proposed amendments

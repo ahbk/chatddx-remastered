@@ -27,6 +27,8 @@ from chatddx.factors.engine import (
 )
 from chatddx.factors.lint import lint
 from chatddx.factors.request import (
+    MANAGED_KEYS,
+    OUTPUT_KEYS,
     AppendixLayout,
     Example,
     FewShot,
@@ -36,6 +38,7 @@ from chatddx.factors.request import (
     NativeOutput,
     Output,
     OutputContract,
+    Passthrough,
     Prompt,
     Reasoning,
     Recipe,
@@ -393,6 +396,68 @@ def test_few_shot_developer_role_and_budgets(reg: Registry) -> None:
         "reasoning_effort": "low",
         "thinking_token_budget": 256,
     }
+
+
+def test_passthrough_keeps_to_engine_extras(reg: Registry) -> None:
+    for key in (
+        "temperature",
+        "max_tokens",
+        "chat_template_kwargs",
+        "chat_template",
+        "structured_outputs",
+        "return_prompt_text",
+        "prompt_logprobs",
+        "seed",
+        "tools",
+    ):
+        with pytest.raises(ValidationError, match="may not set"):
+            _ = Passthrough(body={key: 1})
+    extras = reg.add(Passthrough(body={"min_tokens": 8, "ignore_eos": False}))
+    recipe = generation_recipe(reg).model_copy(update={"passthrough": extras})
+    skeleton = compile_request(recipe, reg.get)
+    assert (skeleton.body["min_tokens"], skeleton.body["ignore_eos"]) == (8, False)
+
+    meta = {"kind", "max_output_tokens", "max_tokens_key"}
+    assert set(Sampling.model_fields) - meta <= MANAGED_KEYS
+    assert set(Reasoning.model_fields) == {
+        "kind",
+        "effort",
+        "thinking_token_budget",
+        "chat_template_kwargs",
+    }
+    reasoning = reg.add(
+        Reasoning(
+            effort="low", thinking_token_budget=64, chat_template_kwargs={"a": True}
+        )
+    )
+    answer = reg.add(
+        Output(contract=ToolOutput(name="answer"), json_schema={"type": "object"})
+    )
+    for key in ("max_completion_tokens", "max_tokens"):
+        sampling = Sampling(
+            temperature=0.5,
+            top_p=0.9,
+            top_k=5,
+            min_p=0.1,
+            presence_penalty=0.1,
+            frequency_penalty=0.1,
+            repetition_penalty=1.1,
+            stop=("x",),
+            max_output_tokens=8,
+            max_tokens_key=key,
+        )
+        for output in (recipe.output, answer):
+            everything = recipe.model_copy(
+                update={
+                    "passthrough": None,
+                    "sampling": reg.add(sampling),
+                    "reasoning": reasoning,
+                    "output": output,
+                    "toolset": reg.add(Toolset(tools=(web_search(reg),))),
+                }
+            )
+            body = compile_request(everything, reg.get).body
+            assert set(body) <= MANAGED_KEYS | OUTPUT_KEYS
 
 
 def test_skeleton_structure_is_enforced() -> None:
