@@ -188,6 +188,26 @@ Draft: `agents/ledger.md`.
 - **B15** The tool code that ran isn't recorded: `Tool` pins `code` like `Scorer` does, but `ToolRun` has no field
   for the code that ran, so a check like `score.scorer_code` is impossible for tools.
 
+## Check of b5930b2 (Trial and Execution in `docs/factors.md`)
+- **T1** A leftover amendment line sits inside "What a factor is" (`docs/factors.md:44`).
+- **T2** "A trial represents one research question" vs the glossary's "smallest unit of a scientific intent"
+  (`docs/chatddx.md:42`): a research question is usually answered by comparing several trials.
+- **T3** "Trials pin their factors in advance so each run of it adds recorded and observed ones": "so" makes it
+  causal, and "Trials … it" disagree in number.
+- **T4** `Execution.schedule` is no longer described in `docs/factors.md`, but `check_run` uses it and
+  `agents/ledger.md` ("Run") and `docs/chatddx.md:202` name it.
+- **T5** "cases in digest order" is said of `case_major@1` only; `replicate_major@1` also goes through the cases in
+  digest order.
+- **T6** Nits: "Run declares the send order" (the run); "Seeds are explicit, a helper can propose" (comma splice).
+
+## Ledger, records, observations
+- **L1** `docs/chatddx.md:8` "means to observe ("record") each exchange" uses the two words as synonyms; recording
+  keeps observations, but also plans and the rig's conduct.
+- **L2** Records hold three kinds of content, and the docs name two ("the recorded factors and the evidence of the
+  observed ones"): the plan (started rows), the rig's conduct (what it sent, when, how many attempts, which tool
+  results), and observations (what the world answered). The checks pair them up.
+- **L4** Fixed in the draft: "Each such fact is a *record*"; a record is a row holding many facts.
+
 ## Surprises
 - `ruff check src` fails on `src/chatddx/inventory/test/test_inventory.py` (import order) at `e635b97`, before
   these changes. Left as is.

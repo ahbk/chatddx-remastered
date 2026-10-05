@@ -1,8 +1,8 @@
 # Ledger
 
 The factors (`docs/factors.md`) say what an experiment should be. The ledger says what happened: which requests a
-run sent and what came back, and how a score graded them. Each such fact is a *record*, and the ledger is all of
-them.
+run sent and what came back, and how a score graded them. It is written down as *records*, rows that are added and
+never changed, and the ledger is all of them.
 
 How a skeleton was compiled is not in the ledger. Compiling is deterministic, so nothing about it is observed; a
 compilation is provenance, stored as a component (`docs/factors.md`, "Compilation").
