@@ -262,13 +262,11 @@ Structurally malformed input raises instead. Constructing a component, canary or
 
 The one hard block is clearance: sending case-derived content to an engine that isn't cleared, judge engines included, must be refused. Clearance has a dedicated pipeline and the factors do not enforce it; the runner must.
 
-See `docs/findings.md` for a list of all findings and what they mean.
+Each code is described where it's produced: `docs/factors.md`, "Lints"; `docs/ledger.md`, "Findings"; and, for the
+`facts.*` codes, `agents/facts.md`, "Checking pairs".
 
 ## Possible design issues
 
 **Canary drift are not implemented:** nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
-- CHANGE in "Findings and errors": "See `docs/findings.md` for a list of all findings and what they mean." → "Each
-  code is described where it's produced: `docs/factors.md`, "Lints"; `docs/ledger.md`, "Findings"; and, for the
-  `facts.*` codes, `agents/facts.md`, "Checking pairs"." `docs/findings.md` is proposed for removal.

@@ -1,12 +1,12 @@
 from pathlib import Path
 
 import pytest
-from chatddx.inventory.inventory import Inventory
-from chatddx.inventory.sources import DirectorySource, MemorySource
 from pydantic import ValidationError
 
 from chatddx.factors.base import Fingerprint
 from chatddx.factors.cases import Case, Vignette
+from chatddx.inventory.inventory import Inventory
+from chatddx.inventory.sources import DirectorySource, MemorySource
 
 
 def vignettes(root: Path) -> Path:

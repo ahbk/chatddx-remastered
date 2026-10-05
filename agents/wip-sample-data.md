@@ -39,6 +39,8 @@ What's left is the parked work: engines and models, then scorers (see "Parked").
   seeded expectations today, and the vLLM, facts and language lints once trials and judges are seeded.
 - **The fake vLLM.** It's planned (`docs/vllm.md`, AGENTS.md) but not started. The engine and runner work will want
   to test against it.
+- **The fake-cases source** The 99 cases exist in the old repo and should be copied over and commited to the new
+  repo. They're not actually sensitive (obviously), but we pretend it is while also keeping under VCS.
 
 ## Decided
 - Seed now: chunks, recipes (as compiled skeleton threads), cases with their families, an expectation schema and
