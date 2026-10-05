@@ -5,7 +5,15 @@ import pytest
 from psycopg import errors, sql
 from pydantic import ValidationError
 
-from chatddx.core.catalog import THREAD_KINDS, About, Entry, EntryField, Subject, Survey
+from chatddx.core.catalog import (
+    LANGUAGE_KINDS,
+    THREAD_KINDS,
+    About,
+    Entry,
+    EntryField,
+    Subject,
+    Survey,
+)
 from chatddx.core.identity import Person
 from chatddx.factors.base import Component, StructuralError, resolve
 from chatddx.factors.bundle import Registry
@@ -671,6 +679,7 @@ def test_languages_are_kept_on_digests(conn: Connection) -> None:
     assert catalog.language_of(hand_written) is None
     in_language(hand_written, "en")
     assert catalog.language_of(hand_written) == "en"
+    assert catalog.language_of(ids["judge"]) == "en"
 
     scoring = resolve(reg.get, ids["scoring"], Scoring)
     assert catalog.language_of(ids["case"]) is None
@@ -687,6 +696,10 @@ def test_languages_are_kept_on_digests(conn: Connection) -> None:
 
     with pytest.raises(ValueError, match="not a language tag"):
         catalog.language(base.output, "Swedish", alice.id)
+    with pytest.raises(ValueError, match="trial components have no language"):
+        catalog.language(ids["trial"], "en", alice.id)
+    with pytest.raises(ValueError, match="comes from its recipe"):
+        catalog.language(plan.skeleton, "en", alice.id)
     with pytest.raises(LookupError):
         catalog.language("sha256:" + "9" * 64, "en", alice.id)
     thread = Subject(thread=origin.thread)
@@ -703,10 +716,29 @@ def test_languages_are_kept_on_digests(conn: Connection) -> None:
     with pytest.raises(errors.CheckViolation), conn.transaction():
         _ = conn.execute(
             """
-            INSERT INTO catalog.language (digest, value, by)
-            VALUES (%s, 'Swedish', %s)
+            INSERT INTO catalog.language (digest, kind, value, by)
+            VALUES (%s, 'chunk.output', 'Swedish', %s)
             """,
             (base.output, alice.id),
+        )
+    with pytest.raises(errors.CheckViolation), conn.transaction():
+        _ = conn.execute(
+            """
+            INSERT INTO catalog.language (digest, kind, value, by)
+            VALUES (%s, 'trial', 'en', %s)
+            """,
+            (ids["trial"], alice.id),
+        )
+    with (
+        pytest.raises(errors.RaiseException, match="comes from its recipe"),
+        conn.transaction(),
+    ):
+        _ = conn.execute(
+            """
+            INSERT INTO catalog.language (digest, kind, value, by)
+            VALUES (%s, 'skeleton', 'en', %s)
+            """,
+            (plan.skeleton, alice.id),
         )
 
 
@@ -809,14 +841,21 @@ def test_kinds_and_fields_match_the_database(admin: Connection) -> None:
         for (d,) in admin.execute(
             """
             SELECT pg_get_constraintdef(oid) FROM pg_constraint
-            WHERE conrelid IN ('catalog.thread'::regclass, 'catalog.entry'::regclass)
+            WHERE conrelid IN (
+                'catalog.thread'::regclass,
+                'catalog.entry'::regclass,
+                'catalog.language'::regclass
+            )
                 AND contype = 'c' AND pg_get_constraintdef(oid) LIKE '%%ANY (ARRAY%%'
             """
         )
     ]
-    for names in (THREAD_KINDS, {f.value for f in EntryField}):
-        [check] = [c for c in checks if all(f"'{n}'" in c for n in names)]
-        assert check.count("'") == 2 * len(names)
+    for names in (THREAD_KINDS, {f.value for f in EntryField}, LANGUAGE_KINDS):
+        [_] = [
+            c
+            for c in checks
+            if all(f"'{n}'" in c for n in names) and c.count("'") == 2 * len(names)
+        ]
     assert THREAD_KINDS == Component.registry.keys() - {"case", "compilation"}
 
 

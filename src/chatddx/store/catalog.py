@@ -4,6 +4,7 @@ from typing import Any, LiteralString
 from pydantic import JsonValue
 
 from chatddx.core.catalog import (
+    LANGUAGE_KINDS,
     THREAD_KINDS,
     About,
     Behind,
@@ -37,7 +38,7 @@ from chatddx.factors.base import (
 from chatddx.factors.bundle import Registry
 from chatddx.factors.cases import Appendix, Case, Vignette
 from chatddx.factors.request import Compilation, Recipe, Skeleton, texts
-from chatddx.factors.scoring import Expectation, Scorer
+from chatddx.factors.scoring import Expectation, Judge, Scorer
 from chatddx.factors.trial import Trial
 
 from .store import Connection, Store
@@ -385,6 +386,8 @@ class Catalog:
                 return self.language_of(resolve(store.get, digest, Expectation).case)
             case "trial":
                 return self.language_of(resolve(store.get, digest, Trial).skeleton)
+            case "judge":
+                return self.language_of(resolve(store.get, digest, Judge).skeleton)
             case "skeleton":
                 compilations = store.compilations(digest)
                 if not compilations:
@@ -589,12 +592,23 @@ class Catalog:
             ),
         )
 
+    # src/chatddx/store/migrations/0024-t2-catalog-languages.sql repeats these checks.
     def language(self, digest: str, value: str, by: int) -> None:
-        if self._kind(digest) is None:
+        kind = self._kind(digest)
+        if kind is None:
             raise LookupError(f"{digest} is not in the store")
+        if kind not in LANGUAGE_KINDS:
+            raise ValueError(f"{kind} components have no language of their own")
+        if kind == "skeleton" and Store(self._conn).compilations(digest):
+            raise ValueError(
+                f"{digest}: a compiled skeleton's language comes from its recipe"
+            )
         _ = self._conn.execute(
-            "INSERT INTO catalog.language (digest, value, by) VALUES (%s, %s, %s)",
-            (digest, language_tag(value), by),
+            """
+            INSERT INTO catalog.language (digest, kind, value, by)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (digest, kind, language_tag(value), by),
         )
 
     def about(self, subject: Subject) -> About:

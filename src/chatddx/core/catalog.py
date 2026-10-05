@@ -39,6 +39,20 @@ THREAD_KINDS = frozenset(
 )
 
 
+# src/chatddx/store/migrations/0024-t2-catalog-languages.sql repeats these kinds.
+LANGUAGE_KINDS = frozenset(
+    {
+        "chunk.instructions",
+        "chunk.few_shot",
+        "chunk.prompt",
+        "chunk.output",
+        "chunk.toolset",
+        "chunk.translations",
+        "skeleton",
+    }
+)
+
+
 # src/chatddx/store/migrations/: 0017 repeats these fields, 0019 and 0024 the pattern.
 LANGUAGE = re.compile(r"^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$")
 
