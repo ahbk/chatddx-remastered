@@ -13,10 +13,12 @@ answered (the evidence of the *observed* factors); see "What a record holds" and
 is". Records refer to components by digest and to each other by id.
 
 Code paths are relative to `src/chatddx/ledger/` unless they start with `src/` or `docs/`. The package builds on
-`chatddx.factors` and imports no other chatddx package.
+`chatddx.factors` and imports no other chatddx package. Its modules follow this document: `record.py` ("How records
+work"), `call.py` ("Call", and the tool rounds), `run.py` ("Runs") and `score.py` ("Scores"), each building on the
+ones before it. `chatddx.ledger` exports the public names, so callers write `from chatddx.ledger import Run`.
 
 ## How records work
-- defined in: `ledger.py:Record`
+- defined in: `record.py:Record`
 
 ### Logs and stages
 Every record belongs to a *log*: a run or a score. A log has
@@ -120,7 +122,7 @@ phase, in whatever order they happen, then `RunFinished`.
 
 ### RunStarted
 - principal author: none; written by the runner
-- defined in: `ledger.py:RunStarted`, `ledger.py:ToolCode`
+- defined in: `run.py:RunStarted`, `run.py:ToolCode`
 
 `RunStarted` opens a run. It holds
 - the run's id (`run`) and the time (`at`);
@@ -150,7 +152,7 @@ empty, and left out, for a skeleton without tools.
 
 ### RunItem
 - principal author: none; written by the runner
-- defined in: `ledger.py:RunItem`, `ledger.py:ItemKey`
+- defined in: `run.py:RunItem`, `record.py:ItemKey`
 
 A run item records one request of the trial and what came back. It holds
 - the run's id;
@@ -165,7 +167,7 @@ A run item records one request of the trial and what came back. It holds
 
 ### Turn and ToolRun
 - principal author: none; written by the runner as part of a run item
-- defined in: `ledger.py:Turn`, `ledger.py:ToolRun`
+- defined in: `call.py:Turn`, `call.py:ToolRun`
 
 When the skeleton offers tools and a response calls some, the runner runs them and sends another request
 (`docs/factors.md`, "Tool rounds"). Each such round is a `Turn`: the tools run for the previous response's calls, at
@@ -180,7 +182,7 @@ The arguments aren't repeated: they are in the previous call's response.
 
 ### CanaryCall
 - principal author: none; written by the runner
-- defined in: `ledger.py:CanaryCall`
+- defined in: `run.py:CanaryCall`
 
 A canary call records one canary of the run's set, sent at one phase. It holds the run's id, the phase (`start` or
 `end`), the canary's position in the set, and a `Call`.
@@ -190,7 +192,7 @@ is sent, and an end-phase call should start after the last item call finishes (s
 
 ### RunFinished
 - principal author: none; written by the runner
-- defined in: `ledger.py:RunFinished`, `ledger.py:Run.finish`
+- defined in: `run.py:RunFinished`, `run.py:Run.finish`
 
 `RunFinished` closes the log with the run's id, the time, findings and the seal. `Run.finish(at, findings)` builds
 it from the rows written so far.
@@ -201,7 +203,7 @@ findings aren't stored; some of them (`run.incomplete`, `ledger.seal`) need the 
 
 ### Run
 - principal author: none; assembled from stored rows
-- defined in: `ledger.py:Run`, `ledger.py:check_run`, `ledger.py:compare_prompt_tokens`
+- defined in: `run.py:Run`, `run.py:check_run`, `run.py:compare_prompt_tokens`
 
 `Run` puts a run's log back together from its rows: its stages (the started row, then the finished row if there is
 one), its items and its canary calls. It refuses stages out of order, a finished stage earlier than the started one,
@@ -250,7 +252,7 @@ doesn't shape the prompt.
 
 ## Call
 - principal author: none; written by the runner or the scorer as part of another record
-- defined in: `ledger.py:Call`, `ledger.py:fingerprint_request`, `ledger.py:fingerprint_prompt_tokens`
+- defined in: `call.py:Call`, `call.py:fingerprint_request`, `call.py:fingerprint_prompt_tokens`
 
 A call records one exchange with an engine. Run items, tool rounds, canary calls and judge calls all hold calls. A
 call holds
@@ -288,7 +290,7 @@ A score grades one run with one scoring (`docs/factors.md`, "Scoring"). Its log 
 
 ### ScoreStarted
 - principal author: none; written by the scorer
-- defined in: `ledger.py:ScoreStarted`
+- defined in: `score.py:ScoreStarted`
 
 `ScoreStarted` holds the score's id, the id of the run it grades, the time, the version of the rig's code (`rig`),
 the scorer code that actually runs (`scorer_code`), the scoring, and the execution settings of its judge calls
@@ -299,7 +301,7 @@ is what should have run, and `check_score` compares the two (see "Score").
 
 ### ScoreItem
 - principal author: none; written by the scorer
-- defined in: `ledger.py:ScoreItem`
+- defined in: `score.py:ScoreItem`
 
 A score item holds the score's id, a run item's key, a view's position among the scorer's views, the value,
 optional `detail`, and the judge calls made for it. The value is a finite number, or empty (`null`) when the item
@@ -308,21 +310,21 @@ couldn't be scored. What the value means and what `detail` holds are up to the s
 
 ### JudgeCall
 - principal author: none; written by the scorer as part of a score item
-- defined in: `ledger.py:JudgeCall`
+- defined in: `score.py:JudgeCall`
 
 A judge call records one request to a judge: the judge, the position of the seed used among the judge's seeds, and
 the `Call`. A view with a judge sends one request per seed (`docs/factors.md`, "Judge").
 
 ### ScoreFinished
 - principal author: none; written by the scorer
-- defined in: `ledger.py:ScoreFinished`, `ledger.py:Score.finish`
+- defined in: `score.py:ScoreFinished`, `score.py:Score.finish`
 
 `ScoreFinished` closes the log with the score's id, the time, findings and the seal, as `RunFinished` does for a
 run. Judge calls live inside score items, so the seal covers them.
 
 ### Score
 - principal author: none; assembled from stored rows
-- defined in: `ledger.py:Score`, `ledger.py:check_score`
+- defined in: `score.py:Score`, `score.py:check_score`
 
 `Score` puts a score's log back together the way `Run` does, and refuses the same things.
 

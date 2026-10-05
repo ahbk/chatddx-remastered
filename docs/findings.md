@@ -97,25 +97,25 @@ the vignette read at the source differs from the case's fingerprint (`prepare_ca
 
 ## Proposed amendments
 
-- keep "Ledger" to the codes of `check_run`, `check_score` and `compare_prompt_tokens` (`src/chatddx/ledger/ledger.py`):
+- keep "Ledger" to the codes of `check_run`, `check_score` and `compare_prompt_tokens` (`src/chatddx/ledger/`):
 - The ledger doc now lists its codes with their subjects (`agents/ledger.md`, "Findings", the replacement for
   `docs/ledger.md`); "Ledger" here could point there instead of repeating them.
-- ADD to "Ledger" (`src/chatddx/ledger/ledger.py:check_run`, `_executed`):
+- ADD to "Ledger" (`src/chatddx/ledger/run.py:check_run`, `src/chatddx/ledger/call.py:check_execution`):
   - `execution.retries`: some calls took more attempts than the run's `retries` allows;
   - `execution.order`: some items were sent before items the run's order schedules ahead of them;
   - `execution.concurrency`: more calls were in flight at once than the run's `concurrency` allows, canary calls
     included.
 - ADD to "Ledger": `score.scorer_code`: the scorer code that ran isn't the code the scorer pins; the revision counts
-  only when the scorer pins one (`src/chatddx/ledger/ledger.py:check_score`).
+  only when the scorer pins one (`src/chatddx/ledger/score.py:check_score`).
 - CHANGE the `execution.*` codes proposed above: `check_score` reports them too, for a score's judge calls against
-  `ScoreStarted.execution` (`src/chatddx/ledger/ledger.py:check_score`).
+  `ScoreStarted.execution` (`src/chatddx/ledger/score.py:check_score`).
 - CHANGE `attestation.model`: "the engine returned a different model name than declared …" → "… or a response gave
-  no model name; calls without a response are skipped" (`src/chatddx/ledger/ledger.py:check_run`).
+  no model name; calls without a response are skipped" (`src/chatddx/ledger/run.py:check_run`).
 - ADD to "Ledger": `score.run_unfinished`: the run hasn't finished, or finished after the score started, so the
-  scorer may have graded only part of it (`src/chatddx/ledger/ledger.py:check_score`).
+  scorer may have graded only part of it (`src/chatddx/ledger/score.py:check_score`).
 - ADD to "Ledger": `canary.phase`: canary calls overlap the items: a start-phase call hadn't finished when the
-  first item was sent, or an end-phase call started before the last item call finished (`src/chatddx/ledger/ledger.py:check_run`,
+  first item was sent, or an end-phase call started before the last item call finished (`src/chatddx/ledger/run.py:check_run`,
   `_bracketed`).
 - ADD to "Ledger": `tools.code`: a tool of the skeleton ran with code other than the code it pins, or its code isn't
   recorded in `RunStarted.tool_code`; the revision counts only when the tool pins one
-  (`src/chatddx/ledger/ledger.py:check_run`, `_tool_code`).
+  (`src/chatddx/ledger/run.py:check_run`, `_tool_code`).

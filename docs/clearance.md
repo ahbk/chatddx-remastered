@@ -25,3 +25,5 @@ engine. The clearance pipeline has to clear tools by their code (`Tool.code`, `e
 they reach; nothing declares those yet.
 
 ## Proposed amendments
+- CHANGE "`src/chatddx/ledger/ledger.py:Record.case_derived`" → "`src/chatddx/ledger/record.py:Record.case_derived`":
+  the ledger is now split by subject (`record.py`, `call.py`, `run.py`, `score.py`).

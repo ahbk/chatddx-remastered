@@ -171,6 +171,11 @@ The package imports only `chatddx.factors`, so the code already leans on factors
 - Decided (B15, option a): `RunStarted.tool_code` records the code each tool ran with; `check_run` warns
   `tools.code` when it isn't the pinned code or isn't recorded, and refuses entries for tools the skeleton lacks.
 - Decided: the open design issues stay listed in the draft; the draft is final.
+- Decided (layout, option A): `ledger/ledger.py` is split by subject into `record.py`, `call.py`, `run.py` and
+  `score.py`, importing in that order; `chatddx.ledger` exports the public names. Shared helpers lost their
+  underscore (`check_execution`, `check_log`, `check_seal`, `seal_rows`, `ran_pinned`, `code_name`) and aren't
+  exported. The same-log check takes ids, and the seal check any log with a finished row and a seal, so `record.py`
+  knows no run or score types. Paths to `ledger.py` above are as of their commits.
 
 ## Status
 Final: `agents/ledger.md`, the drop-in replacement for `docs/ledger.md`. Every section other docs link to

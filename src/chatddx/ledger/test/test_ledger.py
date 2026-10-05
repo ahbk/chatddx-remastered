@@ -21,7 +21,7 @@ from chatddx.factors.test.sample import (
     world,
 )
 from chatddx.factors.trial import Execution, Trial
-from chatddx.ledger.ledger import (
+from chatddx.ledger import (
     Call,
     CanaryCall,
     ItemKey,

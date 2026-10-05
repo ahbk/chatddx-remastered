@@ -12,7 +12,7 @@ from chatddx.factors.engine import LocalEngine
 from chatddx.factors.request import Compilation, Skeleton, compile_request
 from chatddx.factors.test.sample import NOW, RIG, fp, generation_recipe, world
 from chatddx.factors.trial import Trial
-from chatddx.ledger.ledger import (
+from chatddx.ledger import (
     Call,
     CanaryCall,
     ItemKey,

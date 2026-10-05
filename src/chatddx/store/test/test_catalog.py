@@ -24,7 +24,7 @@ from chatddx.factors.request import (
 )
 from chatddx.factors.scoring import Expectation, Judge, Scoring
 from chatddx.factors.test.sample import NOW, RIG, fp, generation_recipe, world
-from chatddx.ledger.ledger import RunStarted, ScoreStarted
+from chatddx.ledger import RunStarted, ScoreStarted
 from chatddx.store import Catalog, People, Store
 from chatddx.store.store import Connection
 

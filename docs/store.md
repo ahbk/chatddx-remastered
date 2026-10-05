@@ -195,6 +195,6 @@ tier-2 triggers).
   components whose `/skeleton` reference points at the skeleton, by digest" (`src/chatddx/store/store.py`).
 - CHANGE "Layout": "Schema `ledger`, case-derived:" → "Schema `ledger`, the run and score logs (`docs/ledger.md`):",
   and ADD after the table list: "Of these, only `run_item` and `score_item` hold case-derived records
-  (`src/chatddx/ledger/ledger.py:Record.case_derived`). The stage rows and canary calls sit beside them so that
+  (`src/chatddx/ledger/record.py:Record.case_derived`). The stage rows and canary calls sit beside them so that
   each log stays in one schema; `chatddx_reader`, refused the whole schema at tier 1
   (`src/chatddx/store/migrations/0002-t1-grants.sql`), can't read them either."

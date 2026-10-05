@@ -9,7 +9,7 @@ from psycopg.rows import TupleRow
 from chatddx.factors.base import Component, StructuralError, resolve
 from chatddx.factors.bundle import Registry
 from chatddx.factors.request import Compilation
-from chatddx.ledger.ledger import (
+from chatddx.ledger import (
     CanaryCall,
     Record,
     Run,

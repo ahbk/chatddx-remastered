@@ -911,3 +911,7 @@ reference, straight from the schema. `RefTo` used to do this, and was stopped be
 Schema plays no part in a component's digest, so adding it back changes no digest.
 
 ## Proposed amendments
+- CHANGE the paths to the ledger, which is now split by subject (`src/chatddx/ledger/`: `record.py`, `call.py`,
+  `run.py`, `score.py`): in "The inventory doesn't locate local engines yet, …", "`Call`
+  (`src/chatddx/ledger/ledger.py`)" → "`Call` (`src/chatddx/ledger/call.py`)"; in "Smaller issues", "The model name
+  is chosen in several places", "`src/chatddx/ledger/ledger.py:check_run`" → "`src/chatddx/ledger/run.py:check_run`".

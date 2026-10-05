@@ -269,3 +269,7 @@ See `docs/findings.md` for a list of all findings and what they mean.
 **Canary drift are not implemented:** nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
+- CHANGE the paths to the ledger, which is now split by subject (`src/chatddx/ledger/`: `record.py`, `call.py`,
+  `run.py`, `score.py`): "(`ledger.py: check_run`)" → "(`src/chatddx/ledger/run.py:check_run`)" in "Target stack";
+  "`src/chatddx/ledger/ledger.py:check_score`" → "`src/chatddx/ledger/score.py:check_score`" in "Frictionless
+  development" and "Scoring records", step 8.
