@@ -1,9 +1,9 @@
 CREATE SCHEMA catalog;
 
 -- Targets for the composite foreign keys below: a thread's edits point at components of
--- the thread's kind, and an edit's compilation produced the edit's skeleton.
+-- the thread's kind, and an edit's compilation is a compilation of the edit's skeleton.
 ALTER TABLE factor.component ADD UNIQUE (digest, kind);
-ALTER TABLE factor.compilation ADD UNIQUE (digest, skeleton);
+ALTER TABLE factor.component_ref ADD UNIQUE (src, path, dst);
 
 CREATE TABLE catalog.thread (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -21,12 +21,18 @@ CREATE TABLE catalog.edit (
     kind text NOT NULL,
     digest text NOT NULL,
     compilation text,
+    compilation_kind text NOT NULL DEFAULT 'compilation'
+        CHECK (compilation_kind = 'compilation'),
+    compilation_path text NOT NULL DEFAULT '/skeleton'
+        CHECK (compilation_path = '/skeleton'),
     by bigint NOT NULL REFERENCES identity.person,
     at timestamptz NOT NULL DEFAULT now(),
     UNIQUE (id, kind),
     FOREIGN KEY (thread, kind) REFERENCES catalog.thread (id, kind),
     FOREIGN KEY (digest, kind) REFERENCES factor.component (digest, kind),
-    FOREIGN KEY (compilation, digest) REFERENCES factor.compilation (digest, skeleton),
+    FOREIGN KEY (compilation, compilation_kind) REFERENCES factor.component (digest, kind),
+    FOREIGN KEY (compilation, compilation_path, digest)
+        REFERENCES factor.component_ref (src, path, dst),
     CHECK (compilation IS NULL OR kind = 'skeleton')
 );
 CREATE INDEX edit_thread ON catalog.edit (thread, id);

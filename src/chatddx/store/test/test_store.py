@@ -9,13 +9,12 @@ from chatddx.factors.base import StructuralError, resolve
 from chatddx.factors.bundle import Registry
 from chatddx.factors.cases import Case
 from chatddx.factors.engine import LocalEngine
-from chatddx.factors.request import Recipe, Skeleton
-from chatddx.factors.test.sample import NOW, RIG, fp, world
+from chatddx.factors.request import Compilation, Skeleton, compile_request
+from chatddx.factors.test.sample import NOW, RIG, fp, generation_recipe, world
 from chatddx.factors.trial import Trial
-from chatddx.ledger.ledger import (
+from chatddx.ledger import (
     Call,
     CanaryCall,
-    Compilation,
     ItemKey,
     JudgeCall,
     Run,
@@ -182,15 +181,20 @@ def test_run_and_score_roundtrip(conn: Connection) -> None:
         scorer_code=RIG,
         scoring=ids["scoring"],
     )
-    score_items = tuple(
-        ScoreItem(
-            score=score_id,
-            key=i.key,
-            view=1,
-            value=1.0,
-            judge_calls=(JudgeCall(judge=ids["judge"], seed_index=0, call=call("j")),),
-        )
-        for i in items
+    score_items = (
+        *(ScoreItem(score=score_id, key=i.key, view=0, value=1.0) for i in items),
+        *(
+            ScoreItem(
+                score=score_id,
+                key=i.key,
+                view=1,
+                value=1.0,
+                judge_calls=(
+                    JudgeCall(judge=ids["judge"], seed_index=0, call=call("j")),
+                ),
+            )
+            for i in items
+        ),
     )
     score_finished = Score(stages=(score_started,), items=score_items).finish(NOW)
     store.append(score_started, *score_items, score_finished)
@@ -232,20 +236,15 @@ def test_database_guards_the_ledger(conn: Connection) -> None:
         store.append(canary.model_copy(update={"call": call("other")}))
 
 
-def test_compilations_are_idempotent(conn: Connection) -> None:
-    store, reg, ids = stored_world(conn)
-    trial = reg.get(ids["trial"])
-    assert isinstance(trial, Trial)
-    skeleton = trial.skeleton
-    recipe = Recipe(
-        prompt="sha256:" + "1" * 64,
-        output="sha256:" + "2" * 64,
-        sampling="sha256:" + "3" * 64,
-    )
-    c = Compilation(recipe=recipe, skeleton=skeleton, compiler=RIG, at=NOW)
-    store.append(c)
-    store.append(c)
-    assert store.compilations(skeleton) == [c]
+def test_compilations_are_found_by_their_skeleton(conn: Connection) -> None:
+    store, reg, _ = stored_world(conn)
+    recipe = generation_recipe(reg)
+    skeleton = reg.add(compile_request(recipe, reg.get))
+    compilation = Compilation(recipe=recipe, skeleton=skeleton, compiler=RIG)
+    _ = store.add(reg, [reg.add(compilation)])
+    _ = store.add(reg, [compilation.digest])
+    assert store.compilations(skeleton) == [compilation]
+    assert store.compilations(recipe.prompt) == []
 
 
 def test_grants(conn: Connection) -> None:

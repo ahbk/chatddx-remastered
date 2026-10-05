@@ -15,7 +15,7 @@ score, so no factor references it. It references factors by digest, records by i
 Factors reference each other by digest, so an edit anywhere makes new digests all the way up:
 
 ```
-chunk.* ─(recipe, only in factor.compilation)─▶ skeleton ─▶ trial ◀─ engine, seeds, cleanup
+chunk.* ─(recipe, only in compilations)──────▶ skeleton ─▶ trial ◀─ engine, seeds, cleanup
                                                     └─────▶ judge ─▶ scorer ─▶ scoring
 appendix ─┐                                                                      ▲
 vignette ─┴▶ case ─▶ trial                                                       │
@@ -46,7 +46,7 @@ excluded; params and the like are not. (This was first worded as what "configura
 UX entity below.)
 
 Decided (option A2): recipes are skeleton threads. A skeleton thread's edits point at a skeleton digest and at the
-`factor.compilation` row that produced it, which holds the recipe; hand-written skeletons have edits without one. So
+compilation that produced it, which holds the recipe; hand-written skeletons have edits without one. So
 `skeleton` is in unconditionally, and "a compiled skeleton's history is really its recipe's" is answered: the thread
 is the recipe's history.
 
@@ -144,12 +144,13 @@ has a newer binding (`Behind.binding`).
   `head`, `heads(kind, deleted=)`, `containing(digest)`, `behind`, `adopt`, `family`, `bindings`, `note`,
   `about`, `label`, `labels`.
 - Migrations: `0009-t0-catalog.sql` (tables, composite foreign keys, and `UNIQUE (digest, kind)` on
-  `factor.component` and `UNIQUE (digest, skeleton)` on `factor.compilation` as their targets),
+  `factor.component` and `UNIQUE (src, path, dst)` on `factor.component_ref` as their targets),
   `0010-t1-catalog-grants.sql` (writer SELECT, INSERT; reader SELECT), `0011-t2-catalog-checks.sql` (kind and field
   lists mirrored from code, entry shapes, label positions, insert-only triggers reusing `factor.refuse_change()`),
   `0012-t0-catalog-families.sql` (family, binding, entries on families), `0013-t2-catalog-families.sql`
   (insert-only triggers), `0014-t2-catalog-kinds.sql` (ops and developer kinds get threads).
-- `Compilation.digest`, the key of `factor.compilation`, so the catalog and `Store.append` share it.
+- Compilations are components (`src/chatddx/factors/request.py:Compilation`); `catalog.edit` reaches them through
+  `factor.component` and `factor.component_ref` (`0009-t0-catalog.sql`). `factor.compilation` is gone.
 - Tests: `src/chatddx/store/test/test_catalog.py`.
 
 ## Open

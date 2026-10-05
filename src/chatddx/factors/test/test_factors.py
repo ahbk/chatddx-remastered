@@ -30,6 +30,7 @@ from chatddx.factors.request import (
     MANAGED_KEYS,
     OUTPUT_KEYS,
     AppendixLayout,
+    Compilation,
     Example,
     FewShot,
     Insert,
@@ -94,6 +95,22 @@ def test_digest_is_stable_and_order_independent(reg: Registry) -> None:
     assert a.digest == b.digest
     assert a.digest.startswith("sha256:")
     assert json.loads(a.canonical)["v"] == 1
+
+
+def test_copies_are_built_anew() -> None:
+    original = Sampling(temperature=0.5)
+    _ = original.digest
+    copy = original.model_copy(update={"temperature": 0.9})
+    assert copy.digest == Sampling(temperature=0.9).digest != original.digest
+    greedy = Sampling(temperature=0.5, top_p=0.9).model_copy(update={"temperature": 0})
+    assert greedy == Sampling(temperature=0)
+    with pytest.raises(ValidationError):
+        _ = Trial(
+            skeleton="sha256:" + SHA,
+            engine="sha256:" + SHA,
+            cases=("sha256:" + SHA,),
+            seeds=(1,),
+        ).model_copy(update={"seeds": (1, 1)})
 
 
 def test_defaults_are_omitted_from_canonical_form() -> None:
@@ -981,6 +998,29 @@ def test_bundle_roundtrip_and_tamper(reg: Registry) -> None:
         _ = tampered.load()
 
 
+def test_compilations_are_provenance(reg: Registry) -> None:
+    recipe = generation_recipe(reg)
+    skeleton = reg.add(compile_request(recipe, reg.get))
+    compilation = Compilation(recipe=recipe, skeleton=skeleton, compiler=RIG)
+    digest = reg.add(compilation)
+    assert (
+        reg.add(Compilation(recipe=recipe, skeleton=skeleton, compiler=RIG)) == digest
+    )
+    assert {"/recipe/prompt", "/skeleton"} <= {s.path for s in compilation.refs()}
+    reg.check([digest])
+    bundle = reg.bundle([digest], generator=RIG)
+    assert {recipe.prompt, skeleton} <= bundle.components.keys()
+
+    dangling = Compilation(
+        recipe=recipe.model_copy(update={"prompt": "sha256:" + SHA}),
+        skeleton=skeleton,
+        compiler=RIG,
+    )
+    _ = reg.add(dangling)
+    with pytest.raises(StructuralError, match="is missing"):
+        reg.check([dangling.digest])
+
+
 def test_judges_fill_their_slots_from_a_view(reg: Registry) -> None:
     assert fill_text("text@1", ["Chest pain."]) == "Chest pain."
     assert fill_text("text@1", [["ACS", "PE"]]) == "ACS\nPE"
@@ -1361,6 +1401,18 @@ def test_skeleton_and_engine_compatibility(reg: Registry) -> None:
     )
     judge = reg.add(Judge(skeleton=judged, engine=remote, seeds=(1,)))
     assert [f.code for f in lint(reg, [judge])] == ["schema.ref_unverified"]
+
+
+def test_trials_keep_their_cases_sorted() -> None:
+    a, b = "sha256:" + "a" * 64, "sha256:" + "b" * 64
+
+    def trial(*cases: str) -> Trial:
+        return Trial(
+            skeleton="sha256:" + SHA, engine="sha256:" + SHA, cases=cases, seeds=(1,)
+        )
+
+    assert trial(b, a).cases == (a, b)
+    assert trial(b, a).digest == trial(a, b).digest
 
 
 def test_execution_schedule() -> None:

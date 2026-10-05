@@ -19,13 +19,6 @@ CREATE TABLE factor.component_ref (
 );
 CREATE INDEX component_ref_dst ON factor.component_ref (dst);
 
-CREATE TABLE factor.compilation (
-    digest text PRIMARY KEY,
-    skeleton text NOT NULL REFERENCES factor.component,
-    payload text NOT NULL,
-    doc jsonb NOT NULL
-);
-
 -- Item rows reference their log's started row; `stage` is a constant so that a
 -- foreign key can point at it.
 CREATE TABLE ledger.run_stage (

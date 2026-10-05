@@ -13,13 +13,19 @@ from .request import RUNTIME_KEYS, Skeleton, SkeletonRef
 Order = Literal["case_major@1", "replicate_major@1", "shuffled@1"]
 
 
+# Case order means nothing to a trial: the order items are sent in is the run's
+# (`Execution.order`).
+def _sorted(cases: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(sorted(cases))
+
+
 class Trial(Component):
     kind: Literal["trial"] = "trial"
     skeleton: SkeletonRef
     engine: EngineRef
-    cases: Annotated[tuple[CaseRef, ...], AfterValidator(distinct)] = Field(
-        min_length=1
-    )
+    cases: Annotated[
+        tuple[CaseRef, ...], AfterValidator(distinct), AfterValidator(_sorted)
+    ] = Field(min_length=1)
     cleanup: tuple[CleanupOp, ...] = ()
     seeds: Annotated[tuple[int, ...], AfterValidator(distinct)] = Field(min_length=1)
 

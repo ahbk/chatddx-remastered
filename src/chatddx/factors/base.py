@@ -3,7 +3,7 @@ import hmac
 import json
 import types
 import typing
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from functools import cached_property
 from typing import (
@@ -11,6 +11,7 @@ from typing import (
     Any,
     ClassVar,
     Literal,
+    Self,
     cast,
     get_args,
     get_origin,
@@ -180,6 +181,18 @@ class Component(Frozen):
     @cached_property
     def digest(self) -> str:
         return sha256_digest(self.canonical)
+
+    # Pydantic's copy skips validation and keeps the cached digest; an updated copy is
+    # built anew instead, so it follows its kind's rules and gets its own digest.
+    @override
+    def model_copy(
+        self, *, update: Mapping[str, Any] | None = None, deep: bool = False
+    ) -> Self:
+        copy = super().model_copy(deep=deep)
+        if not update:
+            return copy
+        fields = {name: getattr(copy, name) for name in type(self).model_fields}
+        return type(self).model_validate({**fields, **update})
 
     def refs(self) -> list[RefSite]:
         return list(iter_refs(self))

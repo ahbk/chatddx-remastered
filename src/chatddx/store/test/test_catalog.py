@@ -7,11 +7,12 @@ from pydantic import ValidationError
 
 from chatddx.core.catalog import THREAD_KINDS, About, Entry, EntryField, Subject, Survey
 from chatddx.core.identity import Person
-from chatddx.factors.base import Component, StructuralError, iter_refs, resolve
+from chatddx.factors.base import Component, StructuralError, resolve
 from chatddx.factors.bundle import Registry
 from chatddx.factors.cases import Appendix, Case, Vignette
 from chatddx.factors.lint import lint
 from chatddx.factors.request import (
+    Compilation,
     Insert,
     NativeOutput,
     Output,
@@ -23,7 +24,7 @@ from chatddx.factors.request import (
 )
 from chatddx.factors.scoring import Expectation, Judge, Scoring
 from chatddx.factors.test.sample import NOW, RIG, fp, generation_recipe, world
-from chatddx.ledger.ledger import Compilation, RunStarted, ScoreStarted
+from chatddx.ledger import RunStarted, ScoreStarted
 from chatddx.store import Catalog, People, Store
 from chatddx.store.store import Connection
 
@@ -44,9 +45,8 @@ def compiled(store: Store, reg: Registry, *instructions: str) -> Compilation:
 
 def compiled_recipe(store: Store, reg: Registry, recipe: Recipe) -> Compilation:
     skeleton = reg.add(compile_request(recipe, reg.get))
-    _ = store.add(reg, [*(s.digest for s in iter_refs(recipe)), skeleton])
-    compilation = Compilation(recipe=recipe, skeleton=skeleton, compiler=RIG, at=NOW)
-    store.append(compilation)
+    compilation = Compilation(recipe=recipe, skeleton=skeleton, compiler=RIG)
+    _ = store.add(reg, [reg.add(compilation)])
     return compilation
 
 
@@ -93,6 +93,8 @@ def test_skeleton_threads_carry_their_recipe(conn: Connection) -> None:
         _ = catalog.edit(edit.thread, v2.skeleton, alice.id, compilation=v1.digest)
     with pytest.raises(errors.CheckViolation), conn.transaction():
         _ = catalog.create(instructions(v1), alice.id, compilation=v1.digest)
+    with pytest.raises(errors.ForeignKeyViolation), conn.transaction():
+        _ = catalog.edit(edit.thread, v1.skeleton, alice.id, compilation=ids["trial"])
 
     judge = resolve(reg.get, ids["judge"], Judge)
     hand_written = catalog.create(judge.skeleton, alice.id)
@@ -742,7 +744,7 @@ def test_kinds_and_fields_match_the_database(admin: Connection) -> None:
     for names in (THREAD_KINDS, {f.value for f in EntryField}):
         [check] = [c for c in checks if all(f"'{n}'" in c for n in names)]
         assert check.count("'") == 2 * len(names)
-    assert THREAD_KINDS == Component.registry.keys() - {"case"}
+    assert THREAD_KINDS == Component.registry.keys() - {"case", "compilation"}
 
 
 def test_reader_reads_the_catalog(conn: Connection) -> None:

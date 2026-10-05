@@ -5,13 +5,13 @@ ChatDDX is a system to measure how accurately LLMs generate differential diagnos
 
 The rig provides:
 - an environment that can be provably reconstructed (the "cage").
-- means to observe ("record") each exchange within the cage.
+- means to record each exchange within the cage: what was planned, what was sent and what came back.
 - first principles for sensitive data so that policies governing this data can be enforced.
 
 It must be possible to deliver the cage together with the results, for scientific rigor.
 
 ## Glossary
-- **Factor:** ("component" in code): an immutable, content-addressed set of parameters that affects an output or its score.
+- **Factor:** Anything that can change an output or its score (`docs/factors.md`, "What a factor is").
 - **Fingerprint:** a hash of content that must *not* be stored: vignette, wire body, prompt token ids. It carries its algorithm: `sha256`, or `hmac-sha256` with a `key_id`
 - **Pinned:** a value that can't be altered without changing the digest of one or more factors.
 - **Sensitive:** data that is forbidden from being stored on, or passed to, non-approved sources.
@@ -44,10 +44,10 @@ It must be possible to deliver the cage together with the results, for scientifi
 - **Item key:** (case, replicate index), which identifies one request of a run.
 - **Execution:** how a run issues requests: order, concurrency, timeout and retries.
 - **View:** the part of an output and of an expectation that a scorer scores, and how.
-- **Compilation:** the record of which recipe and compiler produced a skeleton.
+- **Compilation:** A provenance (component) that says which recipe and compiler produced a skeleton
 - **Run** and **Score:** a stage log.
-- **Record** / **ledger:** events logged while compiling, running or scoring.
-- **Seal:** the hash over a finished log.
+- **Record** / **ledger:** events logged while running or scoring.
+- **Seal:** the hash over a log's started row and item rows, kept in its finished row.
 - **Finding:** a warning or info produced when something declared doesn't match what was observed, or when a setting is risky.
 - **Canary:** a fixed, non-sensitive probe request.
 - **Case-derived:** content produced from a vignette.
@@ -132,7 +132,7 @@ Returns model identifiers: the run check compares the returned `model` with the 
 - **Orchestrator.** Runs in Kubernetes, write the manifest and hosts the portal. A postgres database store user-managed data: factors and records are append-only; nothing is updated.
 
 ## Compromises
-The code declares no tier (the old tier assessment was dropped). The tier is *observed*:
+The code doesn't declare how reproducible a run is. It is *observed*:
  - an engine with batch invariance in its `env` may be bitwise reproducible;
  - otherwise best-effort.
 
@@ -146,6 +146,14 @@ Canaries, prompt-token fingerprints and comparing completions show which one app
  - `ledger.seal`: rows changed after sealing;
  - `engine.chat_template`, `engine.chat_template_date`;
  - `bundle.recanonicalized`;
+ - `case.drift`
+ - `tools.unanswered`
+ - `judge.incomplete`
+ - `score.incomplete`
+ - `execution.retries`
+ - `execution.order`
+ - `execution.concurrency`
+ - `score.scorer_code` (`src/chatddx/ledger/ledger.py:check_score`)
  - plus the lints in `lint.py`.
 
 The runner warns; it does not refuse. Only structurally malformed specs and records raise errors:
@@ -184,7 +192,7 @@ There is however an intended flow of data behind the pieces, which is described 
   - if few shots were included in the recipe, they're baked into the skeleton as plain text
   - appendix_layout: how appendices are joined into one piece of text
 
-  A Compilation record notes which recipe produced which skeleton.
+  A Compilation notes which recipe produced which skeleton, it is stored as a component, but isn't a factor.
 
 3. A CaseInput is a source case id, the vignette's fingerprint and a list of Appendix references.
 4. A Trial names a skeleton, an engine (LocalEngine or RemoteEngine), the case inputs, the text-cleanup steps and the seeds.
@@ -220,6 +228,7 @@ There is however an intended flow of data behind the pieces, which is described 
   - the Scoring;
   - the rig's code version;
   - the scorer code actually running (scorer_code).
+  - the execution settings of its judge calls
 2. Match each run item to its expectation. The item key's case is looked up among the scoring's expectations, whose case field is the same case reference. The code has no function for this; the scorer code does it.
 3. Get the model's output out of the raw response. Parsing belongs to the scorer (content, tool-call arguments, JSON extraction, best-effort handling when validation fails). Nothing in `factors` does this.
 4. Apply each view. A View points into the parsed output (output, a JSON pointer) and into the expectation (expectation), and names a metric that the scorer's code interprets, with params.
@@ -234,17 +243,20 @@ There is however an intended flow of data behind the pieces, which is described 
   - optional detail;
   - the judge calls.
 7. Close the log. Score.finish() computes the seal over the started row and all item rows, then write the ScoreFinished row with any warnings.
-8. Check it. check_score(score, run, registry):
+8. Check it (`src/chatddx/ledger/ledger.py:check_score`):
  - raises if the score belongs to another run;
  - raises if a view position is out of range;
  - raises if an item isn't in the run;
- - raises if a judge isn't one the scorer's views name, or a seed index is out of range;
  - warns if rows changed after sealing.
+ - raises for duplicate score items
+ - raises for a judge call whose judge isn't its item's view's judge
+ - raises if a seed index out of range or one used twice in an item;
+ - warns `judge.incomplete`, `score.incomplete` and `score.run_unfinished`.
 
 The "scored results" are just those ScoreItem rows. What aggregates them isn't named yet.
 
 ## Findings and errors
-A finding (`src/chatddx/factors/base.py: Finding`) has a level (`warning` by default, or `info`), a code, a message and optionally the subject it concerns. Findings are how "warnings, not crashes" is implemented: anything declared that doesn't match what was observed, and anything risky, becomes a finding. The run and score checks return their findings, and a run's or score's findings are stored in its finished row. The codes are:
+A finding (`src/chatddx/factors/base.py: Finding`) has a level (`warning` by default, or `info`), a code, a message and optionally the subject it concerns. Findings are how "warnings, not crashes" is implemented: anything declared that doesn't match what was observed, and anything risky, becomes a finding. The run and score checks return their findings, and a finished row holds the findings the runner or scorer saw while working, such as `case.drift`; the run and score checks can be repeated from the stored rows at any time, so their findings aren't stored.
 
 Structurally malformed input raises instead. Constructing a component, canary or record that breaks its own rules raises pydantic's `ValidationError`: for example flags the start-up script owns in `argv`, slots unsuitable for the purpose, a skeleton body at odds with its contract, runtime keys in a body, duplicate seeds or cases, a shuffle seed without shuffled order, or a stage log out of order. Problems that need other components or records to see raise `StructuralError`: a digest that doesn't match its bytes, an unknown kind or schema version, a missing or wrongly typed reference, a failed `cross_check`, a recipe whose prompt purpose differs from its own or whose passthrough overrides a managed key, and the run and score checks' own violations (items outside the trial, unplanned canary calls, a score of another run, views, items, judges or seeds that don't exist).
 
@@ -257,3 +269,7 @@ See `docs/findings.md` for a list of all findings and what they mean.
 **Canary drift are not implemented:** nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
+- CHANGE the paths to the ledger, which is now split by subject (`src/chatddx/ledger/`: `record.py`, `call.py`,
+  `run.py`, `score.py`): "(`ledger.py: check_run`)" → "(`src/chatddx/ledger/run.py:check_run`)" in "Target stack";
+  "`src/chatddx/ledger/ledger.py:check_score`" → "`src/chatddx/ledger/score.py:check_score`" in "Frictionless
+  development" and "Scoring records", step 8.

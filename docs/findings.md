@@ -15,25 +15,28 @@ some run items have no prompt-token fingerprint, for example because the engine 
 an item read different prompt tokens than the same item in another run (`compare_prompt_tokens`).
 
 - `run.incomplete`:
-a finished run lacks some of the trial's items (`check_run`).
+a finished run lacks some of the trial's items, or some planned canary calls (`check_run`).
 
 - `ledger.seal`:
 a run's or score's rows no longer match the seal in its finished row (`check_run`, `check_score`).
 
-- `engine.chat_template` and `engine.chat_template_date`:
-the chat-template file doesn't match the engine's declared digest, or reads the current date (`check_chat_template`).
+- `tools.unanswered`:
+an item's last response still calls tools, after its rounds ran out or the run stopped (`check_run`).
+
+- `judge.incomplete`:
+a scored item's judge was called with fewer seeds than the judge has (`check_score`);
+
+- `score.incomplete`:
+a finished score lacks items for some pairs of run item and view (`check_score`).
+
+## Factors
+Factors are "linted" in one sweep by passing a registry (of factors) to `lint(registry, digests, facts=)`
 
 - `bundle.recanonicalized`:
 the current code would serialize a bundled component differently from its stored bytes, which remain authoritative (`Bundle.load`).
 
-- `model.revision`, `engine.closure`, `scorer.revision`:
-kand the pair rules for trials and judges
-
-- `case.drift`:
-the vignette read at the source differs from the case's fingerprint (`prepare_case`, `check_run`).
-
-## Factors
-Factors are "linted" in one sweep by passing a registry (of factors) to `lint(registry, digests, facts=)`
+- `engine.chat_template` and `engine.chat_template_date`:
+the chat-template file doesn't match the engine's declared digest, or reads the current date (`check_chat_template`).
 
 - `vllm.temperature_clamped`:
 the skeleton sets a temperature between 0 and 0.01, which vLLM 0.24 raises to 0.01.
@@ -55,14 +58,8 @@ vLLM 0.24 refuses it, or sends it unconstrained for harmony and Mistral models.
 - `vllm.native_tools_uncallable`: a `native` contract with tools; on vLLM 0.24 the schema constrains the whole
   answer, so no tool can be called.
 
-- `tools.unanswered`: an item's last response still calls tools, after its rounds ran out or the run stopped
-  (`check_run`).
-
-- `model.revision`:
-
-- `engine.closure`:
-
-- `scorer.revision`:
+- `model.revision`, `engine.closure`, `scorer.revision`:
+kand the pair rules for trials and judges
 
 - `expectation_schema.invalid`:
 
@@ -95,4 +92,30 @@ a view's selector can't pick anything from documents that follow the schema: the
 expectation schema for its expectation selector (`lint`, on scorers), or the run's output schema for its output
 selector (`check_score`).
 
+- `case.drift`:
+the vignette read at the source differs from the case's fingerprint (`prepare_case`, `check_run`).
+
 ## Proposed amendments
+
+- keep "Ledger" to the codes of `check_run`, `check_score` and `compare_prompt_tokens` (`src/chatddx/ledger/`):
+- The ledger doc now lists its codes with their subjects (`agents/ledger.md`, "Findings", the replacement for
+  `docs/ledger.md`); "Ledger" here could point there instead of repeating them.
+- ADD to "Ledger" (`src/chatddx/ledger/run.py:check_run`, `src/chatddx/ledger/call.py:check_execution`):
+  - `execution.retries`: some calls took more attempts than the run's `retries` allows;
+  - `execution.order`: some items were sent before items the run's order schedules ahead of them;
+  - `execution.concurrency`: more calls were in flight at once than the run's `concurrency` allows, canary calls
+    included.
+- ADD to "Ledger": `score.scorer_code`: the scorer code that ran isn't the code the scorer pins; the revision counts
+  only when the scorer pins one (`src/chatddx/ledger/score.py:check_score`).
+- CHANGE the `execution.*` codes proposed above: `check_score` reports them too, for a score's judge calls against
+  `ScoreStarted.execution` (`src/chatddx/ledger/score.py:check_score`).
+- CHANGE `attestation.model`: "the engine returned a different model name than declared …" → "… or a response gave
+  no model name; calls without a response are skipped" (`src/chatddx/ledger/run.py:check_run`).
+- ADD to "Ledger": `score.run_unfinished`: the run hasn't finished, or finished after the score started, so the
+  scorer may have graded only part of it (`src/chatddx/ledger/score.py:check_score`).
+- ADD to "Ledger": `canary.phase`: canary calls overlap the items: a start-phase call hadn't finished when the
+  first item was sent, or an end-phase call started before the last item call finished (`src/chatddx/ledger/run.py:check_run`,
+  `_bracketed`).
+- ADD to "Ledger": `tools.code`: a tool of the skeleton ran with code other than the code it pins, or its code isn't
+  recorded in `RunStarted.tool_code`; the revision counts only when the tool pins one
+  (`src/chatddx/ledger/run.py:check_run`, `_tool_code`).

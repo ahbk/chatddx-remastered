@@ -21,7 +21,7 @@ It includes roles and owner (admin) setup, migrations and tests.
     it again is a no-op.
 
 - Schema `ledger`, case-derived: `run_stage (run, stage)`, `run_item (run, case, replicate)`,
-  `canary_call (run, phase, probe)`, `score_stage (score, stage)`, `score_item (score, case, replicate, view)`.
+  `canary_call (run, phase, canary)`, `score_stage (score, stage)`, `score_item (score, case, replicate, view)`.
   Item rows reference their log's started row through a constant `stage` column. `payload` holds
   `Record.canonical`; `doc` is its `jsonb` copy.
 
@@ -178,3 +178,23 @@ tier-2 triggers).
   `Store.load`); a future ORM or view must not rebuild them from `doc`." (`src/chatddx/factors/base.py:46`)
 
 ## Proposed amendments
+
+- REMOVE from "Layout" the `compilation (digest, skeleton, payload, doc)` bullet: compilations are components (kind
+  `compilation`, `src/chatddx/factors/request.py:Compilation`), rows of `factor.component` with reference rows like
+  any other. `factor.compilation` is gone; migrations `0001`, `0003` and `0009` were edited in place, so existing
+  databases need recreating.
+- CHANGE "Layout", catalog: `edit (id, thread, kind, digest, compilation, based_on, by, at)` →
+  `edit (id, thread, kind, digest, compilation, compilation_kind, compilation_path, based_on, by, at)`, and ADD:
+  "`compilation_kind` and `compilation_path` are constants, so that two composite foreign keys can require an
+  edit's compilation to be a `compilation` component whose `/skeleton` reference row points at the edit's digest"
+  (`src/chatddx/store/migrations/0009-t0-catalog.sql`).
+- CHANGE "Tier 0": "`UNIQUE (digest, skeleton)` to `factor.compilation`" → "`UNIQUE (src, path, dst)` to
+  `factor.component_ref`".
+- CHANGE "Store API": "`run(id)`, `score(id)`, `compilations(skeleton)`: reassemble from rows" → "`run(id)`,
+  `score(id)`: reassemble from rows; seals don't depend on row order. `compilations(skeleton)`: the compilation
+  components whose `/skeleton` reference points at the skeleton, by digest" (`src/chatddx/store/store.py`).
+- CHANGE "Layout": "Schema `ledger`, case-derived:" → "Schema `ledger`, the run and score logs (`docs/ledger.md`):",
+  and ADD after the table list: "Of these, only `run_item` and `score_item` hold case-derived records
+  (`src/chatddx/ledger/record.py:Record.case_derived`). The stage rows and canary calls sit beside them so that
+  each log stays in one schema; `chatddx_reader`, refused the whole schema at tier 1
+  (`src/chatddx/store/migrations/0002-t1-grants.sql`), can't read them either."

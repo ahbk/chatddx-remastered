@@ -6,11 +6,11 @@ from uuid import UUID
 import psycopg
 from psycopg.rows import TupleRow
 
-from chatddx.factors.base import Component, StructuralError
+from chatddx.factors.base import Component, StructuralError, resolve
 from chatddx.factors.bundle import Registry
-from chatddx.ledger.ledger import (
+from chatddx.factors.request import Compilation
+from chatddx.ledger import (
     CanaryCall,
-    Compilation,
     Record,
     Run,
     RunFinished,
@@ -161,15 +161,6 @@ class Store:
                                 payload,
                             ),
                         )
-                    case Compilation():
-                        _ = cur.execute(
-                            """
-                            INSERT INTO factor.compilation (digest, skeleton, payload, doc)
-                            VALUES (%s, %s, %s, %s::jsonb)
-                            ON CONFLICT DO NOTHING
-                            """,
-                            (record.digest, record.skeleton, payload, payload),
-                        )
                     case _:
                         raise TypeError(f"no table for {type(record).__name__}")
 
@@ -228,12 +219,16 @@ class Store:
         )
 
     def compilations(self, skeleton: str) -> list[Compilation]:
-        return [
-            Compilation.parse(p)
-            for p in self._payloads(
-                "SELECT payload FROM factor.compilation WHERE skeleton = %s", skeleton
-            )
-        ]
+        rows = self._conn.execute(
+            """
+            SELECT r.src FROM factor.component_ref r
+            JOIN factor.component c ON c.digest = r.src
+            WHERE c.kind = 'compilation' AND r.path = '/skeleton' AND r.dst = %s
+            ORDER BY r.src
+            """,
+            (skeleton,),
+        ).fetchall()
+        return [resolve(self.get, str(src), Compilation) for (src,) in rows]
 
     def _payloads(self, query: LiteralString, key: object) -> list[str]:
         return [str(p) for (p,) in self._conn.execute(query, (key,))]

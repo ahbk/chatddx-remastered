@@ -31,10 +31,12 @@ Being a factor and being a component are separate questions. A factor is held in
    Prompts, sampling, engines, model weights, cases, seeds, expectations and scorers are pinned.
 2. **Recorded**: set or known when a run or a score starts, and written into its start record, which is immutable
    and sealed with the rest of its log (`docs/ledger.md`):
-   - the execution settings, such as order and concurrency (`RunStarted.execution`, see "Execution");
-   - the version of the rig that sent the requests (`RunStarted.rig`);
+   - the execution settings, such as order and concurrency (`RunStarted.execution`, `ScoreStarted.execution`, see
+     "Execution").
+   - the version of the rig that sent the requests (`RunStarted.rig`).
    - the scorer code that actually ran (`ScoreStarted.scorer_code`). Set beside the code the scorer pins
-     (`Scorer.code`), it shows whether what ran is what should have run.
+     (`Scorer.code`), it shows whether what ran is what should have run, and `check_score` warns when they differ
+     (`docs/ledger.md`, "Score").
 3. **Observed**: set by nobody, and only detected afterwards. These are the parts of the world outside our control:
    a remote engine that changes without notice, a tool such as a web search that answers differently from day to
    day, a vignette edited at its source, GPU arithmetic that isn't deterministic. Fingerprints, returned model
@@ -44,11 +46,14 @@ Canary sets are components but not factors. They are *instruments*: fixed probe 
 factors without changing any output. They are components so that the same set can be compared across runs (see
 "Canary sets").
 
+Compilations are components but not factors either. They are *provenance*: each says which recipe and compiler
+produced a skeleton (see "Compilation"). No component refers to one, so they change no digest and no output.
+
 A trial's outputs therefore depend on the trial's pinned factors and on its run's recorded and observed factors.
 Two runs of the same trial are interchangeable only when those agree too (see "Open design issues").
 
 ### Not factors
-- Records of what happened (runs, scores, calls, compilations): `docs/ledger.md`. They hold the recorded factors
+- Records of what happened (runs, scores, calls): `docs/ledger.md`. They hold the recorded factors
   and the evidence of the observed ones, but they aren't factors themselves.
 - People, roles, authentication and authorization: `docs/identity.md`.
 - Names, labels, languages, tags, descriptions, owners, collaborators and version history: `docs/catalog.md`.
@@ -57,11 +62,12 @@ Two runs of the same trial are interchangeable only when those agree too (see "O
   (`src/chatddx/facts/facts.py`). Facts help write chunks and check them (`src/chatddx/facts/lint.py`), but no
   digest depends on them.
 - Instruments: canary sets.
+- Provenance: compilations.
 
 ## How components work
 
-Some objects live inside components or records without being components themselves: recipes (in compilation
-records), views (in scorers), canaries (in canary sets) and execution settings (in run records).
+Some objects live inside components or records without being components themselves: recipes (in compilations), views
+(in scorers), canaries (in canary sets) and execution settings (in run records).
 
 ### Canonical form and digest
 A component is written out in one fixed way, its *canonical form*, so that equal components always give the same
@@ -79,6 +85,9 @@ digest; the values inside them keep their order. A model artifact's files are so
 The digest is `sha256:` followed by the SHA-256 of the canonical bytes (`base.py:Component.digest`). Components
 are told apart, and referred to, by their digests.
 
+A copy made with `model_copy(update=…)` is built anew: it is validated, so it follows its kind's rules, and it
+gets its own canonical form and digest.
+
 ### Versions
 Each component type has a schema version (`base.py:Component.schema_version`, 1 for every type today). Adding a
 field with a backward-compatible default needs no new version; changing an existing field's meaning or default
@@ -88,7 +97,7 @@ does. Bytes written with another version are refused rather than guessed at (`ba
 Every component has a `kind` that says what it is: `model`, `engine.local`, `engine.remote`, the nine chunk kinds
 (`chunk.instructions`, `chunk.few_shot`, `chunk.prompt`, `chunk.output`, `chunk.sampling`, `chunk.reasoning`,
 `chunk.passthrough`, `chunk.toolset` and `chunk.translations`), `tool`, `skeleton`, `appendix`, `case`, `trial`,
-`expectation_schema`, `expectation`, `scorer`, `judge`, `scoring` and `canary_set`.
+`expectation_schema`, `expectation`, `scorer`, `judge`, `scoring`, `canary_set` and `compilation`.
 
 ### References and checks
 A reference is a digest field typed with the kinds it may point to (`Annotated[Digest, RefTo(kind, …)]`). From
@@ -107,7 +116,7 @@ An *error* stops the work.
 
 A *finding* (`base.py:Finding`) is a warning, or an info, about something valid but risky, or about something
 observed that doesn't match what was declared. It has a level, a code, a message and, optionally, the digest it
-concerns. Findings never stop the work. `docs/findings.md` lists every code.
+concerns.
 
 ### Registries and bundles
 A `Registry` (`bundle.py`) holds components by digest, in memory. `Registry.add_raw` accepts stored bytes only if
@@ -140,8 +149,9 @@ foreign key (`docs/store.md`).
 | Component | An immutable set of parameters identified by its digest. Pinned factors are held in components. |
 | Digest | `sha256:` followed by the hash of a component's canonical form. Components are told apart and referred to by it. |
 | Instrument | A component that measures without being a factor: canary sets. |
+| Provenance | A component that says how another was made, without being a factor: compilations. |
 | Run | One execution of a trial: its requests, responses and records (`docs/ledger.md`). |
-| Vignette | The clinical text of one case at its source. Sensitive and never stored; known by its source, its id there and its fingerprint. |
+| Vignette | The clinical text of one case at its source. Sensitive. |
 | Case | A vignette plus the appendices sent with it. |
 | Appendix | Extra plain text written for one vignette. |
 | Chunk | A component that fills one part of a request. |
@@ -197,8 +207,8 @@ complex. Appendices are not sensitive. They are stored and sent exactly as writt
 them.
 
 A case lists its appendices in a fixed order that is part of its digest, and refuses an appendix bound to another
-vignette (`Case.cross_check`). So an appendix is never reused across vignettes, but it can appear in several cases
-of the same vignette: for example a case with a lab appendix and one without.
+vignette (`Case.cross_check`). So an appendix is can't be reused across vignettes, but it can appear in several
+cases of the same vignette: for example a case with a lab appendix and one without.
 
 At send time the appendices are joined into one text by the skeleton's appendix layout (see "Rendering").
 
@@ -390,14 +400,14 @@ A recipe may reference one, and compilation then passes every text the recipe br
 - the toolset's guidance and its tools' descriptions;
 - the `title` and `description` strings of the output schema and of the tools' parameters.
 
-Property names, and the values of `enum`, `const`, `default` and `examples`, are never translated, so the answer's
+Property names, and the values of `enum`, `const`, `default` and `examples`, are not translated, so the answer's
 structure and its scoring don't change. Whitespace-only texts pass through unchanged. A text without a translation
 fails the compilation, which lists every missing text: nothing is guessed, and languages never mix.
 `texts(recipe, get)` lists, part by part, the texts a translation needs.
 
 Translations carry no language. A request's language is implicit in its text, and no language tag reaches the
 model; language labels are catalog entries (`docs/catalog.md`). The skeleton holds the translated text, and its
-compilation record keeps the recipe, which names the translations.
+compilation keeps the recipe, which names the translations.
 
 ### Recipe and compilation
 - principal author: Researchers
@@ -422,9 +432,26 @@ With a toolset, the body lists the toolset's tools, in order, as functions. A `n
 `tool_choice: auto`, and the model answers when it stops calling tools. A `tool` contract's answer function is
 listed last, with `tool_choice: required`: every turn calls a tool, and calling the answer tool ends the item.
 
-The recipe is kept only in the compilation record, next to the compiler's version (`docs/ledger.md:Compilation`).
-Trials reference the skeleton, not the recipe, so the compiler's code is not a separate factor: whatever it did
-is frozen in the skeleton.
+The recipe is kept only in the compilation, next to the compiler's version (see "Compilation"). Trials reference
+the skeleton, not the recipe, so the compiler's code is not a separate factor: whatever it did is frozen in the
+skeleton.
+
+### Compilation
+- principal author: none; written by the compiler
+- defined in: `request.py:Compilation`
+
+A compilation (kind `compilation`) says that a recipe compiled to a skeleton. It holds the recipe, the skeleton's
+digest and the version of the compiler's code (`compiler`). It is the only place a recipe is kept, and so the
+lineage from the chunks written in the portal to the frozen request.
+
+A compilation is provenance, not a factor: no component refers to it, so it changes no digest and no output.
+Trials and judges reference the skeleton, which holds whatever the compiler did. The same recipe compiled by the
+same compiler always gives the same compilation. Different recipes can give the same skeleton (see "How chunks
+affect each other"), so a skeleton may have several compilations, and a hand-written one has none.
+
+Its references, the recipe's chunks and the skeleton, are checked like any component's. A bundle carries a
+compilation when it is one of the roots, and the chunks then come with it, so the bundle shows how its skeleton was
+made. Nothing checks that the recipe compiles to the skeleton.
 
 ### Skeleton
 - principal author: none; normally produced by `compile_request`
@@ -472,8 +499,8 @@ the appendices (by default a blank line before and between, nothing after) and g
 none.
 
 The runtime keys `model`, `messages`, `seed`, `stream`, `n` and `return_token_ids` (`request.py:RUNTIME_KEYS`) may
-not be set by any chunk, skeleton or canary. `render` sets four of them; `stream` and `n` are never sent. The wire
-body itself is never stored, only its fingerprint.
+not be set by any chunk, skeleton or canary. `render` sets four of them; `stream` and `n` are not sent. The wire
+body itself is only stored by its fingerprint.
 
 ### Tool rounds
 - defined in: `request.py:tool_calls`, `request.py:next_request`
@@ -549,33 +576,51 @@ Canary probes at the start and end of a run apply to any engine and are planned 
 - principal author: Researchers
 - defined in: `trial.py:Trial`
 
-A trial (kind `trial`) is one scientific intent: a generation skeleton, an engine, the cases, the text-cleanup
-steps (`cleanup`) and the seeds. Cases and seeds are listed without duplicates. A trial pins the factors chosen in
-advance; each run of it adds recorded and observed ones (see "What a factor is").
+A trial (kind `trial`) is one experimental condition (the smallest unit of a scientific intent) and holds:
+- a generation skeleton
+- an engine
+- the cases
+- the text-cleanup steps (`cleanup`)
+- the seeds
 
-The seeds are explicit. The portal can propose distinct random 31-bit seeds (`suggest_seeds`), which users are free
-to change. Each seed defines one replicate, identified by its position. With greedy sampling no seed is sent, but
-the seeds still count toward the trial's digest (see "Open design issues").
+A trial pins the factors chosen in advance; each of its runs adds recorded and observed ones.
+
+#### Send order and de-duplication
+Cases and seeds are listed without duplicates. Cases are sorted by digest so their order is no part of the trial.
+The run declares the send order (see "Execution"). Seeds keep their order as each seed's position names a
+replicate.
+
+#### Seeds are explicit
+A helper can propose distinct random 31-bit seeds (`suggest_seeds`), which users are free to change. Each seed
+defines one replicate, identified by its position. With greedy sampling no seed is sent, but the seeds still count
+toward the trial's digest (see "Open design issues").
 
 ### Execution
-- defined in: `trial.py:Execution`, recorded in `docs/ledger.md:RunStarted`
+- defined in: `trial.py:Execution`, recorded in `docs/ledger.md:RunStarted` and `docs/ledger.md:ScoreStarted`
 
-Execution settings say how a run issues its requests. They are a recorded factor, not a component: each run writes
-its own into its start record, and they are not part of the trial's digest. Running a trial again with other
-settings is a new run of the same trial.
+When a run issues its requests, or a score issues its judge requests, `Execution` provides the following
+details:
+- `order`, the order in which a run/score sends its items:
+  - `case_major@1` (the default: every replicate of a case before the next case, cases in digest order)
+  - `replicate_major@1` (every case once per replicate, cases in digest order)
+  - `shuffled@1`, which needs a `shuffle_seed` and orders the items by a hash of that seed, the case and the replicate.
+- `concurrency` (1 by default)
+- `timeout_s` (optional)
+- `retries` (0 by default)
 
-Order and concurrency change outputs only on engines that aren't batch invariant, where they affect how requests
-are batched and so the arithmetic. Timeout and retries decide whether an item gets an answer at all. Keeping these
-settings out of the trial means changing them doesn't make a new trial, which suits batch-invariant engines. On
-other engines, runs with different settings aren't interchangeable (see "Open design issues").
+`Execution.schedule(cases, replicates)` lists the (case, replicate) pairs in send order.
 
-The settings are:
-- `order`: `case_major@1` (the default: every replicate of a case before the next case), `replicate_major@1`
-  (every case once per replicate), or `shuffled@1`, which needs a `shuffle_seed` and orders the items by a hash of
-  that seed, the case and the replicate.
-- `concurrency` (1 by default), `timeout_s` (optional) and `retries` (0 by default).
+These settings are a recorded factor (but not a component proper) written into the start record of each run or
+score, without affecting the trial's (or scoring's) digest, so running a trial (or scoring) again with other
+settings is a rerun of the same trial (or scoring).
 
-`Execution.schedule(cases, replicates)` lists the (case, replicate) pairs in that order.
+This suits batch-invariant engines, but they change outputs on engines that aren't batch invariant (where they
+affect how requests are batched and so the arithmetic). See "Runs of the same trial aren't interchangeable" under
+"Open design issues" for more information. Timeout and retries also decide whether a request gets an answer at all.
+
+A run's calls, and a score's judge calls, show whether the settings were followed: `check_run` and `check_score`
+warn when a call took more attempts than `retries` allows, when items were sent out of order, or when more calls
+were in flight than `concurrency` allows (`docs/ledger.md`, "Run" and "Score"). Timeouts aren't checked.
 
 ## Scoring
 
@@ -779,8 +824,8 @@ received case-derived content, which clearance may need.
 ### Smaller issues
 - **Canary drift isn't checked.** Nothing compares canary outputs between phases or between runs.
 - **Judge engines are never probed.** Canary probes run on the run's engine only.
-- **Skeleton provenance.** Should a skeleton be accepted only with a compilation record? Hand-written ones, such as
-  judge prompts, are possible today.
+- **Skeleton provenance.** Should a skeleton be accepted only with a compilation? Hand-written ones, such as judge
+  prompts, are possible today.
 - **Flags are checked without vLLM's list of flags.** So a bare argument after a flag that takes no value, as in
   `--enforce-eager google/gemma`, passes the argv check, and vLLM then refuses to start. Likewise lints read flags
   by their full names, so an abbreviated flag such as `--reasoning-pars qwen3` works in vLLM but escapes the lints
@@ -866,3 +911,7 @@ reference, straight from the schema. `RefTo` used to do this, and was stopped be
 Schema plays no part in a component's digest, so adding it back changes no digest.
 
 ## Proposed amendments
+- CHANGE the paths to the ledger, which is now split by subject (`src/chatddx/ledger/`: `record.py`, `call.py`,
+  `run.py`, `score.py`): in "The inventory doesn't locate local engines yet, …", "`Call`
+  (`src/chatddx/ledger/ledger.py`)" → "`Call` (`src/chatddx/ledger/call.py`)"; in "Smaller issues", "The model name
+  is chosen in several places", "`src/chatddx/ledger/ledger.py:check_run`" → "`src/chatddx/ledger/run.py:check_run`".
