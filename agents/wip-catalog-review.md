@@ -82,7 +82,8 @@ open, decided (the user said so), held (waits for the language items), done.
   (857147a). Residual, for "Open design issues": a language written on a skeleton that is compiled later is
   ignored.
 - B7 a skeleton with several compilations: `language_of` and titles use the first by digest. Default: language needs
-  all to agree; titles keep the first. held: language.
+  all to agree; titles keep the first. Decided: every compilation votes, those that know no language abstain,
+  disagreement gives none; titles keep the first. done.
 - B8 `repair(id=…)` doesn't check that the new place is free, so two families can end up bound to one vignette,
   which `adopt` refuses. The tier-2 binding trigger lets a binding change source when the fingerprint stays; Python
   never does (`0018-t2-catalog-bindings.sql:9`). Default: refuse both. done (acc19d7, migration 0022).
