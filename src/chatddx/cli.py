@@ -1,7 +1,6 @@
 import argparse
 import getpass
 from collections.abc import Sequence
-from datetime import UTC, datetime
 from pathlib import Path
 
 import psycopg
@@ -54,7 +53,7 @@ def _person_password(args: argparse.Namespace) -> None:
 def _init_data(args: argparse.Namespace) -> None:
     sample: Path = args.data
     facts = Facts.load(*(args.facts or [sample / "facts.toml"]))
-    plan = plan_factors(sample / "factors.toml", facts, rig(), datetime.now(UTC))
+    plan = plan_factors(sample / "factors.toml", facts, rig())
     cases = load_cases(sample / "cases.toml")
     if args.world is not None:
         source = Inventory.load(args.world).source(args.source)

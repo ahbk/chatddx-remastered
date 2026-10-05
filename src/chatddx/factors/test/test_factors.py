@@ -30,6 +30,7 @@ from chatddx.factors.request import (
     MANAGED_KEYS,
     OUTPUT_KEYS,
     AppendixLayout,
+    Compilation,
     Example,
     FewShot,
     Insert,
@@ -979,6 +980,29 @@ def test_bundle_roundtrip_and_tamper(reg: Registry) -> None:
     )
     with pytest.raises(StructuralError, match="does not match"):
         _ = tampered.load()
+
+
+def test_compilations_are_provenance(reg: Registry) -> None:
+    recipe = generation_recipe(reg)
+    skeleton = reg.add(compile_request(recipe, reg.get))
+    compilation = Compilation(recipe=recipe, skeleton=skeleton, compiler=RIG)
+    digest = reg.add(compilation)
+    assert (
+        reg.add(Compilation(recipe=recipe, skeleton=skeleton, compiler=RIG)) == digest
+    )
+    assert {"/recipe/prompt", "/skeleton"} <= {s.path for s in compilation.refs()}
+    reg.check([digest])
+    bundle = reg.bundle([digest], generator=RIG)
+    assert {recipe.prompt, skeleton} <= bundle.components.keys()
+
+    dangling = Compilation(
+        recipe=recipe.model_copy(update={"prompt": "sha256:" + SHA}),
+        skeleton=skeleton,
+        compiler=RIG,
+    )
+    _ = reg.add(dangling)
+    with pytest.raises(StructuralError, match="is missing"):
+        reg.check([dangling.digest])
 
 
 def test_judges_fill_their_slots_from_a_view(reg: Registry) -> None:

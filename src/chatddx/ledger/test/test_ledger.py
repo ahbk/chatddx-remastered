@@ -24,7 +24,6 @@ from chatddx.factors.trial import Trial
 from chatddx.ledger.ledger import (
     Call,
     CanaryCall,
-    Compilation,
     ItemKey,
     JudgeCall,
     Run,
@@ -295,7 +294,6 @@ def test_only_items_are_case_derived() -> None:
         ScoreStarted,
         ScoreItem,
         ScoreFinished,
-        Compilation,
     )
     assert [r for r in records if r.case_derived] == [RunItem, ScoreItem]
 

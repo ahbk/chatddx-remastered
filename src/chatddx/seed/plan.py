@@ -1,7 +1,6 @@
 import json
 import tomllib
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 
 from pydantic import JsonValue, ValidationError
@@ -9,6 +8,7 @@ from pydantic import JsonValue, ValidationError
 from chatddx.factors.base import Code, Component
 from chatddx.factors.bundle import Registry
 from chatddx.factors.request import (
+    Compilation,
     FewShot,
     Instructions,
     Output,
@@ -24,7 +24,6 @@ from chatddx.factors.request import (
 )
 from chatddx.factors.scoring import ExpectationSchema
 from chatddx.facts.facts import INTENTS, Effort, Facts, Refused
-from chatddx.ledger.ledger import Compilation
 
 # The sample's tables, in the order they're planned: a table may reference only those before it.
 TABLES: dict[str, type[Component]] = {
@@ -64,7 +63,7 @@ class Planned:
     tags: tuple[str, ...] = ()
     description: str | None = None
     fork_of: str | None = None
-    compilation: Compilation | None = None
+    compilation: str | None = None
 
 
 @dataclass
@@ -140,7 +139,7 @@ def _tags(value: JsonValue) -> tuple[str, ...]:
 
 
 def plan_factors(
-    path: Path, facts: Facts, compiler: Code, at: datetime, root: Path | None = None
+    path: Path, facts: Facts, compiler: Code, root: Path | None = None
 ) -> Plan:
     with path.open("rb") as f:
         data = tomllib.load(f)
@@ -223,8 +222,8 @@ def plan_factors(
                 tags=tags,
                 description=None if description is None else str(description),
                 fork_of=base("recipe", fork_of, model),
-                compilation=Compilation(
-                    recipe=recipe, skeleton=skeleton, compiler=compiler, at=at
+                compilation=plan.registry.add(
+                    Compilation(recipe=recipe, skeleton=skeleton, compiler=compiler)
                 ),
             )
         add("recipe", name, variants)

@@ -1,5 +1,4 @@
 from collections import Counter
-from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -20,7 +19,7 @@ CASES = load_cases(SAMPLE / "cases.toml")
 
 def sample_plan(factors: Path = SAMPLE / "factors.toml") -> Plan:
     facts = Facts.load(SAMPLE / "facts.toml")
-    return plan_factors(factors, facts, rig(), datetime.now(UTC), root=SAMPLE)
+    return plan_factors(factors, facts, rig(), root=SAMPLE)
 
 
 def vignettes(**changed: bytes) -> MemorySource:

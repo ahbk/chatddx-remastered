@@ -22,14 +22,7 @@ from chatddx.factors.base import (
 from chatddx.factors.bundle import Registry
 from chatddx.factors.cases import Case, CaseRef
 from chatddx.factors.engine import LocalEngine, RemoteEngine
-from chatddx.factors.request import (
-    Recipe,
-    Skeleton,
-    SkeletonRef,
-    Tool,
-    ToolOutput,
-    tool_calls,
-)
+from chatddx.factors.request import Skeleton, Tool, ToolOutput, tool_calls
 from chatddx.factors.scoring import Judge, JudgeRef, Scorer, Scoring, ScoringRef
 from chatddx.factors.select import reaches
 from chatddx.factors.trial import (
@@ -369,18 +362,6 @@ def _check_log(
         _in_order(stages[0].at, later.at)
     if any(_log_id(r) != log for r in [*stages, *rows]):
         raise StructuralError("rows belong to different logs")
-
-
-class Compilation(Record):
-    case_derived: ClassVar[bool] = False
-    recipe: Recipe
-    skeleton: SkeletonRef
-    compiler: Code
-    at: UtcDatetime
-
-    @property
-    def digest(self) -> str:
-        return sha256_digest(self.canonical)
 
 
 def _sealed(log: Run | Score, subject: str) -> list[Finding]:

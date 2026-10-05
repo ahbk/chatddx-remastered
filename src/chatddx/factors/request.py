@@ -553,6 +553,13 @@ class Skeleton(Component):
 SkeletonRef = Annotated[Digest, RefTo("skeleton")]
 
 
+class Compilation(Component):
+    kind: Literal["compilation"] = "compilation"
+    recipe: Recipe
+    skeleton: SkeletonRef
+    compiler: Code
+
+
 def _tool_name(tool: JsonValue) -> str:
     match tool:
         case {"function": {"name": str() as name}}:

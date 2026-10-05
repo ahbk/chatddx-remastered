@@ -6,7 +6,6 @@ from chatddx.factors.base import Fingerprint
 from chatddx.factors.cases import Case, Vignette
 from chatddx.factors.scoring import Expectation
 from chatddx.inventory.sources import Source
-from chatddx.ledger.ledger import Compilation
 from chatddx.store.catalog import Catalog
 from chatddx.store.people import People
 from chatddx.store.store import Connection, Store
@@ -65,21 +64,18 @@ class _Seeder:
         digest: str,
         found: list[int],
         name: str | None,
-        compilation: Compilation | None = None,
+        compilation: str | None = None,
         fork_of: int | None = None,
     ) -> tuple[int, str]:
         label = f"{kind} {name}" if name is not None else kind
         if len(found) > 1:
             raise ValueError(f"the archive has {len(found)} threads for {label}")
-        if compilation is not None:
-            self.store.append(compilation)
-        c = None if compilation is None else compilation.digest
         if not found:
             forked_from = None if fork_of is None else self.catalog.head(fork_of).id
             edit = self.catalog.create(
                 digest,
                 self.archive.id,
-                compilation=c,
+                compilation=compilation,
                 forked_from=forked_from,
                 name=name,
             )
@@ -87,7 +83,7 @@ class _Seeder:
         thread = found[0]
         if self.catalog.head(thread).digest == digest:
             return thread, "validated"
-        _ = self.catalog.edit(thread, digest, self.archive.id, compilation=c)
+        _ = self.catalog.edit(thread, digest, self.archive.id, compilation=compilation)
         return thread, "updated"
 
     def record(self, r: Planned) -> None:
@@ -200,7 +196,10 @@ def seed(
         people = People(conn)
         archive = people.find(ARCHIVE) or people.add(ARCHIVE, "Archive")
         seeder = _Seeder(conn, plan, archive)
-        _ = seeder.store.add(plan.registry, [r.digest for r in plan.records])
+        compilations = [r.compilation for r in plan.records if r.compilation]
+        _ = seeder.store.add(
+            plan.registry, [*(r.digest for r in plan.records), *compilations]
+        )
         for r in plan.records:
             seeder.record(r)
         seeder.lines += [f"[skipped] {s}" for s in plan.skipped]

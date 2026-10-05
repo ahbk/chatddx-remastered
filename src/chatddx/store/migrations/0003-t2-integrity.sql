@@ -5,12 +5,6 @@ ALTER TABLE factor.component ADD CHECK (
     AND v = (doc->>'v')::integer
 );
 
-ALTER TABLE factor.compilation ADD CHECK (
-    digest = 'sha256:' || encode(sha256(convert_to(payload, 'UTF8')), 'hex')
-    AND doc = payload::jsonb
-    AND skeleton = doc->>'skeleton'
-);
-
 ALTER TABLE ledger.run_stage ADD CHECK (
     doc = payload::jsonb
     AND run = (doc->>'run')::uuid
@@ -83,7 +77,7 @@ DECLARE
     t regclass;
 BEGIN
     FOREACH t IN ARRAY ARRAY[
-        'factor.component', 'factor.component_ref', 'factor.compilation',
+        'factor.component', 'factor.component_ref',
         'ledger.run_stage', 'ledger.run_item', 'ledger.canary_call',
         'ledger.score_stage', 'ledger.score_item'
     ]::regclass[] LOOP

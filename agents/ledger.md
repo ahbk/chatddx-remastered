@@ -1,8 +1,11 @@
 # Ledger
 
-The factors (`docs/factors.md`) say what an experiment should be. The ledger says what happened: which skeleton a
-recipe compiled to, which requests a run sent and what came back, and how a score graded them. Each such fact is a
-*record*, and the ledger is all of them.
+The factors (`docs/factors.md`) say what an experiment should be. The ledger says what happened: which requests a
+run sent and what came back, and how a score graded them. Each such fact is a *record*, and the ledger is all of
+them.
+
+How a skeleton was compiled is not in the ledger. Compiling is deterministic, so nothing about it is observed; a
+compilation is provenance, stored as a component (`docs/factors.md`, "Compilation").
 
 Records are not factors. A factor is chosen in advance and pinned by digest; a record is written when something
 happens. Records hold the *recorded* factors and the evidence of the *observed* ones (`docs/factors.md`, "What a
@@ -15,15 +18,13 @@ Code paths are relative to `src/chatddx/ledger/` unless they start with `src/` o
 - defined in: `ledger.py:Record`
 
 ### Logs and stages
-Most records belong to a *log*: a run or a score. A log has
+Every record belongs to a *log*: a run or a score. A log has
 - a started row, written first, saying what is about to happen;
 - item rows, one for each thing that happened (a run also has canary-call rows);
 - a finished row, written last, holding the seal.
 
 The started and finished rows are the log's *stages*. A new kind of stage would be a new row type in the same log,
 not a new log.
-
-Compilations stand alone: one row each, in no log.
 
 Records are never changed or removed: a log only grows, by adding rows.
 
@@ -66,7 +67,6 @@ Content produced from a vignette is *case-derived*. Each record type declares wh
 
 The other types hold none. Started and finished rows hold references, settings, times, seals and findings written
 by code. Canary calls answer canaries, which are non-sensitive by definition (`docs/factors.md`, "Canary sets").
-Compilations hold a recipe and a skeleton's digest.
 
 Request bodies and prompt-token ids would also carry the case's text, so neither is stored: only their
 fingerprints are (see "Call").
@@ -290,24 +290,6 @@ It warns when
 - a finished score lacks an item for some run item and view (`score.incomplete`);
 - the rows no longer match the seal (`ledger.seal`).
 
-## Compilation
-- principal author: none; written by the compiler
-- defined in: `ledger.py:Compilation`
-
-A compilation records that a recipe compiled to a skeleton (`docs/factors.md`, "Recipe and compilation"): the
-recipe, the skeleton's digest, the version of the compiler's code (`compiler`) and the time. It is the only place a
-recipe is kept, and so the lineage from the chunks written in the portal to the frozen request. It holds no case
-text.
-
-A compilation has no id. It is known by its digest (`Compilation.digest`): `sha256:` followed by the SHA-256 of its
-canonical bytes, as for a component. It is not a component, though: no registry holds it and no component refers to
-it.
-
-Writing the same compilation twice changes nothing. Its time is part of its bytes, though, so compiling a recipe
-again makes a new compilation. If the skeleton comes out the same, the new compilation points at the existing
-skeleton; if it doesn't, for example after a change to the compiler, it points at a new skeleton, which is a new
-factor.
-
 ## Findings
 A finding (`docs/factors.md`, "Errors and findings") has a level, a code, a message and, optionally, a subject. All
 of the ledger's findings are warnings.
@@ -330,7 +312,7 @@ of the ledger's findings are warnings.
 | Term | Meaning |
 | --- | --- |
 | Record | A row written when something happens: what happened, not what was planned. |
-| Ledger | All records: run logs, score logs and compilations. |
+| Ledger | All records: the run and score logs. |
 | Log | A run or a score: a started row, item rows and a finished row, only ever added to. |
 | Stage | A log's started or finished row. |
 | Item key | (case, replicate): which request of a run an item is. |
@@ -347,7 +329,6 @@ Some records state what should happen and others what did, but nothing compares 
 - the execution settings and the calls: a call sent more times than `retries` allows, or one that took longer than
   `timeout_s`, passes;
 - `ScoreStarted.scorer_code` and the scorer's `Scorer.code`;
-- a compilation's recipe and its skeleton: nothing compiles the recipe again to check that it gives the skeleton;
 - a call's request fingerprint and the request it should have been. A request can be rebuilt from stored data and
   the vignette, and a judge request from the scorer's parse of the answer (`docs/factors.md`, "Judge"), but nothing
   does it.

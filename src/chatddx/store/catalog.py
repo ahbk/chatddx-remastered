@@ -29,10 +29,9 @@ from chatddx.factors.base import (
 )
 from chatddx.factors.bundle import Registry
 from chatddx.factors.cases import Appendix, Case, Vignette
-from chatddx.factors.request import Recipe, Skeleton, texts
+from chatddx.factors.request import Compilation, Recipe, Skeleton, texts
 from chatddx.factors.scoring import Expectation, Scorer
 from chatddx.factors.trial import Trial
-from chatddx.ledger.ledger import Compilation
 
 from .store import Connection, Store
 
@@ -366,16 +365,10 @@ class Catalog:
             case "trial":
                 return self.language_of(resolve(store.get, digest, Trial).skeleton)
             case "skeleton":
-                row = self._conn.execute(
-                    """
-                    SELECT payload FROM factor.compilation WHERE skeleton = %s
-                    ORDER BY digest LIMIT 1
-                    """,
-                    (digest,),
-                ).fetchone()
-                if row is None:
+                compilations = store.compilations(digest)
+                if not compilations:
                     return self._label(digest)
-                recipe = Compilation.parse(str(row[0])).recipe
+                recipe = compilations[0].recipe
                 if recipe.translations is not None:
                     return self._label(recipe.translations)
                 parts: list[str | None] = [
@@ -636,12 +629,7 @@ class Catalog:
     def _recipe(self, edit: Edit) -> Recipe | None:
         if edit.compilation is None:
             return None
-        row = self._conn.execute(
-            "SELECT payload FROM factor.compilation WHERE digest = %s",
-            (edit.compilation,),
-        ).fetchone()
-        assert row is not None
-        return Compilation.parse(str(row[0])).recipe
+        return resolve(Store(self._conn).get, edit.compilation, Compilation).recipe
 
     def _label(self, digest: str) -> str | None:
         rows = self._conn.execute(
@@ -661,19 +649,16 @@ class Catalog:
         return str(rows[0][0]) if len(rows) == 1 and rows[0][0] is not None else None
 
     def _derive(self, digest: str, compilation: str | None = None) -> str:
-        component = Store(self._conn).get(digest)
+        store = Store(self._conn)
+        component = store.get(digest)
         if isinstance(component, Skeleton):
-            row = self._conn.execute(
-                """
-                SELECT payload FROM factor.compilation
-                WHERE skeleton = %s AND (digest = %s OR %s::text IS NULL)
-                ORDER BY digest LIMIT 1
-                """,
-                (digest, compilation, compilation),
-            ).fetchone()
-            if row is not None:
-                recipe = Compilation.parse(str(row[0])).recipe
-                return describe_recipe(recipe, self.title_of)
+            compilations = (
+                store.compilations(digest)
+                if compilation is None
+                else [resolve(store.get, compilation, Compilation)]
+            )
+            if compilations:
+                return describe_recipe(compilations[0].recipe, self.title_of)
         return describe(component, self.title_of)
 
     def _shape(self, edit: Edit, by_recipe: bool) -> dict[str, JsonValue]:

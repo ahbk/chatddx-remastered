@@ -866,3 +866,39 @@ reference, straight from the schema. `RefTo` used to do this, and was stopped be
 Schema plays no part in a component's digest, so adding it back changes no digest.
 
 ## Proposed amendments
+
+- The following amendments describe compilations as components of kind `compilation`, provenance rather than
+  factors (`src/chatddx/factors/request.py:Compilation`; moved out of `src/chatddx/ledger/ledger.py`, without its
+  `at`). The ledger doc no longer describes them.
+- CHANGE "What a factor is", after the canary-sets paragraph, ADD: "Compilations are components but not factors
+  either. They are *provenance*: each says which recipe and compiler produced a skeleton (see "Compilation"). No
+  component refers to one, so they change no digest and no output."
+- CHANGE "Not factors": "Records of what happened (runs, scores, calls, compilations)" → "(runs, scores, calls)";
+  ADD "- Provenance: compilations."
+- CHANGE "How components work": "recipes (in compilation records)" → "recipes (in compilations)".
+- CHANGE "Kinds": ADD `compilation` after `canary_set`.
+- ADD to "Terms": "Provenance | A component that says how another was made, without being a factor:
+  compilations."
+- CHANGE "Translations": "its compilation record keeps the recipe" → "its compilation keeps the recipe".
+- CHANGE "Recipe and compilation": "The recipe is kept only in the compilation record, next to the compiler's
+  version (`docs/ledger.md:Compilation`)." → "The recipe is kept only in the compilation, next to the compiler's
+  version (see "Compilation")."
+- ADD after "Recipe and compilation":
+
+  > ### Compilation
+  > - principal author: none; written by the compiler
+  > - defined in: `request.py:Compilation`
+  >
+  > A compilation (kind `compilation`) says that a recipe compiled to a skeleton. It holds the recipe, the
+  > skeleton's digest and the version of the compiler's code (`compiler`). It is the only place a recipe is kept,
+  > and so the lineage from the chunks written in the portal to the frozen request.
+  >
+  > A compilation is provenance, not a factor: no component refers to it, so it changes no digest and no output.
+  > Trials and judges reference the skeleton, which holds whatever the compiler did. The same recipe compiled by the
+  > same compiler always gives the same compilation. Different recipes can give the same skeleton (see "How chunks
+  > affect each other"), so a skeleton may have several compilations, and a hand-written one has none.
+  >
+  > Its references, the recipe's chunks and the skeleton, are checked like any component's. A bundle carries a
+  > compilation when it is one of the roots, and the chunks then come with it, so the bundle shows how its skeleton
+  > was made. Nothing checks that the recipe compiles to the skeleton.
+- CHANGE "Smaller issues", "Skeleton provenance": "only with a compilation record?" → "only with a compilation?".

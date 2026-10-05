@@ -264,3 +264,12 @@ See `docs/findings.md` for a list of all findings and what they mean.
 **Canary drift are not implemented:** nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
+
+- CHANGE glossary, "Factor: ("component" in code)" → "stored as a component; canary sets (instruments) and
+  compilations (provenance) are components that aren't factors" (`docs/factors.md`, "What a factor is").
+- CHANGE glossary, "Compilation: the record of which recipe and compiler produced a skeleton." → "provenance: the
+  component that says which recipe and compiler produced a skeleton" (`src/chatddx/factors/request.py:Compilation`).
+- CHANGE glossary, "Record / ledger: events logged while compiling, running or scoring." → "while running or
+  scoring".
+- CHANGE "Before a run", step 2: "A Compilation record notes which recipe produced which skeleton." → "A Compilation
+  notes which recipe and compiler produced the skeleton; it is stored as a component, but isn't a factor."
