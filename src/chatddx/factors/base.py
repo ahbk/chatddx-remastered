@@ -21,7 +21,6 @@ from pydantic import (
     AfterValidator,
     BaseModel,
     ConfigDict,
-    GetJsonSchemaHandler,
     JsonValue,
     SerializationInfo,
     SerializerFunctionWrapHandler,
@@ -29,8 +28,6 @@ from pydantic import (
     model_serializer,
     model_validator,
 )
-from pydantic.json_schema import JsonSchemaValue
-from pydantic_core import CoreSchema
 
 Digest = Annotated[str, StringConstraints(pattern=r"^sha256:[0-9a-f]{64}$")]
 Sha256Hex = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
@@ -98,13 +95,6 @@ class RefTo:
 
     def __init__(self, *kinds: str) -> None:
         object.__setattr__(self, "kinds", kinds)
-
-    def __get_pydantic_json_schema__(
-        self, core_schema: CoreSchema, handler: GetJsonSchemaHandler
-    ) -> JsonSchemaValue:
-        schema = handler(core_schema)
-        schema["x-ref"] = list(self.kinds)
-        return schema
 
 
 @dataclass(frozen=True)

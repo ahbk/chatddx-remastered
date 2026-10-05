@@ -62,8 +62,9 @@ Two runs of the same trial are interchangeable only when those agree too (see "O
 Some objects live inside components or records without being components themselves: recipes (in compilation
 records), views (in scorers), canaries (in canary sets) and execution settings (in run records).
 
-### Identity
-A component's identity is its *canonical form*: JSON in which
+### Canonical form and digest
+A component is written out in one fixed way, its *canonical form*, so that equal components always give the same
+bytes. The canonical form is JSON in which
 - field names are sorted;
 - fields equal to their default are left out (`kind` is always kept), so adding a field whose default keeps the
   old behavior leaves every existing digest unchanged;
@@ -74,7 +75,8 @@ because a schema's property order is part of what a model reads. The top-level k
 `chat_template_kwargs`, `params`, `env` and translation entries) are sorted instead, so equivalent settings share a
 digest; the values inside them keep their order. A model artifact's files are sorted by path.
 
-The digest is `sha256:` followed by the SHA-256 of the canonical bytes (`base.py:Component.digest`).
+The digest is `sha256:` followed by the SHA-256 of the canonical bytes (`base.py:Component.digest`). Components
+are told apart, and referred to, by their digests.
 
 ### Versions
 Each component type has a schema version (`base.py:Component.schema_version`, 1 for every type today). Adding a
@@ -135,7 +137,7 @@ foreign key (`docs/store.md`).
 | Factor | Anything that can change an output or its score. |
 | Pinned, recorded, observed | The three ways a factor is held: fixed in advance by digest, written into a run's or a score's start record, or only detected afterwards. |
 | Component | An immutable set of parameters identified by its digest. Pinned factors are components. |
-| Digest | `sha256:` followed by the hash of a component's canonical form; the component's identity. |
+| Digest | `sha256:` followed by the hash of a component's canonical form. Components are told apart and referred to by it. |
 | Instrument | A component that measures without being a factor: canary sets. |
 | Run | One execution of a trial: its requests, responses and records (`docs/ledger.md`). |
 | Vignette | The clinical text of one case at its source. Sensitive and never stored; known by its source, its id there and its fingerprint. |
@@ -753,10 +755,6 @@ Nothing aggregates scores today, but anything that compares or pools runs by the
 conditions without noticing. It needs to group by the recorded factors as well, and to check the evidence of the
 observed ones (prompt-token fingerprints, returned models, canaries) before pooling.
 
-### `x-ref` has no consumer
-`RefTo` puts `x-ref` (the allowed kinds) on each reference field when pydantic writes a component's JSON Schema.
-Nothing reads it today, and it may be dead weight if the portal doesn't need it.
-
 ### Greedy sampling and seeds
 No seed is sent with greedy sampling, but a trial's seeds still count toward its digest, so two otherwise identical
 greedy trials differ only in digest. Likewise, the seeds of a greedy judge all send the same request.
@@ -848,5 +846,11 @@ A passthrough refuses a fixed list of keys and lets everything else through. Two
 - lints instead of refusals: risky keys would give a finding, in the spirit of "warnings, not crashes". But a
   passthrough already refuses runtime and output keys, and keys that put case text in the stored response are
   closer to the clearance block than to a warning.
+
+### Reference kinds in components' JSON Schemas
+`RefTo` could put the kinds a reference may point to on its field in the JSON Schema pydantic writes for a
+component (as an `x-ref` keyword, say). A portal form could then offer a picker of the right kind for every
+reference, straight from the schema. It was there until nothing used it; the JSON Schema plays no part in a
+component's digest, so adding it back changes no digest.
 
 ## Proposed amendments

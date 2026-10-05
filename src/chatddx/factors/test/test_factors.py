@@ -177,10 +177,6 @@ def test_references_come_from_field_types(reg: Registry) -> None:
         "/engine": ("engine.local", "engine.remote"),
         "/cases/0": ("case",),
     }
-    schema = Trial.model_json_schema()
-    assert schema["properties"]["engine"]["x-ref"] == ["engine.local", "engine.remote"]
-    appendices = Case.model_json_schema()["properties"]["appendices"]
-    assert appendices["items"]["x-ref"] == ["appendix"]
 
 
 def test_greedy_drops_sampling_noise() -> None:
