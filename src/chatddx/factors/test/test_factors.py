@@ -21,7 +21,6 @@ from chatddx.factors.cases import (
     prepare_case,
 )
 from chatddx.factors.engine import (
-    FileDigest,
     LocalEngine,
     RemoteEngine,
     check_chat_template,
@@ -1034,9 +1033,7 @@ def test_chat_template_check(reg: Registry) -> None:
     template = b"{{ bos_token }}{% for m in messages %}{{ m.content }}{% endfor %}"
     engine = local_engine(reg).model_copy(
         update={
-            "chat_template": FileDigest(
-                path="chat_template.jinja", sha256=hashlib.sha256(template).hexdigest()
-            )
+            "chat_template": hashlib.sha256(template).hexdigest(),
         }
     )
     assert check_chat_template(engine, template) == []

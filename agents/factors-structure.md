@@ -492,7 +492,8 @@ A local engine (kind `engine.local`) is a vLLM server we run. It declares:
 - its hardware: GPU, compute capability, VRAM and driver;
 - its runtime: the server (`vllm`), its version and its Nix closure path;
 - the model artifact it serves;
-- the digest of its chat-template file;
+- the SHA-256 of its chat-template file, which pins the template's content; where the file lives is the
+  inventory's business, so moving it doesn't change the engine;
 - the raw `argv` and `env` passed to vLLM.
 
 The start-up script owns `--model`, `--served-model-name`, `--chat-template`, `--tokenizer` and `--revision`
@@ -504,7 +505,7 @@ The served model name is the engine's digest, so every response names the exact 
 invariance is declared through `env`, for example `VLLM_BATCH_INVARIANT=1`. Knowledge that changes between vLLM
 versions lives in lints, not in these fields.
 
-`check_chat_template(engine, template)` warns when the template file doesn't match the declared digest
+`check_chat_template(engine, template)` warns when the template file doesn't match the declared hash
 (`engine.chat_template`) or reads the current date (`engine.chat_template_date`).
 
 Hardware and runtime are part of the engine rather than components of their own. So they can't be listed, picked
@@ -732,10 +733,6 @@ Nothing aggregates scores today, but anything that compares or pools runs by the
 conditions without noticing. It needs to group by the recorded factors as well, and to check the evidence of the
 observed ones (prompt-token fingerprints, returned models, canaries) before pooling.
 
-### The chat template's path is part of the engine
-`LocalEngine.chat_template` is a path and a digest, so moving the template file makes a new engine, although where
-a file lives is an inventory fact.
-
 ### Expectations can't be split
 `View.split` applies to what the output selector picks only. Expectations written as free text can't be split into
 items the same way.
@@ -757,11 +754,14 @@ Nothing reads it today, and it may be dead weight if the portal doesn't need it.
 No seed is sent with greedy sampling, but a trial's seeds still count toward its digest, so two otherwise identical
 greedy trials differ only in digest. Likewise, the seeds of a greedy judge all send the same request.
 
-### Local engines have no endpoint, and runs don't record where calls went
-`LocalEngine` has no URL, so a runner needs a mapping from engine digest to URL that nothing defines yet. It
-belongs in the inventory (a location), not in the catalog. One engine may be served by several identical hosts,
-and one host serves different engines over time, so the mapping can't be part of the engine. The runner can check
-the mapping before sending, because a local engine's served model name is its digest and `/v1/models` lists it.
+### The inventory doesn't locate local engines yet, and runs don't record where calls went
+A local engine pins what it is but not where it is: it has no URL, and its model files and chat template are
+pinned by hash only. A runner needs a mapping from engine digest to URL, and the start-up script needs the paths of
+the model files and the chat template on its host. Nothing defines these yet. Being locations, they belong in the
+inventory, not in the catalog; today the inventory locates only vignette sources (`src/chatddx/inventory/`). One
+engine may be served by several identical hosts, and one host serves different engines over time, so the mapping can't
+be part of the engine. The runner can check the mapping before sending, because a local engine's served model
+name is its digest and `/v1/models` lists it.
 
 A remote engine's `base_url`, by contrast, is part of its digest, so moving the same API to a new host makes a new
 engine. Either way `Call` (`src/chatddx/ledger/ledger.py`) records no URL, so the ledger can't show which endpoint
@@ -808,5 +808,17 @@ Making it a component, a new kind such as `execution` that `RunStarted` referenc
 a catalog thread and a foreign key like the pinned factors. It would still stay out of the trial's digest, so it
 would change how execution settings are stored, not what a trial means. The cost is a new kind (with the catalog's
 thread kinds and their migration) and a change to the run record.
+
+### Chat templates as components
+Today a local engine pins its chat template by the file's SHA-256 (`LocalEngine.chat_template`), like the model
+files: a world input, fetched from wherever the inventory says it is. A bundle therefore holds the template's hash
+but not the template, and only `check_chat_template`, with the file in hand, can read it.
+
+Making the template a component, a new kind such as `chat_template` holding the template's text, that the engine
+references by digest, would put it inside the bundle: it is small and not sensitive, so a bundle could rebuild the
+engine's prompt formatting offline. Lints could read it too, so the "reads the current date" check
+(`engine.chat_template_date`) would run when factors are linted, not only on a host. Engines sharing a template
+would share the component. It would move the template from world input to authored factor, and cost a new kind
+(with the catalog's thread kinds and their migration) and a change to `check_chat_template`.
 
 ## Proposed amendments

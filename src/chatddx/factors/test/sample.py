@@ -69,7 +69,7 @@ def local_engine(reg: Registry) -> LocalEngine:
         ),
         runtime=Runtime(version="0.24.0", closure="/nix/store/xxx-vllm-container"),
         model=model,
-        chat_template=FileDigest(path="chat_template.jinja", sha256=SHA),
+        chat_template=SHA,
         argv=("--max-model-len", "8192"),
         env={"VLLM_BATCH_INVARIANT": "1"},
     )

@@ -76,7 +76,7 @@ class LocalEngine(Component):
     hardware: Hardware
     runtime: Runtime
     model: ModelRef
-    chat_template: FileDigest
+    chat_template: Sha256Hex
     argv: tuple[str, ...] = ()
     env: Annotated[dict[str, str], AfterValidator(sorted_keys)] = Field(
         default_factory=dict
@@ -117,7 +117,7 @@ _READS_DATE = re.compile(r"strftime_now|date_string|\bnow\s*\(")
 
 def check_chat_template(engine: LocalEngine, template: bytes) -> list[Finding]:
     findings: list[Finding] = []
-    if hashlib.sha256(template).hexdigest() != engine.chat_template.sha256:
+    if hashlib.sha256(template).hexdigest() != engine.chat_template:
         findings.append(
             Finding(
                 code="engine.chat_template",
