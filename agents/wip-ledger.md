@@ -168,9 +168,14 @@ The package imports only `chatddx.factors`, so the code already leans on factors
   beside it. Replaces B12's "a result or an error". No stored data, so `RunItem.schema_version` stays 1.
 - Decided (B14, option a): `check_run` warns `canary.phase` when canary calls overlap the items.
 - M8 left as is (user).
+- Decided (B15, option a): `RunStarted.tool_code` records the code each tool ran with; `check_run` warns
+  `tools.code` when it isn't the pinned code or isn't recorded, and refuses entries for tools the skeleton lacks.
+- Decided: the open design issues stay listed in the draft; the draft is final.
 
 ## Status
-Draft: `agents/ledger.md`.
+Final: `agents/ledger.md`, the drop-in replacement for `docs/ledger.md`. Every section other docs link to
+(`Call`, `JudgeCall`, `Run`, `RunStarted`, `Score`, `ScoreStarted`) exists, and every `docs/factors.md` section it
+cites exists.
 
 | Item | Outcome |
 | --- | --- |
@@ -190,7 +195,8 @@ Draft: `agents/ledger.md`.
 | F2 | Decided (a). Code and test (supersedes F1's cache dropping); `docs/factors.md` amendment updated. |
 | B13 | Decided (a). Code and tests; draft updated. |
 | B14 | Decided (a). Code and test; draft updated; `docs/findings.md` amendment. |
-| B15 | Open, next. | Listed in the draft's "Open design issues" meanwhile. |
+| B15 | Decided (a). Code and tests; draft updated; `docs/findings.md` amendment. |
+| Open design issues | Left listed in the draft (timeouts, request fingerprints, canary drift, attestation of canary and judge calls, `system_fingerprint`, missing expectations, the finished row outside the seal, `prompt_token_ids` in `Call`, call endpoints, records in bundles). | Listed in the draft's "Open design issues" meanwhile. |
 | B11 | Moved to factors with the compilation; the proposed `docs/factors.md` "Compilation" section states it. Still open. |
 | C1 | Decided (A). Code: `Compilation` in factors, `factor.compilation` dropped, the catalog's foreign keys retargeted, the seeder adds compilations as components. Doc: the draft drops its Compilation section. Amendments: `docs/factors.md`, `docs/store.md`, `docs/chatddx.md`. |
 | C2 | Decided (a). The draft already avoids "tier"; `docs/chatddx.md` amendment. Also proposed: `docs/store.md` wording for schema `ledger` (only `run_item` and `score_item` are case-derived). |

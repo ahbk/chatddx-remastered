@@ -116,3 +116,6 @@ the vignette read at the source differs from the case's fingerprint (`prepare_ca
 - ADD to "Ledger": `canary.phase`: canary calls overlap the items: a start-phase call hadn't finished when the
   first item was sent, or an end-phase call started before the last item call finished (`src/chatddx/ledger/ledger.py:check_run`,
   `_bracketed`).
+- ADD to "Ledger": `tools.code`: a tool of the skeleton ran with code other than the code it pins, or its code isn't
+  recorded in `RunStarted.tool_code`; the revision counts only when the tool pins one
+  (`src/chatddx/ledger/ledger.py:check_run`, `_tool_code`).

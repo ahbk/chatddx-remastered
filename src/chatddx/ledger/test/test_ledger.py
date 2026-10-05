@@ -34,6 +34,7 @@ from chatddx.ledger.ledger import (
     ScoreFinished,
     ScoreItem,
     ScoreStarted,
+    ToolCode,
     ToolRun,
     Turn,
     check_run,
@@ -535,7 +536,13 @@ def test_tool_rounds_are_checked(reg: Registry) -> None:
         Trial(skeleton=skeleton, engine=ids["engine"], cases=(ids["case"],), seeds=(1,))
     )
     run_id = uuid4()
-    started = RunStarted(run=run_id, at=NOW, rig=RIG, trial=trial)
+    started = RunStarted(
+        run=run_id,
+        at=NOW,
+        rig=RIG,
+        trial=trial,
+        tool_code=(ToolCode(tool=web, code=RIG),),
+    )
     vignette = resolve(reg.get, ids["case"], Case).vignette.fingerprint
 
     def call(*names: str, model: str = engine.served_model_name) -> Call:
@@ -577,6 +584,42 @@ def test_tool_rounds_are_checked(reg: Registry) -> None:
         return [f.code for f in check_run(Run(stages=(started,), items=(item,)), reg)]
 
     assert check(call("answer")) == []
+
+    def code_findings(*entries: ToolCode) -> list[tuple[str, str]]:
+        recorded = started.model_copy(update={"tool_code": entries})
+        return [
+            (f.code, f.message)
+            for f in check_run(Run(stages=(recorded,)), reg)
+            if f.code == "tools.code"
+        ]
+
+    assert code_findings() == [
+        ("tools.code", "the code tool 'web_search' ran with isn't recorded")
+    ]
+    elsewhere = RIG.model_copy(update={"version": "0.0.1"})
+    assert code_findings(ToolCode(tool=web, code=elsewhere)) == [
+        (
+            "tools.code",
+            "tool 'web_search' ran with chatddx 0.0.1 abc123, not the code it pins "
+            + "(chatddx 0.0.0+dev abc123)",
+        )
+    ]
+    with pytest.raises(StructuralError, match="the skeleton lacks"):
+        _ = code_findings(ToolCode(tool=web, code=RIG), ToolCode(tool=answer, code=RIG))
+    with pytest.raises(ValidationError, match="duplicates"):
+        _ = RunStarted(
+            run=run_id,
+            at=NOW,
+            rig=RIG,
+            trial=trial,
+            tool_code=(ToolCode(tool=web, code=RIG),) * 2,
+        )
+    zero = "sha256:" + "0" * 64
+    either = (ToolCode(tool=web, code=RIG), ToolCode(tool=zero, code=RIG))
+    reordered = started.model_validate(
+        {**started.model_dump(), "tool_code": either[::-1]}
+    )
+    assert [e.tool for e in reordered.tool_code] == sorted([web, zero])
     assert check(call("web_search"), Turn(tools=ran("c0"), call=call("answer"))) == []
     searched = Turn(tools=ran("c0"), call=call("web_search"))
     assert check(call("web_search"), searched, searched) == ["tools.unanswered"]

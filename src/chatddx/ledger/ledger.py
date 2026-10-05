@@ -22,7 +22,7 @@ from chatddx.factors.base import (
 from chatddx.factors.bundle import Registry
 from chatddx.factors.cases import Case, CaseRef
 from chatddx.factors.engine import LocalEngine, RemoteEngine
-from chatddx.factors.request import Skeleton, Tool, ToolOutput, tool_calls
+from chatddx.factors.request import Skeleton, Tool, ToolOutput, ToolRef, tool_calls
 from chatddx.factors.scoring import Judge, JudgeRef, Scorer, Scoring, ScoringRef
 from chatddx.factors.select import reaches
 from chatddx.factors.trial import (
@@ -53,6 +53,17 @@ def _in_order(started: datetime, finished: datetime) -> None:
 
 def _phase_order(phases: tuple[Phase, ...]) -> tuple[Phase, ...]:
     return tuple(sorted(distinct(phases), key=PHASES.index))
+
+
+# The code a tool ran with, as the runner loaded it.
+class ToolCode(Frozen):
+    tool: ToolRef
+    code: Code
+
+
+def _by_tool(entries: tuple[ToolCode, ...]) -> tuple[ToolCode, ...]:
+    _ = distinct(tuple(e.tool for e in entries))
+    return tuple(sorted(entries, key=lambda e: e.tool))
 
 
 class Record(Frozen):
@@ -175,6 +186,7 @@ class RunStarted(Record):
     verify_at: Annotated[tuple[Phase, ...], AfterValidator(_phase_order)] = Field(
         default=PHASES, min_length=1
     )
+    tool_code: Annotated[tuple[ToolCode, ...], AfterValidator(_by_tool)] = ()
 
     @model_validator(mode="after")
     def _verify_at(self) -> "RunStarted":
@@ -431,6 +443,7 @@ def check_run(run: Run, registry: Registry) -> list[Finding]:
     skeleton = resolve(registry.get, trial.skeleton, Skeleton)
     for item in run.items:
         findings.extend(_rounds(item, skeleton, registry))
+    findings.extend(_tool_code(started, skeleton, registry))
     engine = registry.get(trial.engine)
     assert isinstance(engine, LocalEngine | RemoteEngine)
     want = engine.served_model_name if isinstance(engine, LocalEngine) else engine.model
@@ -517,7 +530,7 @@ def _executed(
     }
     early = 0
     latest: datetime | None = None
-    for key in sorted(sent, key=position.__getitem__):
+    for key in sorted(sent.keys() & position.keys(), key=position.__getitem__):
         at = sent[key]
         if latest is not None and at < latest:
             early += 1
@@ -642,9 +655,7 @@ def check_score(score: Score, run: Run, registry: Registry) -> list[Finding]:
             raise StructuralError(f"score item {item.key} is not in the run")
         findings.extend(_judged(item, scorer.views[item.view].judge, judges))
     pinned, ran = scorer.code, started.scorer_code
-    if (ran.distribution, ran.version) != (pinned.distribution, pinned.version) or (
-        pinned.revision is not None and ran.revision != pinned.revision
-    ):
+    if not _ran_pinned(pinned, ran):
         findings.append(
             Finding(
                 code="score.scorer_code",
@@ -676,6 +687,38 @@ def check_score(score: Score, run: Run, registry: Registry) -> list[Finding]:
             at = jc.call.started_at
             sent[item.key] = min(sent.get(item.key, at), at)
     return findings + _executed(started.execution, trial, calls, sent)
+
+
+def _ran_pinned(pinned: Code, ran: Code) -> bool:
+    return (ran.distribution, ran.version) == (
+        pinned.distribution,
+        pinned.version,
+    ) and (pinned.revision is None or ran.revision == pinned.revision)
+
+
+def _tool_code(
+    started: RunStarted, skeleton: Skeleton, registry: Registry
+) -> list[Finding]:
+    recorded = {e.tool: e.code for e in started.tool_code}
+    if stray := sorted(recorded.keys() - set(skeleton.tools)):
+        raise StructuralError(
+            f"tool code recorded for tools the skeleton lacks: {stray}"
+        )
+    findings: list[Finding] = []
+    for ref in skeleton.tools:
+        tool = resolve(registry.get, ref, Tool)
+        ran = recorded.get(ref)
+        if ran is None:
+            message = f"the code tool {tool.name!r} ran with isn't recorded"
+        elif not _ran_pinned(tool.code, ran):
+            message = (
+                f"tool {tool.name!r} ran with {_named(ran)}, not the code it pins "
+                + f"({_named(tool.code)})"
+            )
+        else:
+            continue
+        findings.append(Finding(code="tools.code", message=message, subject=ref))
+    return findings
 
 
 def _named(code: Code) -> str:

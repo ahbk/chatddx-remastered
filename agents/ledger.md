@@ -8,9 +8,9 @@ How a skeleton was compiled is not in the ledger. Compiling is deterministic, so
 compilation is provenance, stored as a component (`docs/factors.md`, "Compilation").
 
 Records are not factors. A factor is chosen in advance and pinned by digest; a record is written when something
-happens. Records hold the plan of a run or a score, which is its *recorded* factors, what the rig did, and what the
-world answered, which is the evidence of the *observed* factors (`docs/factors.md`, "What a factor is"; see "What a
-record holds"). They refer to components by digest and to each other by id.
+happens. A record holds the plan of a run or a score (its *recorded* factors), what the rig did, or what the world
+answered (the evidence of the *observed* factors); see "What a record holds" and `docs/factors.md`, "What a factor
+is". Records refer to components by digest and to each other by id.
 
 Code paths are relative to `src/chatddx/ledger/` unless they start with `src/` or `docs/`. The package builds on
 `chatddx.factors` and imports no other chatddx package.
@@ -34,7 +34,7 @@ A record holds three kinds of content.
 
 | Content | What it is | Where | Examples |
 | --- | --- | --- | --- |
-| Plan | What the run or the score is set to do, written before it starts: its recorded factors. | Started rows | `trial`, `execution`, `canaries`, `verify_at`, `rig`, `scorer_code` |
+| Plan | What the run or the score is set to do, written before it starts: its recorded factors. | Started rows | `trial`, `execution`, `canaries`, `verify_at`, `rig`, `tool_code`, `scorer_code` |
 | Conduct | What the rig itself did. | Item rows | the request sent (`Call.request`, a fingerprint), when, how many attempts, the tool results sent back, a score item's value and detail |
 | Observation | What the world answered: the evidence of the observed factors. | Item rows | the response, the model name it gives, the prompt-token fingerprint, the vignette fingerprint read at the source |
 
@@ -47,7 +47,7 @@ Each check compares two of these, or one of them with the pinned factors:
 | Compares | Findings |
 | --- | --- |
 | Plan and conduct | `run.incomplete`, `score.incomplete`, `execution.retries`, `execution.order`, `execution.concurrency`, `canary.phase` |
-| Pinned factors and plan | `score.scorer_code` |
+| Pinned factors and plan | `tools.code`, `score.scorer_code` |
 | Pinned factors and conduct | `judge.incomplete` |
 | Pinned factors and observations | `attestation.model`, `case.drift`, `tools.unanswered` |
 | Pinned factors with each other | `view.unreachable` (a scorer's view and the run's skeleton) |
@@ -115,12 +115,12 @@ As with components (`docs/factors.md`, "Errors and findings"), problems come in 
 
 ## Runs
 A run is one execution of a trial (`docs/factors.md`, "Trial"). Its log is written one row at a time as things
-happen: `RunStarted`, then a `RunItem` for each (case, replicate) and a `CanaryCall` for each planned probe, in
-whatever order they happen, then `RunFinished`.
+happen: `RunStarted`, then a `RunItem` for each (case, replicate) and a `CanaryCall` for each planned canary and
+phase, in whatever order they happen, then `RunFinished`.
 
 ### RunStarted
 - principal author: none; written by the runner
-- defined in: `ledger.py:RunStarted`
+- defined in: `ledger.py:RunStarted`, `ledger.py:ToolCode`
 
 `RunStarted` opens a run. It holds
 - the run's id (`run`) and the time (`at`);
@@ -128,19 +128,25 @@ whatever order they happen, then `RunFinished`.
 - the trial;
 - the execution settings (`execution`, see `docs/factors.md`, "Execution"), the defaults when left out;
 - optionally a canary set (`canaries`), and the phases at which its canaries are sent (`verify_at`): `start`,
-  `end`, or both, the default.
+  `end`, or both, the default;
+- the code each of the skeleton's tools runs with, as the runner loaded it (`tool_code`, see below).
 
 It is written before the first request and never changes. It holds the run's recorded factors, but it is not part of
 the trial's digest. To run a trial again under the same conditions, write a new started row with a new id and time
 and the same `trial`, `execution`, `canaries` and `verify_at`.
 
-The execution settings matter most on engines that aren't batch invariant (`docs/factors.md`, "Local engine"). On a
-batch-invariant engine, order and concurrency don't change the outputs, so a re-run may be bitwise identical;
-otherwise reproducing a run is best-effort. The calls show whether the settings were followed (see "Run").
+The execution settings matter on engines that aren't batch invariant (`docs/factors.md`, "Local engine" and
+"Execution"). On a batch-invariant engine they change no answer, so a re-run may be bitwise identical; on other
+engines, reproducing a run is best-effort. The calls show whether the settings were followed (see "Run").
 
 `verify_at` is a set of phases: duplicates are refused, and the phases are kept in run order (`start` before
-`end`), so two started rows that plan the same probes seal the same. It needs at least one phase, and only means
+`end`), so two started rows that plan the same canaries seal the same. It needs at least one phase, and only means
 something with a canary set: without one it must stay at its default.
+
+`tool_code` has one entry per tool (`ToolCode`: the tool's digest and a `Code`), without duplicates and kept sorted
+by digest, so two started rows that record the same code seal the same. Like a score's `scorer_code`, it is a
+recorded factor, set beside the code each tool pins (`docs/factors.md`, "Tool"); `check_run` compares the two. It is
+empty, and left out, for a skeleton without tools.
 
 ### RunItem
 - principal author: none; written by the runner
@@ -210,7 +216,8 @@ and rows of another run.
   - more rounds than the skeleton's `max_rounds`;
   - a round whose tool runs don't answer exactly the previous response's tool calls, by id and name. Calls to the
     answer function of a `tool` contract are left out, since they end the item;
-  - a tool run for a tool the skeleton doesn't have, unless it is an error.
+  - a tool run for a tool the skeleton doesn't have, unless it is an error;
+- tool code recorded for a tool the skeleton doesn't have.
 
 It warns (see "Findings") when
 - a finished run lacks items of the trial, or planned canary calls (`run.incomplete`);
@@ -226,7 +233,10 @@ It warns (see "Findings") when
     ahead of it (`execution.order`);
   - more calls were in flight at once than `concurrency` allows, canary calls included (`execution.concurrency`);
 - canary calls overlap the items (`canary.phase`): a start-phase call hadn't finished when the first item was sent,
-  or an end-phase call started before the last item call, tool rounds included, had finished.
+  or an end-phase call started before the last item call, tool rounds included, had finished;
+- a tool of the skeleton ran with code other than the code it pins, or its code isn't recorded (`tools.code`). The
+  rule is the one for scorers: the distribution and the version must match, and the revision too when the tool pins
+  one.
 
 Canary calls get neither the model check nor the prompt-token check. Timeouts aren't checked (see "Open design
 issues").
@@ -234,9 +244,9 @@ issues").
 `compare_prompt_tokens(a, b, registry)` compares two runs item by item, matching items by key. It warns
 (`attestation.prompt_tokens_drift`) where both first calls have a prompt-token fingerprint and the two differ: the
 engine read different tokens for the same item. Later calls aren't compared, since they depend on what the tools
-returned. It refuses (`StructuralError`) two runs whose trials build their prompts differently: another skeleton, engine
-or text cleanup. The runs may be of different trials otherwise, since cases are matched by key and the seed doesn't
-shape the prompt.
+returned. It refuses (`StructuralError`) two runs whose trials build their prompts differently: another skeleton,
+engine or text cleanup. The runs may be of different trials otherwise, since cases are matched by key and the seed
+doesn't shape the prompt.
 
 ## Call
 - principal author: none; written by the runner or the scorer as part of another record
@@ -307,8 +317,8 @@ the `Call`. A view with a judge sends one request per seed (`docs/factors.md`, "
 - principal author: none; written by the scorer
 - defined in: `ledger.py:ScoreFinished`, `ledger.py:Score.finish`
 
-`ScoreFinished` closes the log with the score's id, the time, findings and the seal, as `RunFinished` does for a run.
-Judge calls live inside score items, so the seal covers them.
+`ScoreFinished` closes the log with the score's id, the time, findings and the seal, as `RunFinished` does for a
+run. Judge calls live inside score items, so the seal covers them.
 
 ### Score
 - principal author: none; assembled from stored rows
@@ -350,6 +360,7 @@ of the ledger's findings are warnings.
 | `run.incomplete` | `check_run` | none | A finished run lacks some of its trial's items, or some planned canary calls. One finding for each, with the count. |
 | `case.drift` | `check_run` | item key | The vignette read at the source differs from the case's fingerprint. `prepare_case` reports the same code when the vignette is read. |
 | `tools.unanswered` | `check_run` | item key | An item's last response still calls tools, after its rounds ran out or the run stopped. |
+| `tools.code` | `check_run` | tool digest | A tool ran with code other than the code it pins, or its code isn't recorded. |
 | `attestation.model` | `check_run` | item key | A call's response gave another model name than declared, or none. |
 | `execution.retries` | `check_run`, `check_score` | none | Some calls took more attempts than the run's or the score's `retries` allows. One finding, with the count. |
 | `execution.order` | `check_run`, `check_score` | none | Some items were sent before items the order schedules ahead of them. One finding, with the count. |
@@ -368,7 +379,8 @@ of the ledger's findings are warnings.
 
 | Term | Meaning |
 | --- | --- |
-| Record | A row written when something happens: what happened, not what was planned. |
+| Record | A row of a log, written when something happens and never changed. |
+| Plan, conduct, observation | What a record holds: what a run or a score is set to do, what the rig did, and what the world answered. |
 | Ledger | All records: the run and score logs. |
 | Log | A run or a score: a started row, item rows and a finished row, only ever added to. |
 | Stage | A log's started or finished row. |
@@ -381,8 +393,8 @@ of the ledger's findings are warnings.
 
 ## Open design issues
 
-### Recorded settings aren't compared with what happened
-Some records state what should happen and others what did, but nothing compares them:
+### Some of what happened isn't checked
+Most of the plan is compared with what happened (see "What a record holds"), but not all:
 - `timeout_s` and the calls: a call's times span all its attempts, so an attempt that ran past the timeout can't
   be told from them;
 - a call's request fingerprint and the request it should have been. A request can be rebuilt from stored data and
@@ -391,8 +403,6 @@ Some records state what should happen and others what did, but nothing compares 
 
 ### Smaller issues
 - **Canary drift isn't checked.** Nothing compares canary outputs between phases or between runs.
-- **The tool code that ran isn't recorded.** A tool pins its code like a scorer (`docs/factors.md`, "Tool"), but a
-  `ToolRun` doesn't say which code ran, so nothing like `score.scorer_code` is possible for tools.
 - **Only run items are attested.** Canary calls and judge calls get no model check and no prompt-token check.
 - **`system_fingerprint` is kept but never compared** between calls or runs.
 - **Missing expectations aren't flagged.** `check_score` doesn't warn when a run item's case has no expectation in
