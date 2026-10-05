@@ -257,3 +257,16 @@ See `docs/findings.md` for a list of all findings and what they mean.
 **Canary drift are not implemented:** nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
+
+- CHANGE: in "Findings and errors", "a run's or score's findings are stored in its finished row" → "a finished row
+  holds the findings the runner or scorer saw while working, such as `case.drift`; the run and score checks can be
+  repeated from the stored rows at any time, so their findings aren't stored". `check_run` runs after `finish()`
+  ("After the run", step 2), and `run.incomplete` and `ledger.seal` need the finished row to exist, so they can't be
+  in it (`src/chatddx/ledger/ledger.py:check_run`, `Run.finish`).
+- CHANGE: glossary, "Seal: the hash over a finished log" → "the hash over a log's started row and item rows, kept in
+  its finished row" (`src/chatddx/ledger/ledger.py:_seal`).
+- CHANGE: "Scoring records", step 8, to match `src/chatddx/ledger/ledger.py:check_score`: it raises for duplicate
+  score items, and for a judge call whose judge isn't its item's view's judge, a seed index out of range or one
+  used twice in an item; it warns `judge.incomplete` and `score.incomplete`.
+- ADD to the "Frictionless development" examples: `case.drift`, `tools.unanswered`, `judge.incomplete`,
+  `score.incomplete`.

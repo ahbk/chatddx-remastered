@@ -131,3 +131,35 @@ The package imports only `chatddx.factors`, so the code already leans on factors
   finished row); "check_run then compares" after `finish()` (B1).
 
 ## Decisions
+- Decided (1a): the doc leans on `docs/factors.md` and the code only. Storage, catalog, roles, grants and clearance
+  leave it; what isn't already elsewhere becomes a proposed amendment there.
+- Decided (2b): fix the small, safe gaps in code with tests (B2, B3, B6, B12, A9); the rest go one by one.
+- Decided (3a): `case_derived` follows content: only `RunItem` and `ScoreItem` are case-derived.
+- Decided (4a): a finished row holds what the runner or scorer saw while working; `check_run`/`check_score` can be
+  repeated and their findings aren't stored.
+- Decided (5): the ledger doc lists its finding codes inline.
+- Decided: C1, C2 and the remaining B items are cleared one by one.
+
+## Status
+Draft: `agents/ledger.md`. Its "Ledger" term (all records) and its avoiding "tier" are provisional until C1 and
+C2 are cleared.
+
+| Item | Outcome |
+| --- | --- |
+| A1, A2 | Code: per-type `case_derived` (3a). Doc: acting on the mark is up to whoever stores or exports. |
+| A3 | Doc; `docs/store.md` amendment (`probe` → `canary`). |
+| A4–A8, A10, A11 | Doc corrected. |
+| A9 | Code comment fixed. |
+| B1 | Decided (4a). Doc; `docs/chatddx.md` amendment. The finished row being outside the seal is an open issue. |
+| B2, B3, B6, B12 | Code and tests: `score.incomplete`, `judge.incomplete`, `run.incomplete` for canaries, duplicate checks, record validation. `docs/findings.md`, `docs/chatddx.md` amendments. |
+| B4, B5, B7–B11, B13 | Open, one by one. Listed in the draft's "Open design issues" meanwhile. |
+| C1, C2 | Open, one by one. |
+| C3–C7 | Doc. |
+| D1–D3 | Out of the doc; `docs/store.md` (D1) and `docs/catalog.md` (D2) already cover them; D3 → `docs/clearance.md` amendment. |
+| D4 | Kept: bundles are a factors concept. Open issue "Records aren't in bundles". |
+| D5 | Noted only. |
+| E1–E6 | Doc. |
+
+## Surprises
+- `ruff check src` fails on `src/chatddx/inventory/test/test_inventory.py` (import order) at `e635b97`, before
+  these changes. Left as is.

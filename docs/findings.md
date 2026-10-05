@@ -96,3 +96,19 @@ expectation schema for its expectation selector (`lint`, on scorers), or the run
 selector (`check_score`).
 
 ## Proposed amendments
+
+- CHANGE: keep "Ledger" to the codes of `check_run`, `check_score` and `compare_prompt_tokens`
+  (`src/chatddx/ledger/ledger.py`):
+  - move `tools.unanswered` from "Factors" to "Ledger" (`check_run`);
+  - move `engine.chat_template`, `engine.chat_template_date` (`src/chatddx/factors/engine.py:check_chat_template`),
+    `bundle.recanonicalized` (`src/chatddx/factors/bundle.py:Bundle.load`) and `model.revision`,
+    `engine.closure`, `scorer.revision` (`src/chatddx/factors/lint.py`; their entry reads "kand the pair rules for
+    trials and judges") from "Ledger" to "Factors";
+  - move `case.drift` to "Both" (`src/chatddx/factors/cases.py:prepare_case`, `check_run`).
+- CHANGE: `run.incomplete`: "a finished run lacks some of the trial's items, or some planned canary calls
+  (`check_run`)".
+- ADD to "Ledger":
+  - `judge.incomplete`: a scored item's judge was called with fewer seeds than the judge has (`check_score`);
+  - `score.incomplete`: a finished score lacks items for some pairs of run item and view (`check_score`).
+- The ledger doc now lists its codes with their subjects (`agents/ledger.md`, "Findings", the replacement for
+  `docs/ledger.md`); "Ledger" here could point there instead of repeating them.
