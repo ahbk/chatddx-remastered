@@ -1,5 +1,7 @@
 import json
+import math
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 from uuid import uuid4
 
 import pytest
@@ -22,12 +24,15 @@ from chatddx.factors.trial import Trial
 from chatddx.ledger.ledger import (
     Call,
     CanaryCall,
+    Compilation,
     ItemKey,
     JudgeCall,
     Run,
+    RunFinished,
     RunItem,
     RunStarted,
     Score,
+    ScoreFinished,
     ScoreItem,
     ScoreStarted,
     ToolRun,
@@ -78,10 +83,22 @@ def test_run_and_score_checks(reg: Registry) -> None:
         run=run_id, at=NOW, rig=RIG, trial=ids["trial"], canaries=ids["canaries"]
     )
     items = (item(0, call(engine.served_model_name)), item(1, call("other")))
-    canaries = (CanaryCall(run=run_id, phase="start", canary=0, call=call("c")),)
+    canaries = tuple(
+        CanaryCall(run=run_id, phase=p, canary=0, call=call("c"))
+        for p in ("start", "end")
+    )
     open_run = Run(stages=(started,), items=items, canaries=canaries)
     run = Run(stages=(started, open_run.finish(NOW)), items=items, canaries=canaries)
     assert [f.code for f in check_run(run, reg)] == ["attestation.model"]
+    unprobed = Run(stages=(started,), items=items, canaries=canaries[:1])
+    assert [
+        f.message
+        for f in check_run(
+            unprobed.model_copy(update={"stages": (started, unprobed.finish(NOW))}),
+            reg,
+        )
+        if f.code == "run.incomplete"
+    ] == ["1 canary calls missing"]
     assert run.items[0].call.response == {"model": engine.served_model_name}
     drifted = Run(
         stages=(started,),
@@ -111,6 +128,8 @@ def test_run_and_score_checks(reg: Registry) -> None:
     with pytest.raises(StructuralError, match="not planned"):
         bad_canary = CanaryCall(run=run_id, phase="start", canary=1, call=call("c"))
         _ = check_run(Run(stages=(started,), canaries=(bad_canary,)), reg)
+    with pytest.raises(StructuralError, match="duplicate canary calls"):
+        _ = check_run(Run(stages=(started,), canaries=canaries[:1] * 2), reg)
     with pytest.raises(ValidationError, match="different logs"):
         _ = Run(
             stages=(started,), items=(items[0].model_copy(update={"run": uuid4()}),)
@@ -159,6 +178,29 @@ def test_run_and_score_checks(reg: Registry) -> None:
         )
     with pytest.raises(StructuralError, match="view 2 is out of range"):
         _ = check_score(score(ok.model_copy(update={"view": 2})), run, reg)
+    with pytest.raises(StructuralError, match="duplicate score items"):
+        _ = check_score(score(ok, ok), run, reg)
+    with pytest.raises(StructuralError, match="is not view 0's judge"):
+        _ = check_score(score(ok.model_copy(update={"view": 0})), run, reg)
+    with pytest.raises(StructuralError, match="duplicate judge calls"):
+        _ = check_score(
+            score(ok.model_copy(update={"judge_calls": ok.judge_calls * 2})), run, reg
+        )
+
+    unjudged = ok.model_copy(update={"judge_calls": ()})
+    assert [(f.code, f.message) for f in check_score(score(unjudged), run, reg)] == [
+        ("judge.incomplete", "view 1's value rests on 0 of 1 judge seeds")
+    ]
+    unscored = unjudged.model_copy(update={"value": None})
+    assert check_score(score(unscored), run, reg) == []
+
+    partial = score(ok)
+    finished = partial.model_copy(
+        update={"stages": (*partial.stages, partial.finish(NOW))}
+    )
+    assert [(f.code, f.message) for f in check_score(finished, run, reg)] == [
+        ("score.incomplete", "3 items missing")
+    ]
 
 
 def test_seal_survives_a_storage_roundtrip() -> None:
@@ -200,6 +242,62 @@ def test_records_carry_their_schema_version() -> None:
         _ = RunStarted.parse(json.dumps(doc))
     with pytest.raises(StructuralError, match="not a JSON object"):
         _ = RunStarted.parse("[]")
+
+
+def test_records_refuse_what_cannot_have_happened() -> None:
+    later = NOW + timedelta(seconds=1)
+    with pytest.raises(ValidationError, match="finished before it started"):
+        _ = Call(request=fp("body"), started_at=later, finished_at=NOW)
+    with pytest.raises(ValidationError, match="a result or an error"):
+        _ = ToolRun(id="c0", name="t", started_at=NOW, finished_at=NOW)
+    with pytest.raises(ValidationError, match="a result or an error"):
+        _ = ToolRun(
+            id="c0", name="t", started_at=NOW, finished_at=NOW, result="r", error="e"
+        )
+    with pytest.raises(ValidationError, match="finite number"):
+        _ = ScoreItem(
+            score=uuid4(),
+            key=ItemKey(case="sha256:" + "1" * 64, replicate=0),
+            view=0,
+            value=math.nan,
+        )
+
+    run_id, trial, canaries = uuid4(), "sha256:" + "0" * 64, "sha256:" + "1" * 64
+    started = RunStarted(run=run_id, at=later, rig=RIG, trial=trial)
+    with pytest.raises(ValidationError, match="finished before it started"):
+        _ = Run(stages=(started, RunFinished(run=run_id, at=NOW, seal=trial)))
+
+    def probed(*phases: Literal["start", "end"]) -> RunStarted:
+        return RunStarted(
+            run=run_id,
+            at=NOW,
+            rig=RIG,
+            trial=trial,
+            canaries=canaries,
+            verify_at=phases,
+        )
+
+    assert probed("end", "start").canonical == probed("start", "end").canonical
+    with pytest.raises(ValidationError, match="duplicates"):
+        _ = probed("end", "end")
+    with pytest.raises(ValidationError, match="at least 1"):
+        _ = probed()
+    with pytest.raises(ValidationError, match="goes with a canary set"):
+        _ = RunStarted(run=run_id, at=NOW, rig=RIG, trial=trial, verify_at=("end",))
+
+
+def test_only_items_are_case_derived() -> None:
+    records = (
+        RunStarted,
+        RunItem,
+        CanaryCall,
+        RunFinished,
+        ScoreStarted,
+        ScoreItem,
+        ScoreFinished,
+        Compilation,
+    )
+    assert [r for r in records if r.case_derived] == [RunItem, ScoreItem]
 
 
 def test_request_fingerprint_is_over_canonical_bytes() -> None:

@@ -182,15 +182,20 @@ def test_run_and_score_roundtrip(conn: Connection) -> None:
         scorer_code=RIG,
         scoring=ids["scoring"],
     )
-    score_items = tuple(
-        ScoreItem(
-            score=score_id,
-            key=i.key,
-            view=1,
-            value=1.0,
-            judge_calls=(JudgeCall(judge=ids["judge"], seed_index=0, call=call("j")),),
-        )
-        for i in items
+    score_items = (
+        *(ScoreItem(score=score_id, key=i.key, view=0, value=1.0) for i in items),
+        *(
+            ScoreItem(
+                score=score_id,
+                key=i.key,
+                view=1,
+                value=1.0,
+                judge_calls=(
+                    JudgeCall(judge=ids["judge"], seed_index=0, call=call("j")),
+                ),
+            )
+            for i in items
+        ),
     )
     score_finished = Score(stages=(score_started,), items=score_items).finish(NOW)
     store.append(score_started, *score_items, score_finished)

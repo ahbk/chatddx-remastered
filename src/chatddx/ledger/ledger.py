@@ -14,6 +14,7 @@ from chatddx.factors.base import (
     Frozen,
     StructuralError,
     canonical_bytes,
+    distinct,
     resolve,
     sha256_digest,
     sorted_keys,
@@ -40,14 +41,25 @@ from chatddx.factors.trial import (
 )
 
 Phase = Literal["start", "end"]
+PHASES: tuple[Phase, ...] = ("start", "end")
 
 
 def _utc(at: datetime) -> datetime:
     return at.astimezone(UTC)
 
 
-# timestamptz reads back in UTC, and the offset is part of the sealed bytes.
+# The offset is part of the canonical bytes, so without this one instant would seal
+# differently depending on the writer's time zone.
 UtcDatetime = Annotated[AwareDatetime, AfterValidator(_utc)]
+
+
+def _in_order(started: datetime, finished: datetime) -> None:
+    if finished < started:
+        raise ValueError("finished before it started")
+
+
+def _phase_order(phases: tuple[Phase, ...]) -> tuple[Phase, ...]:
+    return tuple(sorted(distinct(phases), key=PHASES.index))
 
 
 class Record(Frozen):
@@ -90,6 +102,11 @@ class Call(Frozen):
     attempts: int = Field(default=1, ge=1)
     error: str | None = None
 
+    @model_validator(mode="after")
+    def _times(self) -> "Call":
+        _in_order(self.started_at, self.finished_at)
+        return self
+
     @property
     def returned_model(self) -> str | None:
         model = (self.response or {}).get("model")
@@ -119,7 +136,7 @@ def fingerprint_request(
 
 
 # One tool the runner ran for a tool call in a response. A call naming no tool of the
-# skeleton is answered with an error and no result.
+# skeleton is answered with an error.
 class ToolRun(Frozen):
     id: str
     name: str
@@ -127,6 +144,13 @@ class ToolRun(Frozen):
     finished_at: UtcDatetime
     result: str | None = None
     error: str | None = None
+
+    @model_validator(mode="after")
+    def _outcome(self) -> "ToolRun":
+        _in_order(self.started_at, self.finished_at)
+        if (self.result is None) == (self.error is None):
+            raise ValueError("a tool run has either a result or an error")
+        return self
 
 
 # A tool round: the tools run for the previous response's calls, and the next call.
@@ -148,6 +172,7 @@ class ItemKey(Frozen):
 
 
 class RunStarted(Record):
+    case_derived: ClassVar[bool] = False
     stage: Literal["started"] = "started"
     run: UUID
     at: UtcDatetime
@@ -155,10 +180,19 @@ class RunStarted(Record):
     trial: TrialRef
     execution: Execution = Execution()
     canaries: CanarySetRef | None = None
-    verify_at: tuple[Phase, ...] = ("start", "end")
+    verify_at: Annotated[tuple[Phase, ...], AfterValidator(_phase_order)] = Field(
+        default=PHASES, min_length=1
+    )
+
+    @model_validator(mode="after")
+    def _verify_at(self) -> "RunStarted":
+        if self.canaries is None and self.verify_at != PHASES:
+            raise ValueError("verify_at goes with a canary set")
+        return self
 
 
 class RunFinished(Record):
+    case_derived: ClassVar[bool] = False
     stage: Literal["finished"] = "finished"
     run: UUID
     at: UtcDatetime
@@ -183,6 +217,7 @@ class RunItem(Record):
 
 
 class CanaryCall(Record):
+    case_derived: ClassVar[bool] = False
     run: UUID
     phase: Phase
     canary: int = Field(ge=0)
@@ -240,6 +275,7 @@ class JudgeCall(Frozen):
 
 
 class ScoreStarted(Record):
+    case_derived: ClassVar[bool] = False
     stage: Literal["started"] = "started"
     score: UUID
     run: UUID
@@ -250,6 +286,7 @@ class ScoreStarted(Record):
 
 
 class ScoreFinished(Record):
+    case_derived: ClassVar[bool] = False
     stage: Literal["finished"] = "finished"
     score: UUID
     at: UtcDatetime
@@ -265,7 +302,7 @@ class ScoreItem(Record):
     score: UUID
     key: ItemKey
     view: int = Field(ge=0)
-    value: float | None
+    value: float | None = Field(allow_inf_nan=False)
     detail: JsonValue = None
     judge_calls: tuple[JudgeCall, ...] = ()
 
@@ -328,6 +365,8 @@ def _check_log(
     names = [s.stage for s in stages]
     if names != list(order[: len(names)]):
         raise StructuralError(f"stages {names} do not follow {order}")
+    for later in stages[1:]:
+        _in_order(stages[0].at, later.at)
     if any(_log_id(r) != log for r in [*stages, *rows]):
         raise StructuralError("rows belong to different logs")
 
@@ -360,15 +399,20 @@ def _sealed(log: Run | Score, subject: str) -> list[Finding]:
 def check_run(run: Run, registry: Registry) -> list[Finding]:
     started = run.started
     trial = resolve(registry.get, started.trial, Trial)
+    planned: set[tuple[Phase, int]] = set()
     if started.canaries is not None:
         canary_set = resolve(registry.get, started.canaries, CanarySet)
-        for c in run.canaries:
-            if c.phase not in started.verify_at or c.canary >= len(canary_set.canaries):
-                raise StructuralError(
-                    f"canary call {c.phase}/{c.canary} is not planned"
-                )
+        planned = {
+            (p, i) for p in started.verify_at for i in range(len(canary_set.canaries))
+        }
     elif run.canaries:
         raise StructuralError("canary calls in a run without canaries")
+    probes = [(c.phase, c.canary) for c in run.canaries]
+    if stray := set(probes) - planned:
+        names = sorted(f"{p}/{c}" for p, c in stray)
+        raise StructuralError(f"canary calls not planned: {names}")
+    if len(set(probes)) != len(probes):
+        raise StructuralError("duplicate canary calls")
 
     expected = {
         ItemKey(case=c, replicate=r)
@@ -382,10 +426,17 @@ def check_run(run: Run, registry: Registry) -> list[Finding]:
         raise StructuralError("duplicate run items")
 
     findings = _sealed(run, str(started.run))
-    if run.finished is not None and (missing := expected - set(keys)):
-        findings.append(
-            Finding(code="run.incomplete", message=f"{len(missing)} items missing")
-        )
+    if run.finished is not None:
+        for missing, what in (
+            (expected - set(keys), "items"),
+            (planned - set(probes), "canary calls"),
+        ):
+            if missing:
+                findings.append(
+                    Finding(
+                        code="run.incomplete", message=f"{len(missing)} {what} missing"
+                    )
+                )
     for item in run.items:
         case = resolve(registry.get, item.key.case, Case)
         if item.vignette != case.vignette.fingerprint:
@@ -444,7 +495,7 @@ def _rounds(item: RunItem, skeleton: Skeleton, registry: Registry) -> list[Findi
     previous = item.call
     for turn in item.turns:
         for r in turn.tools:
-            if r.name not in names and (r.result is not None or r.error is None):
+            if r.name not in names and r.error is None:
                 raise StructuralError(f"{item.key}: no tool named {r.name!r}")
         if {(r.id, r.name) for r in turn.tools} != pending(previous):
             raise StructuralError(
@@ -498,15 +549,45 @@ def check_score(score: Score, run: Run, registry: Registry) -> list[Finding]:
         if not reaches(schema, view.output)
     ]
     run_keys = {i.key for i in run.items}
+    scored = [(i.key, i.view) for i in score.items]
+    if len(set(scored)) != len(scored):
+        raise StructuralError("duplicate score items")
     for item in score.items:
         if item.view >= len(scorer.views):
             raise StructuralError(f"score item view {item.view} is out of range")
         if item.key not in run_keys:
             raise StructuralError(f"score item {item.key} is not in the run")
-        for jc in item.judge_calls:
-            judge = judges.get(jc.judge)
-            if judge is None:
-                raise StructuralError(f"judge {jc.judge} is not part of the scoring")
-            if jc.seed_index >= len(judge.seeds):
-                raise StructuralError(f"judge seed index {jc.seed_index} out of range")
-    return findings + _sealed(score, str(started.score))
+        findings.extend(_judged(item, scorer.views[item.view].judge, judges))
+    findings.extend(_sealed(score, str(started.score)))
+    expected = {(k, v) for k in run_keys for v in range(len(scorer.views))}
+    if score.finished is not None and (missing := expected - set(scored)):
+        findings.append(
+            Finding(code="score.incomplete", message=f"{len(missing)} items missing")
+        )
+    return findings
+
+
+def _judged(
+    item: ScoreItem, judge_ref: str | None, judges: dict[str, Judge]
+) -> list[Finding]:
+    seeds: list[int] = []
+    for jc in item.judge_calls:
+        if jc.judge != judge_ref:
+            raise StructuralError(f"judge {jc.judge} is not view {item.view}'s judge")
+        if jc.seed_index >= len(judges[jc.judge].seeds):
+            raise StructuralError(f"judge seed index {jc.seed_index} out of range")
+        seeds.append(jc.seed_index)
+    if len(set(seeds)) != len(seeds):
+        raise StructuralError(f"{item.key}: duplicate judge calls for view {item.view}")
+    if judge_ref is None or item.value is None:
+        return []
+    if (called := len(seeds)) < (declared := len(judges[judge_ref].seeds)):
+        return [
+            Finding(
+                code="judge.incomplete",
+                message=f"view {item.view}'s value rests on {called} of {declared} "
+                + "judge seeds",
+                subject=str(item.key),
+            )
+        ]
+    return []
