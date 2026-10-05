@@ -918,3 +918,5 @@ Schema plays no part in a component's digest, so adding it back changes no diges
 - CHANGE in "Translations": "language labels are catalog entries (`docs/catalog.md`)" → "languages are recorded in
   the catalog (`docs/catalog.md`)". "Label" now means only a scorer's view and resource labels
   (`src/chatddx/store/catalog.py:Catalog.label`), so a language is no longer called one.
+- CHANGE "the roles in `src/chatddx/core/identity.py:Role`" → "the roles in `src/chatddx/identity/identity.py:Role`";
+  identity is its own package now (`src/chatddx/identity/`).

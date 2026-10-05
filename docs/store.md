@@ -204,7 +204,7 @@ tier-2 triggers).
 - ADD to "Layout", schema `catalog`: "`language (id, digest, kind, value, by, at)`: a component's language, kept on
   its digest; the latest row wins. `(digest, kind)` references `factor.component`." ADD to "Tiers", "Tier 0":
   "`0023-t0-catalog-languages.sql`", and to "Tier 2": "`0024-t2-catalog-languages.sql`: language tags and the kinds
-  that may have a language (mirrored by `src/chatddx/core/catalog.py:LANGUAGE_KINDS` and tested against it), no
+  that may have a language (mirrored by `src/chatddx/catalog/model.py:LANGUAGE_KINDS` and tested against it), no
   language on a skeleton already known to be compiled, a `language` entry only on a family, and insert-only
   triggers for `catalog.language`" (`src/chatddx/store/catalog.py:Catalog.language`).
 - CHANGE in "Layout", schema `catalog`: "`binding (id, family, source, source_id, vignette, by, at)`" →
@@ -212,3 +212,12 @@ tier-2 triggers).
   "`0025-t0-catalog-binding-fingerprint.sql` (renames `catalog.binding.vignette` to `fingerprint`, which is what it
   holds)", and to "Tier 2": "`0026-t2-catalog-binding-fingerprint.sql` (`0022`'s binding check, for the renamed
   column)".
+- CHANGE the paths to the code that left `src/chatddx/core/`: in "Tier 2", "`src/chatddx/core/identity.py:Role`" →
+  "`src/chatddx/identity/identity.py:Role`" and "mirrored by `src/chatddx/core/catalog.py`" → "mirrored by
+  `src/chatddx/catalog/model.py`".
+- CHANGE in "Store API" the `Catalog` items to: "`Catalog` (`src/chatddx/store/catalog.py`): the catalog's writes and
+  reads, with the same methods as before, plus `adopt(owner=)`, `create(owner=)` and `language(digest, value, by)`.
+  Each reads through `Rows`, which answers `src/chatddx/catalog/read.py:Reader` from the tables, raw and in the order
+  the rows were written; the rules, `latest wins` included, are in `chatddx.catalog` (`docs/catalog.md`). Store
+  answers which rows exist; `chatddx.catalog` decides what they mean." Rules that concurrent writers could break
+  still need tier-2 backing (`src/chatddx/store/migrations/`).
