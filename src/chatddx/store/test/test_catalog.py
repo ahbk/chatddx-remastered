@@ -24,8 +24,10 @@ from chatddx.factors.request import (
     Insert,
     NativeOutput,
     Output,
+    Prompt,
     Recipe,
     Sampling,
+    Slot,
     Translations,
     compile_request,
     texts,
@@ -674,6 +676,24 @@ def test_languages_are_kept_on_digests(conn: Connection) -> None:
     assert catalog.title_of(translated.skeleton).endswith(
         f" · sv translations, {len(needed)} texts"
     )
+
+    vignette, appendices = Slot(slot="vignette"), Slot(slot="appendices")
+    split = reg.add(
+        Prompt(segments=("Case:", "\n", vignette, appendices, "\n\nDifferential?"))
+    )
+    resplit = compiled_recipe(store, reg, base.model_copy(update={"prompt": split}))
+    assert resplit.skeleton == plan.skeleton
+    assert catalog.language_of(plan.skeleton) == "en"
+    unchanged = reg.add(Translations(entries={t: t for t in needed}))
+    retold = compiled_recipe(
+        store, reg, base.model_copy(update={"translations": unchanged})
+    )
+    assert retold.skeleton == plan.skeleton
+    in_language(unchanged, "en")
+    assert catalog.language_of(plan.skeleton) == "en"
+    in_language(unchanged, "sv")
+    assert catalog.language_of(plan.skeleton) is None
+    in_language(unchanged, "en")
 
     hand_written = resolve(reg.get, ids["judge"], Judge).skeleton
     assert catalog.language_of(hand_written) is None

@@ -392,16 +392,12 @@ class Catalog:
                 compilations = store.compilations(digest)
                 if not compilations:
                     return self._language(digest)
-                recipe = compilations[0].recipe
-                if recipe.translations is not None:
-                    return self._language(recipe.translations)
-                parts: list[str | None] = [
-                    getattr(recipe, part)
-                    for part in texts(recipe, store.get)
-                    if part != "appendix_layout"
-                ]
-                languages = {None if p is None else self._language(p) for p in parts}
-                return languages.pop() if len(languages) == 1 else None
+                known = {
+                    language
+                    for c in compilations
+                    if (language := self._recipe_language(c.recipe)) is not None
+                }
+                return known.pop() if len(known) == 1 else None
             case _:
                 return self._language(digest)
 
@@ -670,6 +666,17 @@ class Catalog:
             (digest,),
         ).fetchall()
         return str(rows[-1][0]) if rows else None
+
+    def _recipe_language(self, recipe: Recipe) -> str | None:
+        if recipe.translations is not None:
+            return self._language(recipe.translations)
+        parts: list[str | None] = [
+            getattr(recipe, part)
+            for part in texts(recipe, Store(self._conn).get)
+            if part != "appendix_layout"
+        ]
+        languages = {None if p is None else self._language(p) for p in parts}
+        return languages.pop() if len(languages) == 1 else None
 
     def _derive(self, digest: str, compilation: str | None = None) -> str:
         store = Store(self._conn)
