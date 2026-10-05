@@ -51,7 +51,7 @@ open, decided (the user said so), held (waits for the language items), done.
   hand-written skeletons included (`src/chatddx/store/catalog.py:276`); `proposal` returns `None` when the origin's
   new head has no compilation (`:294-296`). decided: doc.
 - D6 `language_of`'s text-bearing chunks "(instructions, few-shot, prompt, output)": the toolset counts too
-  (`src/chatddx/factors/request.py:721`). held: language.
+  (`src/chatddx/factors/request.py:721`). decided: doc.
 - D7 "A run's owner is who started it": nothing writes it; `RunStarted` has no person. A rule for a future runner.
   decided: doc, as a rule for the runner.
 - D8 "the portal copies [labels] to the next scorer edit": a requirement on a portal that doesn't exist yet. decided: doc, as a rule for the portal.
