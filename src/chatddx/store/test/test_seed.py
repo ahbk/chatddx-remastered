@@ -6,7 +6,9 @@ import pytest
 from chatddx.catalog import Subject
 from chatddx.cli import main
 from chatddx.core.rig import rig
+from chatddx.factors.base import Fingerprint
 from chatddx.facts.facts import Facts
+from chatddx.inventory.inventory import Inventory
 from chatddx.inventory.sources import MemorySource
 from chatddx.seed import Plan, load_cases, plan_factors, seed
 from chatddx.seed.plan import SAMPLE
@@ -15,6 +17,7 @@ from chatddx.store.store import Connection
 from chatddx.store.test.conftest import connect
 
 CASES = load_cases(SAMPLE / "cases.toml")
+SAMPLE_WORLD = Path(__file__).parents[4] / "sample-world" / "inventory.toml"
 
 
 def sample_plan(factors: Path = SAMPLE / "factors.toml") -> Plan:
@@ -180,3 +183,18 @@ def test_init_data_command(
     for neither_or_both in ([], ["--world", str(world), "--vignettes", str(cases)]):
         with pytest.raises(SystemExit):
             main(["init-data", "alice", *neither_or_both])
+
+
+def test_the_sample_world_holds_the_vignettes_at_7893656() -> None:
+    source = Inventory.load(SAMPLE_WORLD).source("sample")
+    assert source.sensitive
+    assert source.ids() == sorted(CASES)
+    for id in source.ids():
+        _ = source.fetch(id).decode()
+    listing = "".join(
+        f"{c.vignette.id} {c.vignette.fingerprint.hex}\n" for c in source.cases()
+    )
+    assert (
+        Fingerprint.of(listing.encode()).hex
+        == "ce41d6b218347d2b792c86160969f937c6926c8bff255b8644c7159402d7028c"
+    )

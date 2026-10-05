@@ -62,12 +62,12 @@ def _init_data(args: argparse.Namespace) -> None:
     else:
         raise SystemExit(
             f"--vignettes {args.vignettes}: give a directory of <id>.txt files, such as "
-            + "the old chatddx checkout's src/chatddx/data/cases"
+            + "sample-world/vignettes"
         )
     if not set(cases) & set(source.ids()):
         raise SystemExit(
             f"none of the sample's {len(cases)} cases is in source {args.source!r}; "
-            + "is it the directory of the old chatddx checkout's vignettes?"
+            + "the sample World has them: --world sample-world/inventory.toml"
         )
     with psycopg.connect(settings.database()) as conn:
         user = People(conn).find(args.user)

@@ -4,6 +4,7 @@
 `src/chatddx/data/inventory.toml`, `giftbag-inventory.toml` and the vignettes in `src/chatddx/data/cases/`. It is
 hand-edited into remastered's shape, with no adapter, and spreads over remastered's channels: factors, cases,
 catalog, and the World inventory (`docs/chatddx.md`, glossary). The word "inventory" keeps its glossary meaning.
+The vignettes are copied into `sample-world/` (see "The sample data now").
 Permalink base: https://github.com/chatddx-administration/chatddx/blob/7893656c143154e0421af0a85298177c347502e3/
 
 "Decided" means the user said so. "Take" is the agent's recommendation and still open.
@@ -13,13 +14,14 @@ all fixed but one. Each is condensed to where its result is described now and wh
 write-ups are in git history: `git show 79ec890:agents/wip-sample-data.md`.
 
 ## Start with this
-What's left is the parked work: engines and models, then scorers (see "Parked"). Settle these first.
+What's left is the parked work: engines and models, then scorers, then free-text expectations (see "Parked").
+Settle these first.
 
 ### Decisions (the user's)
 1. **Which models `from_facts` writes for.** Today it's every model the facts know
    (`src/chatddx/seed/plan.py:plan_factors`), not the models of the engines that will run the chunks. Once engines
    are seeded, the two lists can differ. Take: write for the seeded engines' models and report a model without
-   facts, so facts about a model nobody runs are just unused (`agents/facts.md`, "Open design issues").
+   facts, so facts about a model nobody runs are just unused (`docs/facts.md`, "Open design issues").
 2. **Where an engine's location lives.** The inventory knows only `[source.<name>]` tables
    (`src/chatddx/inventory/inventory.py`). The runner needs engine digest → URL, and the start-up script needs the
    paths of the model files and the chat template (`docs/factors.md`, "The inventory doesn't locate local engines
@@ -38,9 +40,11 @@ What's left is the parked work: engines and models, then scorers (see "Parked").
   `src/chatddx/factors/lint.py:lint` or `src/chatddx/facts/lint.py:lint`. The expectation lints would apply to the
   seeded expectations today, and the vLLM, facts and language lints once trials and judges are seeded.
 - **The fake vLLM.** It's planned (`docs/vllm.md`, AGENTS.md) but not started. The engine and runner work will want
-  to test against it.
-- **The fake-cases source** The 99 cases exist in the old repo and should be copied over and commited to the new
-  repo. They're not actually sensitive (obviously), but we pretend it is while also keeping under VCS.
+  to test against it. The old repo has one to start from: `src/chatddx/dev/fake_vllm.py` at 7893656 (660 lines), with
+  canned answers in `src/chatddx/dev/samples/` (`typical`, `rich`, `broken`) and tests in `src/chatddx/dev/tests/`.
+  It serves `/v1/models` and `/v1/chat/completions` for both sample models, streamed or not, as an HTTP server or an
+  httpx transport, with reasoning per model, tool calls, answers shaped by the sent schema, and runaways. It predates
+  the vLLM 0.24 assumptions (`docs/vllm.md`), so it needs checking against them.
 
 ## Decided
 - Seed now: chunks, recipes (as compiled skeleton threads), cases with their families, an expectation schema and
@@ -49,6 +53,8 @@ What's left is the parked work: engines and models, then scorers (see "Parked").
   `init-data` command and the compiler's `Code` (old C8) are done.
 - Base the sample data on 7893656. Quirks found while tweaking it, such as 13d317d's rename and the
   `DutchFall10w`/`Dutchfall*` spelling, are welcome stress tests.
+- Olof's comments on the cases (13d317d, 504792c) will be the foundation for a free-text expectation scored by
+  judges. The sample stays on 7893656 until that work starts (see "Parked", "Free-text expectations").
 - `max_tokens` is dropped from sampling.
 - Instructions: the hand edit changes the mechanism but keeps the spirit; remastered must support the same things
   (G3).
@@ -56,6 +62,8 @@ What's left is the parked work: engines and models, then scorers (see "Parked").
 - The expectation schema is hand-written into the new sample data.
 - The `# guessed` markers on targets are dropped on import, and the data is treated as live.
 - The sample data lives in the repo (`src/chatddx/data/sample/`), with the vignettes named by the World inventory.
+- The 99 vignettes are copied into the repo and kept under VCS. They aren't sensitive, but are treated as if they
+  were.
 - Model-dependent chunks come per model, from the facts.
 - Re-runs are created, validated or updated, keyed by kind, name and the archive as owner.
 - The giftbag is forks.
@@ -69,11 +77,22 @@ What's left is the parked work: engines and models, then scorers (see "Parked").
   Tables are kinds, keys are component fields, and references name records. On top of that, `json_schema_path`
   loads a JSON file, `from_facts` writes a chunk per model, `fork_of` seeds a record as a fork, and `tags` and
   `description` are catalog entries.
-- `facts.toml`: the two sample models' facts (`agents/facts.md`, "The sample's facts").
+- `facts.toml`: the two sample models' facts (`docs/facts.md`, "The sample's facts").
 - `cases.toml`: the 99 cases, each with its tags, language and targets, without the `# guessed` markers.
 - `schemas/`: the two output schemas and the hand-written `targets.json`.
 
-The vignettes aren't in it. They're a fake-sensitive source, located by a World inventory or given as a directory.
+The vignettes aren't in it: they're a fake-sensitive source, so they stay out of the package. `sample-world/` holds
+them as a World would:
+- `inventory.toml` is the sample World inventory. Its `[source.sample]` table locates `vignettes/` and declares it
+  sensitive.
+- `vignettes/` has the 99 files of 7893656's `src/chatddx/data/cases`, byte for byte (their git blob hashes match the
+  old repo's). 30 of them mix CRLF and LF line endings, so `.gitattributes` marks the directory `-text` to keep git
+  from converting them.
+- `src/chatddx/store/test/test_seed.py:test_the_sample_world_holds_the_vignettes_at_7893656` pins their ids, checks
+  that they decode as UTF-8, and pins one fingerprint over all their fingerprints, so leaving 7893656 takes a
+  deliberate edit.
+
+`init-data` still needs the source named: there's no default for `--world` or `--vignettes`.
 
 ### What changed in the hand edit
 - `instruction.ddx` and `instruction.bare` collapse into `prompt.case`; bare is the same prompt with `output.raw`.
@@ -82,6 +101,8 @@ The vignettes aren't in it. They're a fake-sensitive source, located by a World 
 - `sampling.recommended-4k` is gone with `max_tokens`.
 - `toolset.web`, `tool.web_search` and `configuration.plan-web` wait for tool code (G8).
 - `coercion.*` is folded into outputs (G4, G5), and `extends` became `fork_of` (G9).
+- `dont_miss`, a target kind in the old schema (`src/chatddx/repo/entities/case/pydantic.py:22`) and in
+  `docs/clinical-input.md`, isn't in `targets.json`. No case had one.
 
 ### init-data
 `chatddx init-data USER (--vignettes DIR | --world FILE) [--source NAME] [--giftbag] [--data DIR] [--facts PATH …]`
@@ -89,10 +110,10 @@ The vignettes aren't in it. They're a fake-sensitive source, located by a World 
 missing. It shares everything with USER, who must exist (`chatddx person add`). It prints one line per record:
 created, validated, updated, skipped, missing, needs repair, forked or kept.
 - **Inputs.** `--data` is what gets seeded, the package's sample data by default. The vignettes come from
-  `--vignettes`, a directory of `<id>.txt` files such as the old checkout's `src/chatddx/data/cases`, or from
-  `--world`, a World inventory whose `[source.<name>]` table locates them. `--source` names the source (`sample`),
-  which the cases are keyed by. A path that holds none of the sample's cases is refused before anything is written.
-  `--facts` names the facts files, the data directory's `facts.toml` by default.
+  `--vignettes`, a directory of `<id>.txt` files such as `sample-world/vignettes`, or from `--world`, a World
+  inventory whose `[source.<name>]` table locates them, such as `sample-world/inventory.toml`. `--source` names the
+  source (`sample`), which the cases are keyed by. A path that holds none of the sample's cases is refused before
+  anything is written. `--facts` names the facts files, the data directory's `facts.toml` by default.
 - **Planning.** `chatddx.seed.plan_factors` is pure. It plans 38 records: 12 recipes (6 configurations × 2 models),
   12 reasoning chunks, 5 sampling chunks, 7 outputs, a prompt and an expectation schema. It skips 4 reasoning chunks
   the facts refuse for gpt-oss.
@@ -116,7 +137,10 @@ The old checkout's vignettes were checked in a scratch database:
 - the first run created 236 records and 136 giftbag forks;
 - a re-run validated all 236 and kept every fork;
 - against the 13d317d checkout, 230 were validated, the renamed `DutchFall10w` was missing, and `Dutchfall11w` and
-  `casesfromedn1` needed repair. That matches G13's survey.
+  `casesfromedn1` needed repair. That matches G13's survey;
+- against 504792c, the head of `new-datamodel` on 2026-10-05, 228 were validated: `Dutchfall1w` needs repair too;
+- through `--world sample-world/inventory.toml`, on a database seeded from the 7893656 checkout, all 236 were
+  validated and every fork kept.
 
 Tests: `src/chatddx/store/test/test_seed.py`.
 
@@ -141,7 +165,7 @@ Still open:
 | reasoning | 9 | `chunk.reasoning`, written from the facts (G1, G2) | |
 | sampling | 5 | `chunk.sampling`, `recommended` written from the facts (G1) | |
 | configuration | 7 | `Recipe` → skeleton thread + `Compilation` (G9) | `plan-web` (G8) |
-| case | 99 | `case` + family (tags, language) + `expectation` (G11–G14) | |
+| case | 99 | `case` + family (tags, language) + `expectation` (G11–G14) | free-text expectations |
 | scorer | 4 | `scorer` | deferred |
 
 ## Gaps
@@ -149,9 +173,9 @@ Each gap was tagged [maybe fix remastered]: the sample data needed something rem
 
 ### Request
 - **G1. Model facts.** Fixed: `chatddx.facts`, typed in code with values in TOML, applied when chunks are written
-  and keyed by model name (`agents/facts.md`).
+  and keyed by model name (`docs/facts.md`).
 - **G2. Reasoning levels.** Fixed with G1: the old levels are facts per model, with writes, collapses, refusals, a
-  default and a budget (`agents/facts.md`, "Reasoning"). Open: `xhigh` can't be written (`agents/facts.md`).
+  default and a budget (`docs/facts.md`, "Reasoning"). Open: `xhigh` can't be written (`docs/facts.md`).
 - **G3. Placing chunk-supplied text.** Fixed: the `output_guidance` and `tool_guidance` inserts, in the
   instructions or the prompt (`docs/factors.md`, "How chunks affect each other"). In the sample, `instruction.ddx`
   became `prompt.case`, with the guidance as the system message.
@@ -179,12 +203,12 @@ Each gap was tagged [maybe fix remastered]: the sample data needed something rem
   - `web_search`'s code (the old `chatddx.runtime.tools.web_search`) has no home, so `toolset.web`,
     `tool.web_search` and `plan-web` aren't in the sample (see "Start with this", 3);
   - `schema.ref_unverified` doesn't look at toolset tools' parameters;
-  - gpt-oss with `required` (`agents/facts.md`);
+  - gpt-oss with `required` (`docs/facts.md`);
   - a turn after a response that already called the answer tool isn't rejected.
 - **G9. Variations.** Fixed: a variation is a fork, and the catalog proposes re-applying it when its origin moves
   (`docs/catalog.md`, "Configurations and variations"). The sample's `extends` became `fork_of`.
 - **G10. Skeleton × engine compatibility.** Fixed: the runtime lints (`docs/factors.md`, "Lints"; `docs/vllm.md`,
-  items 5–8), the facts' checks (`agents/facts.md`, "Checking pairs"), and `--config` forbidden in argv. Still open:
+  items 5–8), the facts' checks (`docs/facts.md`, "Checking pairs"), and `--config` forbidden in argv. Still open:
   OpenAI's API is reported to reject function parameters whose root isn't `type: object`. That's unverified, and a
   candidate lint for tool contracts on `engine.remote`.
 - **G15. Sent schemas are not prepared.** Closed, no change: vLLM 0.24 constrains `$defs` and `$ref` as written
@@ -253,14 +277,45 @@ The deferred work. Settle "Start with this" first.
   - nothing maps an engine digest to a URL, and the World inventory locates only vignette sources;
   - the hosts' served names must become the engine digest;
   - per-endpoint capacity (`max_jobs`), credentials and the API kind have no home.
-- The fake vLLM.
+- The fake vLLM (see "Worth doing early").
 - Model specs (family, size, quantization, context length, licence) are held by the facts, descriptive only
-  (`agents/facts.md`).
+  (`docs/facts.md`).
 
 ### Scorers
-- Scoring code: the pattern matcher, `reciprocal_rank`, `first_mention` and `mentions`.
+- Scoring code: the pattern matcher, `reciprocal_rank`, `first_mention` and `mentions`. The old code is at 7893656
+  in `src/chatddx/scoring/scorers/patterns.py`, with `metrics.py`, `score.py` and tests in `src/chatddx/scoring/`.
 - Free-text parsing beyond `lines@1` (G6).
 - Aggregation (`mean`, `stderr`).
 - A check that views agree with the output schema (old `prove`): reachability is done (G6); item types are open.
 - One scorer per output shape (`plan`, `diagnoses`, `free-text`, `raw`), with the old view names as labels.
 - Scorings (old D9).
+
+### Free-text expectations
+Decided: Olof's comments on the cases will be the foundation for a free-text expectation that judges score. The
+sample stays on 7893656 until this starts.
+- **What's there.** Olof, a clinician, added comments to the end of three vignettes in the old repo after 7893656:
+  `Dutchfall11w` and `casesfromedn1` in 13d317d (2026-09-28), and `Dutchfall1w` in 504792c (2026-10-04). Each is a
+  block headed "Olof comments" or "Olof kommenterar", in Swedish even for an English vignette: their reading of the
+  case, what to do, and the disposition. `Dutchfall11w` and `casesfromedn1` end in a "Chatddx:" block too, the short
+  answer they'd want ChatDDx to give. 13d317d also renamed `DutchFall10w` to `Dutchfall10w`, with the same bytes.
+- **They can't stay in the vignette.** A vignette is sent whole, so the comments would reach the model as part of
+  the case. Appendices are sent too (`docs/factors.md`, "Appendix"), so they're no home either. They're expectation
+  data, and the design already has judges read free-text notes in expectations (`docs/factors.md`, "View",
+  "Judge").
+- **Cutting them off doesn't restore 7893656.** In `Dutchfall11w` and `Dutchfall1w` the edit also turned the old
+  last line's LF into CRLF. Only `casesfromedn1` is a pure append. Unless the old bytes are restored exactly, those
+  cases need a repair (`docs/catalog.md`, "Families and repairs").
+- **What it needs:**
+  - an expectation schema for free text beside `targets.json`, whose `additionalProperties: false` leaves no room.
+    Open: one text, or the comment and the "Chatddx:" answer kept apart;
+  - a judge-purpose prompt with `completion` and `expectation`, and maybe `vignette`; a judge, which needs an
+    engine; and a scorer whose view names the judge. So it waits on engines (decision 2) and scorers (decision 3);
+  - a language for the notes. They're `sv`, while 79 of the cases are `en`, so a judge would read Swedish notes
+    about an English answer (G18);
+  - somewhere for clinicians to write them other than the vignette files. Expectations are written in the portal
+    (`docs/factors.md`, "Expectation"). Take: until there is one, a file in the sample data beside `cases.toml`,
+    keyed by case id.
+- **They can disagree with the targets.** On `Dutchfall11w`, Olof leads with shock, most likely sepsis, and uses
+  ultrasound (RUSH) to rule out other causes, with blood cultures and broad empirical antibiotics. The targets,
+  guessed before their markers were dropped, have AAA or dissection as the diagnosis. `Dutchfall1w` and
+  `casesfromedn1` roughly agree with theirs. Open: whether the targets get revised from the notes.
