@@ -44,11 +44,14 @@ Canary sets are components but not factors. They are *instruments*: fixed probe 
 factors without changing any output. They are components so that the same set can be compared across runs (see
 "Canary sets").
 
+Compilations are components but not factors either. They are *provenance*: each says which recipe and compiler
+produced a skeleton (see "Compilation"). No component refers to one, so they change no digest and no output.
+
 A trial's outputs therefore depend on the trial's pinned factors and on its run's recorded and observed factors.
 Two runs of the same trial are interchangeable only when those agree too (see "Open design issues").
 
 ### Not factors
-- Records of what happened (runs, scores, calls, compilations): `docs/ledger.md`. They hold the recorded factors
+- Records of what happened (runs, scores, calls): `docs/ledger.md`. They hold the recorded factors
   and the evidence of the observed ones, but they aren't factors themselves.
 - People, roles, authentication and authorization: `docs/identity.md`.
 - Names, labels, languages, tags, descriptions, owners, collaborators and version history: `docs/catalog.md`.
@@ -57,11 +60,12 @@ Two runs of the same trial are interchangeable only when those agree too (see "O
   (`src/chatddx/facts/facts.py`). Facts help write chunks and check them (`src/chatddx/facts/lint.py`), but no
   digest depends on them.
 - Instruments: canary sets.
+- Provenance: compilations.
 
 ## How components work
 
-Some objects live inside components or records without being components themselves: recipes (in compilation
-records), views (in scorers), canaries (in canary sets) and execution settings (in run records).
+Some objects live inside components or records without being components themselves: recipes (in compilations), views
+(in scorers), canaries (in canary sets) and execution settings (in run records).
 
 ### Canonical form and digest
 A component is written out in one fixed way, its *canonical form*, so that equal components always give the same
@@ -88,7 +92,7 @@ does. Bytes written with another version are refused rather than guessed at (`ba
 Every component has a `kind` that says what it is: `model`, `engine.local`, `engine.remote`, the nine chunk kinds
 (`chunk.instructions`, `chunk.few_shot`, `chunk.prompt`, `chunk.output`, `chunk.sampling`, `chunk.reasoning`,
 `chunk.passthrough`, `chunk.toolset` and `chunk.translations`), `tool`, `skeleton`, `appendix`, `case`, `trial`,
-`expectation_schema`, `expectation`, `scorer`, `judge`, `scoring` and `canary_set`.
+`expectation_schema`, `expectation`, `scorer`, `judge`, `scoring`, `canary_set` and `compilation`.
 
 ### References and checks
 A reference is a digest field typed with the kinds it may point to (`Annotated[Digest, RefTo(kind, …)]`). From
@@ -140,6 +144,7 @@ foreign key (`docs/store.md`).
 | Component | An immutable set of parameters identified by its digest. Pinned factors are held in components. |
 | Digest | `sha256:` followed by the hash of a component's canonical form. Components are told apart and referred to by it. |
 | Instrument | A component that measures without being a factor: canary sets. |
+| Provenance | A component that says how another was made, without being a factor: compilations. |
 | Run | One execution of a trial: its requests, responses and records (`docs/ledger.md`). |
 | Vignette | The clinical text of one case at its source. Sensitive and never stored; known by its source, its id there and its fingerprint. |
 | Case | A vignette plus the appendices sent with it. |
@@ -397,7 +402,7 @@ fails the compilation, which lists every missing text: nothing is guessed, and l
 
 Translations carry no language. A request's language is implicit in its text, and no language tag reaches the
 model; language labels are catalog entries (`docs/catalog.md`). The skeleton holds the translated text, and its
-compilation record keeps the recipe, which names the translations.
+compilation keeps the recipe, which names the translations.
 
 ### Recipe and compilation
 - principal author: Researchers
@@ -422,9 +427,26 @@ With a toolset, the body lists the toolset's tools, in order, as functions. A `n
 `tool_choice: auto`, and the model answers when it stops calling tools. A `tool` contract's answer function is
 listed last, with `tool_choice: required`: every turn calls a tool, and calling the answer tool ends the item.
 
-The recipe is kept only in the compilation record, next to the compiler's version (`docs/ledger.md:Compilation`).
-Trials reference the skeleton, not the recipe, so the compiler's code is not a separate factor: whatever it did
-is frozen in the skeleton.
+The recipe is kept only in the compilation, next to the compiler's version (see "Compilation"). Trials reference
+the skeleton, not the recipe, so the compiler's code is not a separate factor: whatever it did is frozen in the
+skeleton.
+
+### Compilation
+- principal author: none; written by the compiler
+- defined in: `request.py:Compilation`
+
+A compilation (kind `compilation`) says that a recipe compiled to a skeleton. It holds the recipe, the skeleton's
+digest and the version of the compiler's code (`compiler`). It is the only place a recipe is kept, and so the
+lineage from the chunks written in the portal to the frozen request.
+
+A compilation is provenance, not a factor: no component refers to it, so it changes no digest and no output.
+Trials and judges reference the skeleton, which holds whatever the compiler did. The same recipe compiled by the
+same compiler always gives the same compilation. Different recipes can give the same skeleton (see "How chunks
+affect each other"), so a skeleton may have several compilations, and a hand-written one has none.
+
+Its references, the recipe's chunks and the skeleton, are checked like any component's. A bundle carries a
+compilation when it is one of the roots, and the chunks then come with it, so the bundle shows how its skeleton was
+made. Nothing checks that the recipe compiles to the skeleton.
 
 ### Skeleton
 - principal author: none; normally produced by `compile_request`
@@ -779,8 +801,8 @@ received case-derived content, which clearance may need.
 ### Smaller issues
 - **Canary drift isn't checked.** Nothing compares canary outputs between phases or between runs.
 - **Judge engines are never probed.** Canary probes run on the run's engine only.
-- **Skeleton provenance.** Should a skeleton be accepted only with a compilation record? Hand-written ones, such as
-  judge prompts, are possible today.
+- **Skeleton provenance.** Should a skeleton be accepted only with a compilation? Hand-written ones, such as judge
+  prompts, are possible today.
 - **Flags are checked without vLLM's list of flags.** So a bare argument after a flag that takes no value, as in
   `--enforce-eager google/gemma`, passes the argv check, and vLLM then refuses to start. Likewise lints read flags
   by their full names, so an abbreviated flag such as `--reasoning-pars qwen3` works in vLLM but escapes the lints
@@ -866,39 +888,3 @@ reference, straight from the schema. `RefTo` used to do this, and was stopped be
 Schema plays no part in a component's digest, so adding it back changes no digest.
 
 ## Proposed amendments
-
-- The following amendments describe compilations as components of kind `compilation`, provenance rather than
-  factors (`src/chatddx/factors/request.py:Compilation`; moved out of `src/chatddx/ledger/ledger.py`, without its
-  `at`). The ledger doc no longer describes them.
-- CHANGE "What a factor is", after the canary-sets paragraph, ADD: "Compilations are components but not factors
-  either. They are *provenance*: each says which recipe and compiler produced a skeleton (see "Compilation"). No
-  component refers to one, so they change no digest and no output."
-- CHANGE "Not factors": "Records of what happened (runs, scores, calls, compilations)" → "(runs, scores, calls)";
-  ADD "- Provenance: compilations."
-- CHANGE "How components work": "recipes (in compilation records)" → "recipes (in compilations)".
-- CHANGE "Kinds": ADD `compilation` after `canary_set`.
-- ADD to "Terms": "Provenance | A component that says how another was made, without being a factor:
-  compilations."
-- CHANGE "Translations": "its compilation record keeps the recipe" → "its compilation keeps the recipe".
-- CHANGE "Recipe and compilation": "The recipe is kept only in the compilation record, next to the compiler's
-  version (`docs/ledger.md:Compilation`)." → "The recipe is kept only in the compilation, next to the compiler's
-  version (see "Compilation")."
-- ADD after "Recipe and compilation":
-
-  > ### Compilation
-  > - principal author: none; written by the compiler
-  > - defined in: `request.py:Compilation`
-  >
-  > A compilation (kind `compilation`) says that a recipe compiled to a skeleton. It holds the recipe, the
-  > skeleton's digest and the version of the compiler's code (`compiler`). It is the only place a recipe is kept,
-  > and so the lineage from the chunks written in the portal to the frozen request.
-  >
-  > A compilation is provenance, not a factor: no component refers to it, so it changes no digest and no output.
-  > Trials and judges reference the skeleton, which holds whatever the compiler did. The same recipe compiled by the
-  > same compiler always gives the same compilation. Different recipes can give the same skeleton (see "How chunks
-  > affect each other"), so a skeleton may have several compilations, and a hand-written one has none.
-  >
-  > Its references, the recipe's chunks and the skeleton, are checked like any component's. A bundle carries a
-  > compilation when it is one of the roots, and the chunks then come with it, so the bundle shows how its skeleton
-  > was made. Nothing checks that the recipe compiles to the skeleton.
-- CHANGE "Smaller issues", "Skeleton provenance": "only with a compilation record?" → "only with a compilation?".

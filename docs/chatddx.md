@@ -11,7 +11,7 @@ The rig provides:
 It must be possible to deliver the cage together with the results, for scientific rigor.
 
 ## Glossary
-- **Factor:** ("component" in code): an immutable, content-addressed set of parameters that affects an output or its score.
+- **Factor:** Anything that can change an output or its score (`docs/factors.md`, "What a factor is").
 - **Fingerprint:** a hash of content that must *not* be stored: vignette, wire body, prompt token ids. It carries its algorithm: `sha256`, or `hmac-sha256` with a `key_id`
 - **Pinned:** a value that can't be altered without changing the digest of one or more factors.
 - **Sensitive:** data that is forbidden from being stored on, or passed to, non-approved sources.
@@ -44,9 +44,9 @@ It must be possible to deliver the cage together with the results, for scientifi
 - **Item key:** (case, replicate index), which identifies one request of a run.
 - **Execution:** how a run issues requests: order, concurrency, timeout and retries.
 - **View:** the part of an output and of an expectation that a scorer scores, and how.
-- **Compilation:** the record of which recipe and compiler produced a skeleton.
+- **Compilation:** A provenance (component) that says which recipe and compiler produced a skeleton
 - **Run** and **Score:** a stage log.
-- **Record** / **ledger:** events logged while compiling, running or scoring.
+- **Record** / **ledger:** events logged while running or scoring.
 - **Seal:** the hash over a log's started row and item rows, kept in its finished row.
 - **Finding:** a warning or info produced when something declared doesn't match what was observed, or when a setting is risky.
 - **Canary:** a fixed, non-sensitive probe request.
@@ -188,7 +188,7 @@ There is however an intended flow of data behind the pieces, which is described 
   - if few shots were included in the recipe, they're baked into the skeleton as plain text
   - appendix_layout: how appendices are joined into one piece of text
 
-  A Compilation record notes which recipe produced which skeleton.
+  A Compilation notes which recipe produced which skeleton, it is stored as a component, but isn't a factor.
 
 3. A CaseInput is a source case id, the vignette's fingerprint and a list of Appendix references.
 4. A Trial names a skeleton, an engine (LocalEngine or RemoteEngine), the case inputs, the text-cleanup steps and the seeds.
@@ -264,12 +264,3 @@ See `docs/findings.md` for a list of all findings and what they mean.
 **Canary drift are not implemented:** nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
-
-- CHANGE glossary, "Factor: ("component" in code)" → "stored as a component; canary sets (instruments) and
-  compilations (provenance) are components that aren't factors" (`docs/factors.md`, "What a factor is").
-- CHANGE glossary, "Compilation: the record of which recipe and compiler produced a skeleton." → "provenance: the
-  component that says which recipe and compiler produced a skeleton" (`src/chatddx/factors/request.py:Compilation`).
-- CHANGE glossary, "Record / ledger: events logged while compiling, running or scoring." → "while running or
-  scoring".
-- CHANGE "Before a run", step 2: "A Compilation record notes which recipe produced which skeleton." → "A Compilation
-  notes which recipe and compiler produced the skeleton; it is stored as a component, but isn't a factor."
