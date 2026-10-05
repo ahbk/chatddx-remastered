@@ -277,7 +277,7 @@ class Catalog:
         before, after = self._shape(base, by_recipe), self._shape(fork, by_recipe)
         return Variation(
             base=base,
-            head=self.head(base.thread),
+            origin_head=self.head(base.thread),
             varies={
                 path: (before.get(path), after.get(path))
                 for path in sorted(before.keys() | after.keys())
@@ -291,7 +291,7 @@ class Catalog:
             return None
         fork = self.head(thread)
         if variation.base.compilation is not None and fork.compilation is not None:
-            recipe = self._recipe(variation.head)
+            recipe = self._recipe(variation.origin_head)
             if recipe is None:
                 return None
             changes = {
@@ -299,7 +299,7 @@ class Catalog:
                 for path, (_, after) in variation.varies.items()
             }
             return Recipe.model_validate({**recipe.model_dump(mode="json"), **changes})
-        doc = Store(self._conn).get(variation.head.digest).canonical_doc()
+        doc = Store(self._conn).get(variation.origin_head.digest).canonical_doc()
         for path, (_, after) in variation.varies.items():
             if after is None:
                 _ = doc.pop(path[1:], None)

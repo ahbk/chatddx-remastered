@@ -80,12 +80,12 @@ class Edit(_Frozen):
 
 class Variation(_Frozen):
     base: Edit
-    head: Edit
+    origin_head: Edit
     varies: dict[str, tuple[JsonValue, JsonValue]]
 
     @property
     def moved(self) -> bool:
-        return self.head.id != self.base.id
+        return self.origin_head.id != self.base.id
 
 
 class Binding(_Frozen):

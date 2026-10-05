@@ -137,7 +137,8 @@ def test_variations_are_reapplied_on_request(conn: Connection) -> None:
     assert catalog.variation(origin.thread) is None
     variation = catalog.variation(fork.thread)
     assert variation is not None
-    assert (variation.base, variation.head, variation.moved) == (origin, origin, False)
+    assert (variation.base, variation.origin_head) == (origin, origin)
+    assert not variation.moved
     assert variation.varies == {"/recipe/output": (base.output, shown)}
     assert catalog.proposal(fork.thread) is None
 
@@ -150,7 +151,8 @@ def test_variations_are_reapplied_on_request(conn: Connection) -> None:
     )
     variation = catalog.variation(fork.thread)
     assert variation is not None
-    assert (variation.base, variation.head, variation.moved) == (origin, head, True)
+    assert (variation.base, variation.origin_head) == (origin, head)
+    assert variation.moved
     proposal = catalog.proposal(fork.thread)
     assert proposal == moved_recipe.model_copy(update={"output": shown})
 
