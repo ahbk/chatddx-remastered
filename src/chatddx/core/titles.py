@@ -105,6 +105,11 @@ def describe_recipe(recipe: Recipe, title: Title) -> str:
     return described if recipe.purpose == "generation" else f"judge: {described}"
 
 
+def describe_case(root: str, appendices: Iterable[str], title: Title) -> str:
+    titles = [title(a) for a in appendices]
+    return f"{root} with {', '.join(titles)}" if titles else root
+
+
 def describe_change(path: str, after: JsonValue, title: Title) -> str:
     label = path.removeprefix("/recipe/").removeprefix("/")
     match after:
@@ -168,12 +173,7 @@ def describe(component: Component, title: Title) -> str:
         case Expectation(case=case):
             return f"expectation for {title(case)}"
         case Case(vignette=vignette, appendices=appendices):
-            described = f"{vignette.source}/{vignette.id}"
-            if appendices:
-                described += (
-                    f" with {_count(len(appendices), 'appendix', 'appendices')}"
-                )
-            return described
+            return describe_case(f"{vignette.source}/{vignette.id}", appendices, title)
         case ModelArtifact(repo=repo):
             return repo
         case LocalEngine(model=model, runtime=runtime, hardware=hardware):

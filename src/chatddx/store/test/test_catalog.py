@@ -377,17 +377,24 @@ def test_titles_fall_back_to_what_a_thread_holds(conn: Connection) -> None:
     assert trial.endswith(
         " on google/gemma-3-12b-it on vllm 0.24.0 (RTX 5090), 1 case, 2 seeds"
     )
-    assert catalog.title_of(ids["case"]) == "registry/c1 with 1 appendix"
+    troponin = '"Troponin 80 ng/L."'
+    assert catalog.title_of(ids["case"]) == f"registry/c1 with {troponin}"
     family = catalog.adopt(ids["case"], alice.id)
     catalog.note(
         Subject(family=family),
         Entry(field=EntryField.NAME, value="chest pain"),
         alice.id,
     )
-    assert catalog.title_of(ids["case"]) == "chest pain"
+    assert catalog.title_of(ids["case"]) == f"chest pain with {troponin}"
+    bare = reg.add(Case(vignette=resolve(reg.get, ids["case"], Case).vignette))
+    _ = store.add(reg, [bare])
+    assert catalog.title_of(bare) == "chest pain"
     scoring = resolve(reg.get, ids["scoring"], Scoring)
     expectation = catalog.create(scoring.expectations[0], alice.id)
-    assert catalog.title(expectation.thread) == "expectation for chest pain"
+    assert (
+        catalog.title(expectation.thread)
+        == f"expectation for chest pain with {troponin}"
+    )
 
     cool = reg.add(Sampling(temperature=0.5))
     _ = store.add(reg, [cool])
@@ -501,6 +508,16 @@ def test_renamed_vignettes_are_repaired(conn: Connection) -> None:
         ("/cases/0/appendices/0", appendix, None),
     ]
     assert catalog.behind(expected.thread) == []
+
+    troponin = '"Troponin 80 ng/L."'
+    assert catalog.title_of(ids["case"]) == f"chest pain (earlier) with {troponin}"
+    assert catalog.title_of(repair.cases[ids["case"]]) == f"chest pain with {troponin}"
+    catalog.note(
+        Subject(family=family), Entry(field=EntryField.NAME, present=False), alice.id
+    )
+    assert catalog.title_of(ids["case"]) == (
+        f"registry/c1-renamed (earlier) with {troponin}"
+    )
 
 
 def test_changed_vignettes_are_repaired(conn: Connection) -> None:

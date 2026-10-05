@@ -50,7 +50,7 @@ def test_unnamed_components_are_described_by_what_they_hold() -> None:
         + " · enable_thinking false"
     )
     assert title(ids["engine"]) == "google/gemma-3-12b-it on vllm 0.24.0 (RTX 5090)"
-    assert title(ids["case"]) == "registry/c1 with 1 appendix"
+    assert title(ids["case"]) == 'registry/c1 with "Troponin 80 ng/L."'
     assert title(ids["trial"]).endswith(
         " on google/gemma-3-12b-it on vllm 0.24.0 (RTX 5090), 1 case, 2 seeds"
     )

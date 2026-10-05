@@ -18,7 +18,12 @@ from chatddx.core.catalog import (
     Thread,
     Variation,
 )
-from chatddx.core.titles import describe, describe_change, describe_recipe
+from chatddx.core.titles import (
+    describe,
+    describe_case,
+    describe_change,
+    describe_recipe,
+)
 from chatddx.factors.base import (
     Component,
     Fingerprint,
@@ -324,10 +329,7 @@ class Catalog:
 
     def title_of(self, digest: str) -> str:
         if self._kind(digest) == "case":
-            family = self.family(digest)
-            if family is not None and (name := self.about(Subject(family=family)).name):
-                return name
-            return self._derive(digest)
+            return self._case_title(digest)
         rows = self._conn.execute(
             f"""
             SELECT DISTINCT t.id, x.id = e.id, {_DELETED}
@@ -660,6 +662,18 @@ class Catalog:
             if compilations:
                 return describe_recipe(compilations[0].recipe, self.title_of)
         return describe(component, self.title_of)
+
+    def _case_title(self, digest: str) -> str:
+        family = self.family(digest)
+        if family is None:
+            return self._derive(digest)
+        case = resolve(Store(self._conn).get, digest, Case)
+        current = self.bindings(family)[-1].vignette
+        name = self.about(Subject(family=family)).name
+        root = name or f"{current.source}/{current.id}"
+        if case.vignette != current:
+            root += " (earlier)"
+        return describe_case(root, case.appendices, self.title_of)
 
     def _shape(self, edit: Edit, by_recipe: bool) -> dict[str, JsonValue]:
         if by_recipe:
