@@ -663,6 +663,9 @@ def test_languages_are_kept_on_digests(conn: Connection) -> None:
     assert catalog.language_of(translated.skeleton) is None
     in_language(swedish, "sv")
     assert catalog.language_of(translated.skeleton) == "sv"
+    assert catalog.title_of(translated.skeleton).endswith(
+        f" · sv translations, {len(needed)} texts"
+    )
 
     hand_written = resolve(reg.get, ids["judge"], Judge).skeleton
     assert catalog.language_of(hand_written) is None

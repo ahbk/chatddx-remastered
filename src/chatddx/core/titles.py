@@ -123,7 +123,7 @@ def describe_change(path: str, after: JsonValue, title: Title) -> str:
             return f"{key}: {_value(after)}"
 
 
-def describe(component: Component, title: Title) -> str:
+def describe(component: Component, title: Title, language: str | None = None) -> str:
     match component:
         case Instructions(text=text):
             return snippet(_text(text))
@@ -152,7 +152,8 @@ def describe(component: Component, title: Title) -> str:
         case Toolset(tools=tools):
             return "with " + ", ".join(title(t) for t in tools)
         case Translations(entries=entries):
-            return f"translations, {_count(len(entries), 'text')}"
+            into = "" if language is None else f"{language} "
+            return f"{into}translations, {_count(len(entries), 'text')}"
         case Passthrough(body=body):
             return "passthrough: " + ", ".join(body)
         case Skeleton(purpose=purpose):

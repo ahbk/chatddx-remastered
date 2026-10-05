@@ -94,6 +94,10 @@ def test_recipes_are_described_by_every_part() -> None:
     assert describe_recipe(translated, title) == (
         english + f" · translations, {len(needed)} texts"
     )
+    assert (
+        describe(reg.get(swedish), title, "sv")
+        == f"sv translations, {len(needed)} texts"
+    )
     with_tools = recipe.model_copy(update={"toolset": tools})
     assert describe_recipe(with_tools, title) == english + " · with web_search"
 

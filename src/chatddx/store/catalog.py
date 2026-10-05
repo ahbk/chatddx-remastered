@@ -668,7 +668,7 @@ class Catalog:
             )
             if compilations:
                 return describe_recipe(compilations[0].recipe, self.title_of)
-        return describe(component, self.title_of)
+        return describe(component, self.title_of, self._language(digest))
 
     def _case_title(self, digest: str) -> str:
         family = self.family(digest)
