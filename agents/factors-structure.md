@@ -169,8 +169,8 @@ foreign key (`docs/store.md`).
 
 A case (kind `case`) is a vignette plus the appendices to send with it, in order. `cases.py:Vignette` names the
 vignette by the source it comes from, its id there, and the fingerprint of its raw bytes as fetched. Sources are
-declared in the inventory, and `Source.cases()` (`src/chatddx/inventory/sources.py`) builds one case, without
-appendices, for each vignette a source lists.
+declared in the inventory and hand over vignettes as UTF-8 text (see "Preparing a case"). `Source.cases()`
+(`src/chatddx/inventory/sources.py`) builds one case, without appendices, for each vignette a source lists.
 
 The vignette itself is sensitive by default, unstructured, and never edited or stored: only its fingerprint is. A
 case's digest covers the vignette and the appendix list, so the same vignette with different appendices is a
@@ -216,6 +216,9 @@ Cleanup applies to the vignette only, after it has been fingerprinted.
 `prepare_case(case, raw, get, layout, cleanup)` turns a case and its raw vignette into the slot fills for a request:
 - `vignette`: the raw bytes, decoded as UTF-8 and cleaned;
 - `appendices`: the appendices, joined by the layout.
+
+UTF-8 is the contract with sources. A byte-order mark at the start is part of the encoding, so decoding drops it
+and it never reaches the model. Bytes that aren't UTF-8 raise a `StructuralError` naming the vignette.
 
 It also fingerprints the raw bytes and reports `case.drift` when they don't match the case's fingerprint. A vignette
 fingerprinted with an HMAC key needs the same key id, or it raises.
@@ -728,10 +731,6 @@ variation, and it has no name yet.
 Nothing aggregates scores today, but anything that compares or pools runs by the trial's digest alone would mix
 conditions without noticing. It needs to group by the recorded factors as well, and to check the evidence of the
 observed ones (prompt-token fingerprints, returned models, canaries) before pooling.
-
-### Vignette encoding
-`prepare_case` decodes vignettes as strict UTF-8 and raises on anything else, while the fingerprint is taken over
-the raw bytes. Sources don't declare an encoding.
 
 ### The chat template's path is part of the engine
 `LocalEngine.chat_template` is a path and a digest, so moving the template file makes a new engine, although where

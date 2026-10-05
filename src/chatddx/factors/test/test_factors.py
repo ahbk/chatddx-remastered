@@ -1003,8 +1003,15 @@ def test_prepare_case(reg: Registry) -> None:
     assert not prepare_case(
         keyed, raw, reg.get, AppendixLayout(), key=("k1", b"secret")
     ).findings
-    with pytest.raises(UnicodeDecodeError):
+    with pytest.raises(StructuralError, match="registry/c1 isn't UTF-8"):
         _ = prepare_case(case, b"\xff", reg.get, AppendixLayout())
+
+    marked = b"\xef\xbb\xbf" + raw
+    with_bom = prepare_case(
+        case, marked, reg.get, AppendixLayout(), ("newlines.lf@1", "strip@1")
+    )
+    assert with_bom.fills["vignette"] == "A 54-year-old\nwith chest pain."
+    assert with_bom.fingerprint == Fingerprint.of(marked)
 
 
 def test_cleanup_ops_are_pinned() -> None:

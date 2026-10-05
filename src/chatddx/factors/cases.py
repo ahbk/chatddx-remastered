@@ -102,10 +102,18 @@ def prepare_case(
                 subject=case.digest,
             ),
         )
+    try:
+        # UTF-8 is the contract with sources; a byte-order mark belongs to the encoding.
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError as e:
+        vignette = f"{case.vignette.source}/{case.vignette.id}"
+        raise StructuralError(
+            f"vignette {vignette} isn't UTF-8: {e.reason} at byte {e.start}"
+        ) from None
     appendices = [resolve(get, a, Appendix).text for a in case.appendices]
     return Prepared(
         fills={
-            "vignette": clean(raw.decode(), cleanup),
+            "vignette": clean(text, cleanup),
             "appendices": layout.join(appendices),
         },
         fingerprint=observed,
