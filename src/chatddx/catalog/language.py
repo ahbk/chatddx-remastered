@@ -39,7 +39,7 @@ def language_of(rows: Reader, digest: str) -> str | None:
             return own(rows, digest)
 
 
-# src/chatddx/store/migrations/0024-t2-catalog-languages.sql repeats these checks.
+# src/chatddx/store/migrations/0012-t2-catalog.sql repeats these checks.
 def check_language(rows: Reader, digest: str, value: str) -> str:
     kind = rows.kind(digest)
     if kind is None:
@@ -54,7 +54,7 @@ def check_language(rows: Reader, digest: str, value: str) -> str:
     return kind
 
 
-# src/chatddx/store/migrations/0024-t2-catalog-languages.sql repeats this check.
+# src/chatddx/store/migrations/0012-t2-catalog.sql repeats this check.
 def check_entry(subject: Subject, entry: Entry) -> None:
     if entry.field == EntryField.LANGUAGE and subject.family is None:
         raise ValueError(

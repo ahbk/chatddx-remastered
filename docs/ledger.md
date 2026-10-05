@@ -65,6 +65,9 @@ with a backward-compatible default needs no new version; changing a field's mean
 `Record.parse` reads canonical bytes back, and refuses (`StructuralError`) another version or anything that isn't a
 JSON object.
 
+The store parses every row it returns, so after a bump it can't return rows of the old version
+(`docs/store.md`, "Known gaps").
+
 ### Times
 Every time in a record is timezone-aware and kept in UTC: a time given as 02:00+02:00 is stored as 00:00Z. The
 offset is part of the canonical bytes, so without this the same instant would seal differently depending on the
@@ -348,6 +351,19 @@ of the ledger's findings are warnings.
 | `score.incomplete` | `check_score` | none | A finished score lacks items for some pairs of run item and view. |
 | `score.scorer_code` | `check_score` | score id | The scorer code that ran isn't the code the scorer pins. |
 | `score.run_unfinished` | `check_score` | score id | The run hasn't finished, or finished after the score started. |
+
+## Storage
+The ledger is the schema `ledger` (`docs/store.md`; tables in `docs/migrations.md`, "ledger"):
+one table per row type, each row holding its record's canonical bytes (`payload`) and a `jsonb` copy (`doc`).
+- `Store.append(*records)` writes rows in one transaction and raises on a duplicate key, so a row is never
+  overwritten. It checks nothing else: `Run` and `Score` validate a log when `Store.run(id)` and `Store.score(id)`
+  read it back.
+- Components come first: a started row's trial, a score's scoring and an item's case must already be stored
+  (`Store.add`), and a score's started row needs its run's started row. A run's canary set has no foreign key, so
+  nothing makes sure it is stored, and `check_run` can't resolve it if it isn't.
+- `check_run` takes its registry from `Store.load([trial, canaries])`, and `check_score` from `Store.load` of the
+  scoring and the run's trial.
+- `chatddx_reader` can't read the schema at all, which is the store's answer to "Case-derived records".
 
 ## Terms
 

@@ -19,7 +19,7 @@ def check_threadable(kind: str) -> None:
         raise ValueError(f"{kind} components have no threads")
 
 
-# src/chatddx/store/migrations/0016-t2-catalog-based-on.sql repeats this check.
+# src/chatddx/store/migrations/0012-t2-catalog.sql repeats this check.
 def check_based_on(rows: Reader, thread: int, based_on: int) -> None:
     t = rows.thread(thread)
     origin = None if t is None or t.forked_from is None else rows.edit(t.forked_from)

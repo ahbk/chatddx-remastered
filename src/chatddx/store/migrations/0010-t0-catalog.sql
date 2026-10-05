@@ -25,6 +25,9 @@ CREATE TABLE catalog.edit (
         CHECK (compilation_kind = 'compilation'),
     compilation_path text NOT NULL DEFAULT '/skeleton'
         CHECK (compilation_path = '/skeleton'),
+    -- src/chatddx/catalog/threads.py: variation takes a fork's latest based_on, else its
+    -- forked_from, as its base.
+    based_on bigint,
     by bigint NOT NULL REFERENCES identity.person,
     at timestamptz NOT NULL DEFAULT now(),
     UNIQUE (id, kind),
@@ -33,6 +36,7 @@ CREATE TABLE catalog.edit (
     FOREIGN KEY (compilation, compilation_kind) REFERENCES factor.component (digest, kind),
     FOREIGN KEY (compilation, compilation_path, digest)
         REFERENCES factor.component_ref (src, path, dst),
+    FOREIGN KEY (based_on, kind) REFERENCES catalog.edit (id, kind),
     CHECK (compilation IS NULL OR kind = 'skeleton')
 );
 CREATE INDEX edit_thread ON catalog.edit (thread, id);
@@ -41,10 +45,31 @@ CREATE INDEX edit_digest ON catalog.edit (digest);
 ALTER TABLE catalog.thread
     ADD FOREIGN KEY (forked_from, kind) REFERENCES catalog.edit (id, kind);
 
+CREATE TABLE catalog.family (
+    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    by bigint NOT NULL REFERENCES identity.person,
+    at timestamptz NOT NULL DEFAULT now()
+);
+
+-- src/chatddx/catalog/families.py: family_of matches a case to a binding by source, id and
+-- vignette fingerprint; the binding with the highest id is where the family's vignette is now.
+CREATE TABLE catalog.binding (
+    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    family bigint NOT NULL REFERENCES catalog.family,
+    source text NOT NULL,
+    source_id text NOT NULL,
+    fingerprint jsonb NOT NULL,
+    by bigint NOT NULL REFERENCES identity.person,
+    at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX binding_family ON catalog.binding (family, id);
+CREATE INDEX binding_source ON catalog.binding (source, source_id);
+
 -- src/chatddx/catalog/model.py: About.of folds a subject's entries in id order.
 CREATE TABLE catalog.entry (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     thread bigint REFERENCES catalog.thread,
+    family bigint REFERENCES catalog.family,
     run uuid,
     run_stage text CHECK (run_stage = 'started'),
     score uuid,
@@ -57,11 +82,12 @@ CREATE TABLE catalog.entry (
     at timestamptz NOT NULL DEFAULT now(),
     FOREIGN KEY (run, run_stage) REFERENCES ledger.run_stage,
     FOREIGN KEY (score, score_stage) REFERENCES ledger.score_stage,
-    CHECK (num_nonnulls(thread, run, score) = 1),
+    CHECK (num_nonnulls(thread, family, run, score) = 1),
     CHECK ((run IS NULL) = (run_stage IS NULL)),
     CHECK ((score IS NULL) = (score_stage IS NULL))
 );
 CREATE INDEX entry_thread ON catalog.entry (thread) WHERE thread IS NOT NULL;
+CREATE INDEX entry_family ON catalog.entry (family) WHERE family IS NOT NULL;
 CREATE INDEX entry_run ON catalog.entry (run) WHERE run IS NOT NULL;
 CREATE INDEX entry_score ON catalog.entry (score) WHERE score IS NOT NULL;
 
@@ -78,3 +104,15 @@ CREATE TABLE catalog.label (
     FOREIGN KEY (scorer, kind) REFERENCES factor.component (digest, kind)
 );
 CREATE INDEX label_scorer ON catalog.label (scorer);
+
+-- src/chatddx/catalog/language.py: own takes a component's latest row here as its language.
+CREATE TABLE catalog.language (
+    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    digest text NOT NULL,
+    kind text NOT NULL,
+    value text NOT NULL,
+    by bigint NOT NULL REFERENCES identity.person,
+    at timestamptz NOT NULL DEFAULT now(),
+    FOREIGN KEY (digest, kind) REFERENCES factor.component (digest, kind)
+);
+CREATE INDEX language_digest ON catalog.language (digest, id);

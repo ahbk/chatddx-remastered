@@ -9,18 +9,17 @@ Names are not sensitive, so `chatddx_reader` may read
 ## People
 people are `identity.person (id, login, name, roles, active)`; `id` is what other schemas reference, `login` is
 unique and lowercase, `name` is for display. People are never deleted; `active = false` disables them and ends their
-sessions (`src/chatddx/store/migrations/0004-t0-identity.sql`, `0006-t0-identity-auth.sql`,
-`src/chatddx/store/people.py:People.update`).
+sessions (`src/chatddx/store/people.py:People.update`).
 
 ## Roles
-roles are defined in code (`src/chatddx/core/identity.py:Role`: admin, clinician, developer, ops, researcher)
+roles are defined in code (`src/chatddx/identity/identity.py:Role`: admin, clinician, developer, ops, researcher)
 and stored as strings on the person; tier 2 restricts the column to those names
 (`src/chatddx/store/migrations/0008-t2-identity-checks.sql`).
 
 ## Authentication
 authentication is owned by the app: argon2id password hashes in `identity.credential`, server-side sessions in
 `identity.session` holding only a sha256 of the token, lifetime `settings.SESSION_TTL`
-(`src/chatddx/core/identity.py`, `src/chatddx/store/people.py`). Neither table is readable by `chatddx_reader`.
+(`src/chatddx/identity/identity.py`, `src/chatddx/store/people.py`). Neither table is readable by `chatddx_reader`.
 
 ## Authorization
 Authentication is owned by the app: passwords and sessions in the database. No IdP today. The deployment
@@ -52,6 +51,3 @@ development path. Roles could then come from Keycloak's realm roles instead of t
 - **Expired sessions** are only removed by `People.purge_sessions()`; nothing calls it on a schedule.
 
 ## Proposed amendments
-- CHANGE "`src/chatddx/core/identity.py`" → "`src/chatddx/identity/identity.py`" in "Roles" and "Authentication";
-  identity is its own package now (`src/chatddx/identity/__init__.py`), and `src/chatddx/store/people.py` still
-  holds its SQL.

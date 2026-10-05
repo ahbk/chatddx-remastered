@@ -434,7 +434,7 @@ class Catalog:
     def labels(self, scorer: str) -> dict[tuple[Part, int], str]:
         return read.labels(self._rows, scorer)
 
-    # src/chatddx/store/migrations/0026-t2-catalog-binding-fingerprint.sql keeps each
+    # src/chatddx/store/migrations/0012-t2-catalog.sql keeps each
     # binding's source, and its id or fingerprint.
     def _bind(self, family: int, vignette: Vignette, by: int) -> Binding:
         row = self._conn.execute(

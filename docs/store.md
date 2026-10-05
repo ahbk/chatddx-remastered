@@ -1,223 +1,82 @@
 # Store
 
-This document describes the postgresql backend for chatddx called store.
-It includes roles and owner (admin) setup, migrations and tests.
+The store is chatddx's PostgreSQL backend: psycopg 3 and plain SQL migrations, no ORM. Each module that keeps data
+has its own schema: `factor` (`docs/factors.md`), `ledger` (`docs/ledger.md`), `identity` (`docs/identity.md`) and
+`catalog` (`docs/catalog.md`). Everything but `identity` is append-only, and tier 2 enforces it.
 
-## Basics
-- psycopg 3 and plain SQL migrations (no ORM).
-- One component table plus reference edges, not one table per kind.
-- Integrity in three tiers. Each tier is its own migration and a deployment applies them up to a chosen tier.
-- DB tests fail, rather than skip, when Postgres is unreachable.
-- `dev-db` scripts to setup a local postgres instance for development
+Code paths are relative to `src/chatddx/store/` unless they start with `src/` or `docs/`.
 
-## Layout
+Migrations are documented in `docs/migrations.md`.
 
-- Schema `factor`, not case-derived:
-  - `component (digest, kind, v, canonical, doc)`: every component kind in one table. `canonical` is the source of
-    truth; `doc` is its `jsonb` copy.
-  - `component_ref (src, path, dst, kinds)`: one row per typed reference (`Component.refs()`), with a deferred foreign
-    key on `dst`. This covers references inside lists and references that allow several kinds.
-  - `compilation (digest, skeleton, payload, doc)`: keyed by the digest of the record's canonical bytes, so writing
-    it again is a no-op.
-
-- Schema `ledger`, case-derived: `run_stage (run, stage)`, `run_item (run, case, replicate)`,
-  `canary_call (run, phase, canary)`, `score_stage (score, stage)`, `score_item (score, case, replicate, view)`.
-  Item rows reference their log's started row through a constant `stage` column. `payload` holds
-  `Record.canonical`; `doc` is its `jsonb` copy.
-
-- Schema `identity`, not case-derived and mutable: `person (id, name)`, `id` generated as identity
-
-- schema `identity`: `person` gains `login` (unique), `roles` and `active`; new tables
-  `credential (person, hash)` and `session (token_digest, person, created, expires)`
-
-- Schema `catalog`, not case-derived, append-only: `thread (id, kind, forked_from, by, at)`,
-  `edit (id, thread, kind, digest, compilation, based_on, by, at)`,
-  `entry (id, thread | run | score, field, value, person, present, by, at)` and
-  `label (id, scorer, part, position, value, by, at)`.
-  `based_on` is an edit of the same kind in the thread's origin, at or after `forked_from`.
-
-- schema `catalog` gains `family (id, by, at)` and `binding (id, family, source, source_id,
-  vignette, by, at)`, and `entry` gains a `family` subject.
+## Code
+- `store.py:Store`: components and records.
+  - `add(registry, roots)` checks the closure and writes components with their reference rows in one transaction,
+    skipping those already stored; `get` and `load` read them back from `canonical` and verify digests;
+  - `append(*records)` writes ledger rows in one transaction and raises on a duplicate key, so a row is never
+    overwritten.
+- `people.py:People`: people, passwords and sessions.
+- `catalog.py:Catalog`: the catalog's writes and reads. Each method reads through `catalog.py:Rows`, which answers
+  `src/chatddx/catalog/read.py:Reader` from the tables, lets `chatddx.catalog` decide, and writes the result in one
+  transaction. The store answers which rows exist; `chatddx.catalog` decides what they mean.
+- `migrate.py`: `migrate(conn, tier)` and `pending(conn, tier)`.
+- `load` returns a `Registry` without checking it, so `Registry.check` and `Registry.bundle` work on it as on any other.
 
 ## Tiers
-Migrations apply in file-name order, not tier order, so a later schema's tier-0 file (`0004-t0-…`)
-runs after earlier tier-1 and tier-2 files (`src/chatddx/store/migrate.py`, `pending`).
+Integrity comes in three tiers, and a deployment applies migrations up to a chosen tier. Each schema has migrations
+at every tier:
+- Tier 0: schemas, tables, keys, foreign keys, indexes and simple column CHECKs.
+- Tier 1: roles and grants.
+- Tier 2: CHECKs and triggers that repeat the rules held in Python, and insert-only triggers. CHECKs are over
+  app-written columns, not generated columns, so the Python code is the same at every tier.
 
-### Tier 0
+`migrate(conn, tier)` applies pending migrations up to the tier in file-name order, each in its own transaction, and
+records them in `public.migration`. Raising the tier later applies what was skipped; lowering it undoes nothing.
+File-name order is not tier order: a later schema's tier 0 runs after an earlier schema's tier 2.
 
-migrations:
-- `0001-t0-tables.sql`
-- `0004-t0-identity.sql`
-- `0006-t0-identity-auth.sql`
-- `0009-t0-catalog.sql`
-- `0012-t0-catalog-families.sql`
-- `0015-t0-catalog-based-on.sql` (the column and its same-kind foreign key).
-
-Endowes:
-- tables, keys, foreign keys.
-- `UNIQUE (digest, kind)` to `factor.component` and
-- `UNIQUE (digest, skeleton)` to `factor.compilation`, as targets for the catalog's composite foreign keys.
-
-### Tier 1
-
-migration:
-- `0002-t1-grants.sql`
-- `0005-t1-identity-grants.sql`
-- `0007-t1-identity-auth-grants.sql`
-- `0010-t1-catalog-grants.sql`
-
-Endowes:
-- roles `chatddx_writer` (SELECT, INSERT on both schemas) and `chatddx_reader`
-- (SELECT on `factor` only).
-- PUBLIC loses all access.
-- Default privileges cover tables the admin creates later.
-
-- `chatddx_writer` gets SELECT, INSERT, UPDATE on `identity.person` and no DELETE, so people
-  are never removed; `chatddx_reader` gets SELECT. Each identity table is granted explicitly, without default
-  privileges, because tables there may be mutable.
-
-- `chatddx_writer` gets SELECT, INSERT, UPDATE on `identity.credential` and SELECT, INSERT,
-  DELETE on `identity.session` (sessions are deleted on logout, expiry and deactivation); `chatddx_reader` gets neither.
-
-- `chatddx_writer` gets SELECT, INSERT and `chatddx_reader` gets SELECT on `catalog`, with default privileges like `factor`.
-
-### Tier 2
-
-migrations:
-- `0003-t2-integrity.sql`
-- `0008-t2-identity-checks.sql`
-- `0011-t2-catalog-checks.sql`
-- `0013-t2-catalog-families.sql`
-- `0014-t2-catalog-kinds.sql`
-- `0016-t2-catalog-based-on.sql`
-- `0017-t2-catalog-language.sql`
-- `0018-t2-catalog-bindings.sql`
-- `0019-t2-catalog-name-removal.sql`
-- `0020-t2-catalog-translations.sql`
-- `0021-t2-catalog-tools.sql`
-
-Endowes:
-- CHECKs that digests match canonical text, that `doc` and every key column match
-  the payload, a deferred constraint trigger that each reference row points at an allowed kind and matches the value
-  at its path, and triggers that refuse UPDATE, DELETE and TRUNCATE.
-- CHECKs over app-written columns rather than generated columns, so the Python code is the same at every tier.
-- `migrate(conn, tier)` records applied migrations in `public.migration`. Raising the tier later applies what was
-  skipped; lowering it undoes nothing.
-- `identity` gets no insert-only triggers; it is the one mutable schema.
-- CHECKs on `identity.person.login` (lowercase pattern), `identity.person.roles` (known role
-  names, mirrored by `src/chatddx/core/identity.py:Role` and tested against it) and `identity.session` expiry.
-- thread kinds and entry fields (mirrored by `src/chatddx/core/catalog.py` and tested against it),
-  entry shapes, label positions, and insert-only triggers reusing `factor.refuse_change()`.
-- insert-only triggers for `catalog.family` and `catalog.binding`.
-- `0014-t2-catalog-kinds.sql`: replaces the thread-kind check so that every kind but `case` has threads.
-- a trigger that keeps `based_on` in the origin thread, repeated in `Catalog.edit`
-- `language` to the entry fields
-- `0017` replaces `0011`'s entry shape check with the named `entry_shape_check`, which checks language tags against the same pattern
-- a trigger that refuses a binding that keeps neither the previous binding's (source, id) nor its vignette.
-- `0019` lets a `name` entry be removed (no value, `present` false), and rules out NULL
-  values for names, tags and languages, which `0017`'s shape check let through because a check that is NULL
-  passes.
-- `0020` adds `chunk.translations` to the thread kinds.
-- `0021` adds `chunk.tools` and `tool` to the thread kinds.
+`chatddx migrate [--tier {0,1,2}] [--dry-run]` (`src/chatddx/cli.py`) connects as `DB_ADMIN`, applies pending
+migrations up to the tier (default 2) and prints each one; `--dry-run` only lists them.
 
 ## Roles and connections
-Settings: `chatddx.core.settings.database(admin=False)`, from `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_ADMIN`
+Settings: `src/chatddx/core/settings.py:database(admin=False)`, from `DB_HOST`, `DB_NAME`, `DB_USER` and `DB_ADMIN`
 (`.env-example`).
 - `DB_ADMIN` (`chatddx`) owns the database and its schemas and runs `chatddx migrate`. It needs CREATEROLE the first
   time tier 1 runs in a cluster, and CREATEDB to run the tests.
 - `DB_USER` (`chatddx_writer`) is what the app connects as. Tier 1 creates `chatddx_writer` as NOLOGIN only if it
-  doesn't exist, so the login role has to be created (or altered to LOGIN) outside the migrations.
+  doesn't exist, so the login role is created outside the migrations (`setup.sql`).
 - Grants don't bind the admin or a superuser, which is why the app doesn't connect as the admin. At tier 0 there are
   no grants, so a tier-0 deployment has to connect as the admin.
 - Tier-2 triggers bind the admin too; only a superuser who disables triggers gets around them.
 - Roles are cluster-wide, so every database in a cluster shares `chatddx_writer` and `chatddx_reader`.
 
-Agents use the system cluster at /var/run/postgresql, while the devShell uses dev-db and its socket `${REPO_ROOT}/dev-db/pgsock`.
-Local setup used by in the agent container (Unix socket, peer auth mapped from the OS user):
-```
-CREATE ROLE chatddx LOGIN CREATEDB CREATEROLE;
-CREATE ROLE chatddx_writer LOGIN;
-CREATE DATABASE chatddx OWNER chatddx;
--- pg_ident.conf: chatddx <os-user> chatddx / chatddx <os-user> chatddx_writer
--- pg_hba.conf:   local all all peer map=chatddx
-```
-then `chatddx migrate`.
-
-## Command
-`chatddx migrate [--tier {0,1,2}] [--dry-run]` (`src/chatddx/cli.py`) connects as `DB_ADMIN`, applies pending
-migrations up to the tier (default 2) and prints each one; `--dry-run` only lists them.
-
-## Store API (`src/chatddx/store/store.py`)
-- `add(registry, roots)`: checks the closure and inserts components and their reference rows in one transaction.
-- `get(digest)`, `load(roots)`: read back and verify digests. `load` follows `component_ref` with a recursive query and
-  returns a `Registry`, so `check`/`bundle` work unchanged.
-- `append(*records)`: one transaction. Ledger rows are never overwritten; a duplicate key raises.
-- `run(id)`, `score(id)`, `compilations(skeleton)`: reassemble from rows; seals don't depend on row order.
-- `People` (`src/chatddx/store/people.py`): `add`, `get`, `find`, `update`, `set_password`,
-  `authenticate`, `open_session`, `session`, `close_session`, `purge_sessions`.
-- `Catalog` (`src/chatddx/store/catalog.py`): `create`, `edit`, `thread`, `history`, `head`,
-  `heads`, `containing`, `behind`, `note`, `about`, `label`, `labels`, `recipe`, `variation`, `proposal`,
-  `title`, `title_of`, `survey`, `repair` and `language_of`.
-  `find(kind, name, owner=)`, `forks(thread)`, `expectations_of(case)`.
-- `Catalog.adopt`, `Catalog.family`, `Catalog.bindings`.
+Agents use the system cluster at `/var/run/postgresql` (setup in `AGENTS.md`); the devShell uses `scripts/dev-db.sh`
+and its socket `${REPO_ROOT}/dev-db/pgsock`.
 
 ## Tests
-`src/chatddx/store/test/`: a migrated template database per session, a fresh copy per test, dropped afterwards.
-The admin creates and migrates databases; tests use the writer except where they need the admin (tier-0 writes,
-tier-2 triggers).
+`test/`: a migrated template database per session, a fresh copy per test, dropped afterwards. The admin creates and
+migrates databases; tests use the writer except where they need the admin (tier-0 writes, tier-2 triggers). They
+fail, rather than skip, when Postgres is unreachable.
 
 ## Known gaps
 - The database doesn't check that a component has all its reference rows, only that the rows it has are right;
   `Store.add` writes them together.
+- The database allows a thread without edits; `Catalog.create` writes both in one transaction.
 - `jsonb` rejects `\u0000` in strings, so a component or record containing NUL can't be stored.
+- `doc` is `jsonb`, which reorders object keys, so a schema's property order survives only in `canonical` and
+  `payload`. Components are read from `canonical` (`store.py:Store.get`, `Store.load`); a future ORM or view must not
+  rebuild them from `doc`.
 - No async API yet; the runner may want one (psycopg 3 has both).
 - Per-kind read-only views, for a future ORM, aren't written.
-- the database allows a thread without edits; `Catalog.create` writes both in one transaction.
-- "`doc` is `jsonb`, which reorders object keys, so a schema's property order survives only in
-  `canonical` and `payload`. Components are read from `canonical` (`src/chatddx/store/store.py:Store.get`,
-  `Store.load`); a future ORM or view must not rebuild them from `doc`." (`src/chatddx/factors/base.py:46`)
+- A log can be written that can't be read back. `Store.append` checks only keys and foreign keys, and a finished
+  row has no foreign key to its started row, so a finished row alone is accepted, and `Store.run` then fails with
+  `StructuralError: RunStarted vNone is not readable by v1`. `Run` and `Score` validate a log only when it is read.
+- `RunStarted.canaries` has no foreign key, so a run can name a canary set that isn't stored, and `check_run` then
+  can't resolve it." (`migrations/0004-t0-ledger.sql`, `src/chatddx/ledger/run.py:RunStarted`, `check_run`)
+- Runs and scores can't be found: `Store.run` and `Store.score` take an id, and nothing lists the runs of a trial
+  or the scores of a run.
+- A schema-version bump strands stored rows. `Store.get`, `load`, `run` and `score` parse every row, and parsing
+  refuses another version (`docs/factors.md`, "Versions"; `docs/ledger.md`, "Canonical form and versions"), so
+  after a bump the store can't return rows of the old version, nor load a closure that holds one. The rows can't
+  be rewritten either: the tables are insert-only, and digests and seals depend on the bytes.
+  `docs/factors.md`, "Splitting expectations", already considers a bump of `Scorer.schema_version`.
 
 ## Proposed amendments
-
-- REMOVE from "Layout" the `compilation (digest, skeleton, payload, doc)` bullet: compilations are components (kind
-  `compilation`, `src/chatddx/factors/request.py:Compilation`), rows of `factor.component` with reference rows like
-  any other. `factor.compilation` is gone; migrations `0001`, `0003` and `0009` were edited in place, so existing
-  databases need recreating.
-- CHANGE "Layout", catalog: `edit (id, thread, kind, digest, compilation, based_on, by, at)` →
-  `edit (id, thread, kind, digest, compilation, compilation_kind, compilation_path, based_on, by, at)`, and ADD:
-  "`compilation_kind` and `compilation_path` are constants, so that two composite foreign keys can require an
-  edit's compilation to be a `compilation` component whose `/skeleton` reference row points at the edit's digest"
-  (`src/chatddx/store/migrations/0009-t0-catalog.sql`).
-- CHANGE "Tier 0": "`UNIQUE (digest, skeleton)` to `factor.compilation`" → "`UNIQUE (src, path, dst)` to
-  `factor.component_ref`".
-- CHANGE "Store API": "`run(id)`, `score(id)`, `compilations(skeleton)`: reassemble from rows" → "`run(id)`,
-  `score(id)`: reassemble from rows; seals don't depend on row order. `compilations(skeleton)`: the compilation
-  components whose `/skeleton` reference points at the skeleton, by digest" (`src/chatddx/store/store.py`).
-- CHANGE "Layout": "Schema `ledger`, case-derived:" → "Schema `ledger`, the run and score logs (`docs/ledger.md`):",
-  and ADD after the table list: "Of these, only `run_item` and `score_item` hold case-derived records
-  (`src/chatddx/ledger/record.py:Record.case_derived`). The stage rows and canary calls sit beside them so that
-  each log stays in one schema; `chatddx_reader`, refused the whole schema at tier 1
-  (`src/chatddx/store/migrations/0002-t1-grants.sql`), can't read them either."
-- ADD to "Tiers", "Tier 2", the migration list: "`0022-t2-catalog-binding-source.sql`", and to its endowments: "`0022`
-  makes a new binding keep the previous one's source; `0018` let it change source as long as it kept the vignette
-  (`src/chatddx/store/migrations/0022-t2-catalog-binding-source.sql`, `src/chatddx/store/catalog.py:Catalog.repair`)."
-- ADD to "Layout", schema `catalog`: "`language (id, digest, kind, value, by, at)`: a component's language, kept on
-  its digest; the latest row wins. `(digest, kind)` references `factor.component`." ADD to "Tiers", "Tier 0":
-  "`0023-t0-catalog-languages.sql`", and to "Tier 2": "`0024-t2-catalog-languages.sql`: language tags and the kinds
-  that may have a language (mirrored by `src/chatddx/catalog/model.py:LANGUAGE_KINDS` and tested against it), no
-  language on a skeleton already known to be compiled, a `language` entry only on a family, and insert-only
-  triggers for `catalog.language`" (`src/chatddx/store/catalog.py:Catalog.language`).
-- CHANGE in "Layout", schema `catalog`: "`binding (id, family, source, source_id, vignette, by, at)`" →
-  "`binding (id, family, source, source_id, fingerprint, by, at)`". ADD to "Tiers", "Tier 0":
-  "`0025-t0-catalog-binding-fingerprint.sql` (renames `catalog.binding.vignette` to `fingerprint`, which is what it
-  holds)", and to "Tier 2": "`0026-t2-catalog-binding-fingerprint.sql` (`0022`'s binding check, for the renamed
-  column)".
-- CHANGE the paths to the code that left `src/chatddx/core/`: in "Tier 2", "`src/chatddx/core/identity.py:Role`" →
-  "`src/chatddx/identity/identity.py:Role`" and "mirrored by `src/chatddx/core/catalog.py`" → "mirrored by
-  `src/chatddx/catalog/model.py`".
-- CHANGE in "Store API" the `Catalog` items to: "`Catalog` (`src/chatddx/store/catalog.py`): the catalog's writes and
-  reads, with the same methods as before, plus `adopt(owner=)`, `create(owner=)` and `language(digest, value, by)`.
-  Each reads through `Rows`, which answers `src/chatddx/catalog/read.py:Reader` from the tables, raw and in the order
-  the rows were written; the rules, `latest wins` included, are in `chatddx.catalog` (`docs/catalog.md`). Store
-  answers which rows exist; `chatddx.catalog` decides what they mean." Rules that concurrent writers could break
-  still need tier-2 backing (`src/chatddx/store/migrations/`).

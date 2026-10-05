@@ -51,14 +51,10 @@ def stored_world(conn: Connection) -> tuple[Store, Registry, dict[str, str]]:
 
 def test_migrations_apply_up_to_a_tier(empty: Connection) -> None:
     assert migrate(empty, tier=0) == [
-        "0001-t0-tables",
-        "0004-t0-identity",
-        "0006-t0-identity-auth",
-        "0009-t0-catalog",
-        "0012-t0-catalog-families",
-        "0015-t0-catalog-based-on",
-        "0023-t0-catalog-languages",
-        "0025-t0-catalog-binding-fingerprint",
+        "0001-t0-factor",
+        "0004-t0-ledger",
+        "0007-t0-identity",
+        "0010-t0-catalog",
     ]
     assert empty.info.transaction_status == TransactionStatus.IDLE
     assert migrate(empty, tier=0) == []
@@ -69,24 +65,14 @@ def test_migrations_apply_up_to_a_tier(empty: Connection) -> None:
         _ = empty.execute("UPDATE factor.component SET kind = 'other'")
         _ = empty.execute("DELETE FROM factor.component")
     assert migrate(empty) == [
-        "0002-t1-grants",
-        "0003-t2-integrity",
-        "0005-t1-identity-grants",
-        "0007-t1-identity-auth-grants",
-        "0008-t2-identity-checks",
-        "0010-t1-catalog-grants",
-        "0011-t2-catalog-checks",
-        "0013-t2-catalog-families",
-        "0014-t2-catalog-kinds",
-        "0016-t2-catalog-based-on",
-        "0017-t2-catalog-language",
-        "0018-t2-catalog-bindings",
-        "0019-t2-catalog-name-removal",
-        "0020-t2-catalog-translations",
-        "0021-t2-catalog-tools",
-        "0022-t2-catalog-binding-source",
-        "0024-t2-catalog-languages",
-        "0026-t2-catalog-binding-fingerprint",
+        "0002-t1-factor",
+        "0003-t2-factor",
+        "0005-t1-ledger",
+        "0006-t2-ledger",
+        "0008-t1-identity",
+        "0009-t2-identity",
+        "0011-t1-catalog",
+        "0012-t2-catalog",
     ]
     with pytest.raises(errors.RaiseException, match="insert-only"):
         _ = empty.execute("TRUNCATE factor.component CASCADE")

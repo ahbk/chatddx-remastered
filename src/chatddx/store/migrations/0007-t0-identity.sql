@@ -1,7 +1,12 @@
-ALTER TABLE identity.person
-    ADD COLUMN login text NOT NULL UNIQUE,
-    ADD COLUMN roles text[] NOT NULL DEFAULT '{}',
-    ADD COLUMN active boolean NOT NULL DEFAULT true;
+CREATE SCHEMA identity;
+
+CREATE TABLE identity.person (
+    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    name text NOT NULL,
+    login text NOT NULL UNIQUE,
+    roles text[] NOT NULL DEFAULT '{}',
+    active boolean NOT NULL DEFAULT true
+);
 
 CREATE TABLE identity.credential (
     person bigint PRIMARY KEY REFERENCES identity.person,

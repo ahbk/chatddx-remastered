@@ -9,7 +9,7 @@ from argon2.exceptions import InvalidHashError, VerificationError
 from pydantic import BaseModel, ConfigDict, field_validator
 
 # Lowercase, as Keycloak stores usernames, so logins carry over unchanged.
-# src/chatddx/store/migrations/0008-t2-identity-checks.sql repeats this pattern and the role names.
+# src/chatddx/store/migrations/0009-t2-identity.sql repeats this pattern and the role names.
 LOGIN = re.compile(r"^[a-z0-9][a-z0-9._@-]*$")
 
 

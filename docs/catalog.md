@@ -331,8 +331,10 @@ keep an edit on its thread's kind and on a stored component of that kind, a fork
 edit's compilation on one of that very skeleton, and a language on a stored component of the kind it records. At
 tier 2, every table refuses updates and deletes, and checks repeat the rules above. The lists of thread kinds, entry
 fields and language kinds are written both in `model.py` and in the migrations, and a test checks that they agree
-(`src/chatddx/store/test/test_catalog.py`). The catalog's migrations are among `0009` to `0026` in
-`src/chatddx/store/migrations/`.
+(`src/chatddx/store/test/test_catalog.py`).
+
+The catalog's migrations are listed under "catalog" in `docs/migrations.md`": the migrations are squashed into one
+per schema and tier, and the list there stays current as migrations are added.
 
 ## Terms
 

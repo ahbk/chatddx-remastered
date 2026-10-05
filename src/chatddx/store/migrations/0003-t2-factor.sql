@@ -5,43 +5,6 @@ ALTER TABLE factor.component ADD CHECK (
     AND v = (doc->>'v')::integer
 );
 
-ALTER TABLE ledger.run_stage ADD CHECK (
-    doc = payload::jsonb
-    AND run = (doc->>'run')::uuid
-    AND stage = doc->>'stage'
-    AND trial IS NOT DISTINCT FROM doc->>'trial'
-);
-
-ALTER TABLE ledger.run_item ADD CHECK (
-    doc = payload::jsonb
-    AND run = (doc->>'run')::uuid
-    AND "case" = doc #>> '{key,case}'
-    AND replicate = (doc #>> '{key,replicate}')::integer
-);
-
-ALTER TABLE ledger.canary_call ADD CHECK (
-    doc = payload::jsonb
-    AND run = (doc->>'run')::uuid
-    AND phase = doc->>'phase'
-    AND canary = (doc->>'canary')::integer
-);
-
-ALTER TABLE ledger.score_stage ADD CHECK (
-    doc = payload::jsonb
-    AND score = (doc->>'score')::uuid
-    AND stage = doc->>'stage'
-    AND run IS NOT DISTINCT FROM (doc->>'run')::uuid
-    AND scoring IS NOT DISTINCT FROM doc->>'scoring'
-);
-
-ALTER TABLE ledger.score_item ADD CHECK (
-    doc = payload::jsonb
-    AND score = (doc->>'score')::uuid
-    AND "case" = doc #>> '{key,case}'
-    AND replicate = (doc #>> '{key,replicate}')::integer
-    AND view = (doc->>'view')::integer
-);
-
 -- Deferred because a reference may be inserted before the component it points at.
 CREATE FUNCTION factor.check_ref() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
@@ -66,6 +29,7 @@ AFTER INSERT ON factor.component_ref
 DEFERRABLE INITIALLY DEFERRED
 FOR EACH ROW EXECUTE FUNCTION factor.check_ref();
 
+-- Every schema's insert-only triggers call this.
 CREATE FUNCTION factor.refuse_change() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
     RAISE EXCEPTION '%.% is insert-only', TG_TABLE_SCHEMA, TG_TABLE_NAME;
@@ -76,11 +40,7 @@ DO $$
 DECLARE
     t regclass;
 BEGIN
-    FOREACH t IN ARRAY ARRAY[
-        'factor.component', 'factor.component_ref',
-        'ledger.run_stage', 'ledger.run_item', 'ledger.canary_call',
-        'ledger.score_stage', 'ledger.score_item'
-    ]::regclass[] LOOP
+    FOREACH t IN ARRAY ARRAY['factor.component', 'factor.component_ref']::regclass[] LOOP
         EXECUTE format(
             'CREATE TRIGGER insert_only BEFORE UPDATE OR DELETE ON %s '
             'FOR EACH ROW EXECUTE FUNCTION factor.refuse_change()', t);
