@@ -132,7 +132,7 @@ Returns model identifiers: the run check compares the returned `model` with the 
 - **Orchestrator.** Runs in Kubernetes, write the manifest and hosts the portal. A postgres database store user-managed data: factors and records are append-only; nothing is updated.
 
 ## Compromises
-The code declares no tier (the old tier assessment was dropped). The tier is *observed*:
+The code doesn't declare how reproducible a run is. It is *observed*:
  - an engine with batch invariance in its `env` may be bitwise reproducible;
  - otherwise best-effort.
 
@@ -264,9 +264,3 @@ See `docs/findings.md` for a list of all findings and what they mean.
 **Canary drift are not implemented:** nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
-
-- CHANGE "Compromises", so that "tier" means only the store's integrity tiers (`docs/store.md`, "Tiers", as used at
-  "see tier 2 in `docs/store.md`" above, and in `docs/catalog.md`, `docs/identity.md` and `docs/clearance.md`):
-  "The code declares no tier (the old tier assessment was dropped). The tier is *observed*:" → "The code doesn't
-  declare how reproducible a run is (the old tier assessment was dropped). It is *observed*:". The two bullets and
-  "Canaries, prompt-token fingerprints and comparing completions show which one applies." stay.
