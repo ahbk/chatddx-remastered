@@ -4,7 +4,7 @@ import pytest
 from psycopg import errors
 from pydantic import ValidationError
 
-from chatddx.core.identity import Role
+from chatddx.identity import Role
 from chatddx.store import People
 from chatddx.store.store import Connection
 

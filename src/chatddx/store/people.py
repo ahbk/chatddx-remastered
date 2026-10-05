@@ -3,7 +3,7 @@ from datetime import timedelta
 from typing import Any
 
 from chatddx.core import settings
-from chatddx.core.identity import (
+from chatddx.identity import (
     Person,
     Role,
     hash_password,

@@ -14,7 +14,7 @@ CREATE TABLE catalog.thread (
     UNIQUE (id, kind)
 );
 
--- src/chatddx/store/catalog.py: _HEAD takes the edit with the highest id as a thread's head.
+-- src/chatddx/catalog/read.py: heads_of takes the edit with the highest id as a thread's head.
 CREATE TABLE catalog.edit (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     thread bigint NOT NULL,
@@ -41,7 +41,7 @@ CREATE INDEX edit_digest ON catalog.edit (digest);
 ALTER TABLE catalog.thread
     ADD FOREIGN KEY (forked_from, kind) REFERENCES catalog.edit (id, kind);
 
--- src/chatddx/core/catalog.py: About.of folds a subject's entries in id order.
+-- src/chatddx/catalog/model.py: About.of folds a subject's entries in id order.
 CREATE TABLE catalog.entry (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     thread bigint REFERENCES catalog.thread,

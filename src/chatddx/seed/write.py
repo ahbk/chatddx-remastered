@@ -1,10 +1,10 @@
 from collections.abc import Iterable
 
-from chatddx.core.catalog import Entry, EntryField, Subject
-from chatddx.core.identity import Person
+from chatddx.catalog import Entry, EntryField, Subject
 from chatddx.factors.base import Fingerprint
 from chatddx.factors.cases import Case, Vignette
 from chatddx.factors.scoring import Expectation
+from chatddx.identity import Person
 from chatddx.inventory.sources import Source
 from chatddx.store.catalog import Catalog
 from chatddx.store.people import People
@@ -47,8 +47,6 @@ class _Seeder:
         name: str | None = None,
     ) -> None:
         about = self.catalog.about(subject)
-        if about.owner is None:
-            self.note(subject, Entry(field=EntryField.OWNER, person=self.archive.id))
         if name is not None and about.name != name:
             self.note(subject, Entry(field=EntryField.NAME, value=name))
         for tag in sorted(set(tags) - about.tags):
@@ -67,9 +65,9 @@ class _Seeder:
         compilation: str | None = None,
         fork_of: int | None = None,
     ) -> tuple[int, str]:
-        label = f"{kind} {name}" if name is not None else kind
+        what = f"{kind} {name}" if name is not None else kind
         if len(found) > 1:
-            raise ValueError(f"the archive has {len(found)} threads for {label}")
+            raise ValueError(f"the archive has {len(found)} threads for {what}")
         if not found:
             forked_from = None if fork_of is None else self.catalog.head(fork_of).id
             edit = self.catalog.create(
@@ -166,17 +164,12 @@ class _Seeder:
                 continue
             head = self.catalog.head(thread)
             about = self.catalog.about(Subject(thread=thread))
-            fork = self.catalog.create(
+            _ = self.catalog.create(
                 head.digest,
                 user.id,
                 compilation=head.compilation,
                 forked_from=head.id,
                 name=about.name,
-            )
-            self.catalog.note(
-                Subject(thread=fork.thread),
-                Entry(field=EntryField.OWNER, person=user.id),
-                user.id,
             )
             self.lines.append(f"[giftbag {kind}] {name}: forked {_short(head.digest)}")
 

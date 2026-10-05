@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, JsonValue, model_validator
 
 from chatddx.factors.base import Fingerprint
 from chatddx.factors.cases import Vignette
+from chatddx.factors.scoring import Scorer
 
 # src/chatddx/store/migrations/0021-t2-catalog-tools.sql repeats these kinds.
 THREAD_KINDS = frozenset(
@@ -39,8 +40,28 @@ THREAD_KINDS = frozenset(
 )
 
 
-# src/chatddx/store/migrations/0019-t2-catalog-name-removal.sql repeats these fields and the pattern.
+# src/chatddx/store/migrations/0024-t2-catalog-languages.sql repeats these kinds.
+LANGUAGE_KINDS = frozenset(
+    {
+        "chunk.instructions",
+        "chunk.few_shot",
+        "chunk.prompt",
+        "chunk.output",
+        "chunk.toolset",
+        "chunk.translations",
+        "skeleton",
+    }
+)
+
+
+# src/chatddx/store/migrations/: 0017 repeats these fields, 0019 and 0024 the pattern.
 LANGUAGE = re.compile(r"^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$")
+
+
+def language_tag(value: str) -> str:
+    if not LANGUAGE.match(value):
+        raise ValueError(f"{value!r} is not a language tag such as 'sv' or 'pt-BR'")
+    return value
 
 
 class EntryField(StrEnum):
@@ -80,12 +101,12 @@ class Edit(_Frozen):
 
 class Variation(_Frozen):
     base: Edit
-    head: Edit
+    origin_head: Edit
     varies: dict[str, tuple[JsonValue, JsonValue]]
 
     @property
     def moved(self) -> bool:
-        return self.head.id != self.base.id
+        return self.origin_head.id != self.base.id
 
 
 class Binding(_Frozen):
@@ -101,11 +122,16 @@ class Behind(_Frozen):
     digest: str
     head: Edit | None = None
     binding: Binding | None = None
+    replacement: str | None = None
 
     @model_validator(mode="after")
     def _one(self) -> Self:
         if (self.head is None) == (self.binding is None):
             raise ValueError("behind either a newer head or a newer binding")
+        if (self.binding is None) != (self.replacement is None):
+            raise ValueError(
+                "a replacement case goes with a newer binding, and only with it"
+            )
         return self
 
 
@@ -166,10 +192,8 @@ class Entry(_Frozen):
             raise ValueError(f"{self.field} can't be removed, only replaced")
         if self.field in (EntryField.NAME, EntryField.TAG) and self.value == "":
             raise ValueError(f"{self.field} can't be empty")
-        if self.field == EntryField.LANGUAGE and not LANGUAGE.match(self.value or ""):
-            raise ValueError(
-                f"{self.value!r} is not a language tag such as 'sv' or 'pt-BR'"
-            )
+        if self.field == EntryField.LANGUAGE:
+            _ = language_tag(self.value or "")
         return self
 
 
@@ -223,3 +247,15 @@ def _toggle[T](members: set[T], member: T, present: bool) -> None:
         members.add(member)
     else:
         members.discard(member)
+
+
+# Rows are read back in the order they were written, so the last row for a key is the latest.
+def latest[K, V](rows: Iterable[tuple[K, V]]) -> dict[K, V]:
+    return dict(rows)
+
+
+# src/chatddx/store/migrations/0011-t2-catalog-checks.sql repeats this check.
+def check_label(scorer: Scorer, part: Part, position: int) -> None:
+    parts = scorer.views if part == "view" else scorer.resources
+    if not 0 <= position < len(parts):
+        raise ValueError(f"{scorer.digest} has no {part} at position {position}")

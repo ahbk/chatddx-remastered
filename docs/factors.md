@@ -13,7 +13,7 @@ same, for scientific rigor. This document describes each factor as it exists tod
 it is about pinned factors, the ones stored as components (see "What a factor is").
 
 Code paths are relative to `src/chatddx/factors/` unless they start with `src/` or `docs/`. Principal authors are
-the roles in `src/chatddx/core/identity.py:Role`. The package imports no other chatddx package; the model facts,
+the roles in `src/chatddx/identity/identity.py:Role`. The package imports no other chatddx package; the model facts,
 the catalog, the ledger and the store build on it.
 
 ## What a factor is
@@ -406,7 +406,7 @@ fails the compilation, which lists every missing text: nothing is guessed, and l
 `texts(recipe, get)` lists, part by part, the texts a translation needs.
 
 Translations carry no language. A request's language is implicit in its text, and no language tag reaches the
-model; language labels are catalog entries (`docs/catalog.md`). The skeleton holds the translated text, and its
+model; language are recorded in the catalog (`docs/catalog.md`). The skeleton holds the translated text, and its
 compilation keeps the recipe, which names the translations.
 
 ### Recipe and compilation
@@ -818,7 +818,7 @@ can't be part of the engine. The runner can check the mapping before sending, be
 model name is its digest and `/v1/models` lists it.
 
 A remote engine's `base_url`, by contrast, is part of its digest, so moving the same API to a new host makes a new
-engine. Either way `Call` (`src/chatddx/ledger/ledger.py`) records no URL, so the ledger can't show which endpoint
+engine. Either way `Call` (`src/chatddx/ledger/call.py`) records no URL, so the ledger can't show which endpoint
 received case-derived content, which clearance may need.
 
 ### Smaller issues
@@ -834,7 +834,7 @@ received case-derived content, which clearance may need.
   do: which arguments it takes and what it returns. Only that code gives `View.metric` a meaning, and nothing checks
   that it knows the name.
 - **The model name is chosen in several places.** `render` needs the engine's digest for a local engine and
-  `model` for a remote one. `src/chatddx/ledger/ledger.py:check_run` makes that choice, and so must every runner; it
+  `model` for a remote one. `src/chatddx/ledger/run.py` makes that choice, and so must every runner; it
   belongs on the engine, as one method.
 - **Missing expectations aren't flagged.** Neither a scoring nor `check_score` warns when a run's case has no
   expectation, or when a scored item has no expectation behind it.
@@ -911,7 +911,3 @@ reference, straight from the schema. `RefTo` used to do this, and was stopped be
 Schema plays no part in a component's digest, so adding it back changes no digest.
 
 ## Proposed amendments
-- CHANGE the paths to the ledger, which is now split by subject (`src/chatddx/ledger/`: `record.py`, `call.py`,
-  `run.py`, `score.py`): in "The inventory doesn't locate local engines yet, …", "`Call`
-  (`src/chatddx/ledger/ledger.py`)" → "`Call` (`src/chatddx/ledger/call.py`)"; in "Smaller issues", "The model name
-  is chosen in several places", "`src/chatddx/ledger/ledger.py:check_run`" → "`src/chatddx/ledger/run.py:check_run`".

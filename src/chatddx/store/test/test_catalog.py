@@ -5,8 +5,15 @@ import pytest
 from psycopg import errors, sql
 from pydantic import ValidationError
 
-from chatddx.core.catalog import THREAD_KINDS, About, Entry, EntryField, Subject, Survey
-from chatddx.core.identity import Person
+from chatddx.catalog import (
+    LANGUAGE_KINDS,
+    THREAD_KINDS,
+    About,
+    Entry,
+    EntryField,
+    Subject,
+    Survey,
+)
 from chatddx.factors.base import Component, StructuralError, resolve
 from chatddx.factors.bundle import Registry
 from chatddx.factors.cases import Appendix, Case, Vignette
@@ -16,14 +23,17 @@ from chatddx.factors.request import (
     Insert,
     NativeOutput,
     Output,
+    Prompt,
     Recipe,
     Sampling,
+    Slot,
     Translations,
     compile_request,
     texts,
 )
 from chatddx.factors.scoring import Expectation, Judge, Scoring
 from chatddx.factors.test.sample import NOW, RIG, fp, generation_recipe, world
+from chatddx.identity import Person
 from chatddx.ledger import RunStarted, ScoreStarted
 from chatddx.store import Catalog, People, Store
 from chatddx.store.store import Connection
@@ -137,7 +147,8 @@ def test_variations_are_reapplied_on_request(conn: Connection) -> None:
     assert catalog.variation(origin.thread) is None
     variation = catalog.variation(fork.thread)
     assert variation is not None
-    assert (variation.base, variation.head, variation.moved) == (origin, origin, False)
+    assert (variation.base, variation.origin_head) == (origin, origin)
+    assert not variation.moved
     assert variation.varies == {"/recipe/output": (base.output, shown)}
     assert catalog.proposal(fork.thread) is None
 
@@ -150,7 +161,8 @@ def test_variations_are_reapplied_on_request(conn: Connection) -> None:
     )
     variation = catalog.variation(fork.thread)
     assert variation is not None
-    assert (variation.base, variation.head, variation.moved) == (origin, head, True)
+    assert (variation.base, variation.origin_head) == (origin, head)
+    assert variation.moved
     proposal = catalog.proposal(fork.thread)
     assert proposal == moved_recipe.model_copy(update={"output": shown})
 
@@ -239,7 +251,9 @@ def test_entries(conn: Connection) -> None:
     bob = People(conn).add("bob", "Bob")
     trial = catalog.create(ids["trial"], alice.id)
     subject = Subject(thread=trial.thread)
-    assert catalog.about(subject) == About()
+    assert catalog.about(subject) == About(owner=alice.id)
+    handed = catalog.create(ids["engine"], alice.id, owner=bob.id)
+    assert catalog.about(Subject(thread=handed.thread)) == About(owner=bob.id)
     for entry in (
         Entry(field=EntryField.NAME, value="baseline"),
         Entry(field=EntryField.NAME, value="gemma baseline"),
@@ -247,7 +261,7 @@ def test_entries(conn: Connection) -> None:
         Entry(field=EntryField.TAG, value="gemma"),
         Entry(field=EntryField.TAG, value="draft"),
         Entry(field=EntryField.TAG, value="draft", present=False),
-        Entry(field=EntryField.OWNER, person=alice.id),
+        Entry(field=EntryField.OWNER, person=bob.id),
         Entry(field=EntryField.COLLABORATOR, person=bob.id),
         Entry(field=EntryField.DELETED),
     ):
@@ -256,7 +270,7 @@ def test_entries(conn: Connection) -> None:
         name="gemma baseline",
         description="first try",
         tags=frozenset({"gemma"}),
-        owner=alice.id,
+        owner=bob.id,
         collaborators=frozenset({bob.id}),
         deleted=True,
     )
@@ -294,10 +308,8 @@ def test_names_are_optional_and_removable(conn: Connection) -> None:
     named = catalog.create(ids["trial"], alice.id, name="baseline")
     subject = Subject(thread=named.thread)
     assert catalog.about(subject).name == "baseline"
-    assert (
-        catalog.about(Subject(thread=catalog.create(ids["engine"], alice.id).thread))
-        == About()
-    )
+    unnamed = catalog.create(ids["engine"], alice.id)
+    assert catalog.about(Subject(thread=unnamed.thread)).name is None
     with pytest.raises(ValidationError):
         _ = catalog.create(ids["trial"], alice.id, name="")
     catalog.note(subject, Entry(field=EntryField.NAME, present=False), alice.id)
@@ -372,18 +384,27 @@ def test_titles_fall_back_to_what_a_thread_holds(conn: Connection) -> None:
     assert catalog.title_of(plan.skeleton) == "plan (earlier)"
 
     trial = catalog.title_of(ids["trial"])
-    assert trial.endswith(" on google/gemma-3-12b-it on vllm 0.24.0, 1 case, 2 seeds")
-    assert catalog.title_of(ids["case"]) == "registry/c1 with 1 appendix"
+    assert trial.endswith(
+        " on google/gemma-3-12b-it on vllm 0.24.0 (RTX 5090), 1 case, 2 seeds"
+    )
+    troponin = '"Troponin 80 ng/L."'
+    assert catalog.title_of(ids["case"]) == f"registry/c1 with {troponin}"
     family = catalog.adopt(ids["case"], alice.id)
     catalog.note(
         Subject(family=family),
         Entry(field=EntryField.NAME, value="chest pain"),
         alice.id,
     )
-    assert catalog.title_of(ids["case"]) == "chest pain"
+    assert catalog.title_of(ids["case"]) == f"chest pain with {troponin}"
+    bare = reg.add(Case(vignette=resolve(reg.get, ids["case"], Case).vignette))
+    _ = store.add(reg, [bare])
+    assert catalog.title_of(bare) == "chest pain"
     scoring = resolve(reg.get, ids["scoring"], Scoring)
     expectation = catalog.create(scoring.expectations[0], alice.id)
-    assert catalog.title(expectation.thread) == "expectation for chest pain"
+    assert (
+        catalog.title(expectation.thread)
+        == f"expectation for chest pain with {troponin}"
+    )
 
     cool = reg.add(Sampling(temperature=0.5))
     _ = store.add(reg, [cool])
@@ -398,6 +419,7 @@ def test_families(conn: Connection) -> None:
     family = catalog.adopt(ids["case"], alice.id)
     assert catalog.adopt(ids["case"], alice.id) == family
     assert catalog.family(ids["case"]) == family
+    assert catalog.about(Subject(family=family)).owner == alice.id
     case = resolve(reg.get, ids["case"], Case)
     [binding] = catalog.bindings(family)
     assert binding.vignette == case.vignette
@@ -430,7 +452,10 @@ def test_families(conn: Connection) -> None:
     with pytest.raises(ValueError, match="a new name"):
         _ = catalog.adopt(renamed, alice.id)
     assert catalog.family(changed) is None
-    assert catalog.adopt(other, alice.id) != family
+    bob = People(conn).add("bob", "Bob")
+    handed = catalog.adopt(other, alice.id, owner=bob.id)
+    assert handed != family
+    assert catalog.about(Subject(family=handed)).owner == bob.id
 
     with pytest.raises(LookupError):
         _ = catalog.adopt(ids["trial"], alice.id)
@@ -492,11 +517,24 @@ def test_renamed_vignettes_are_repaired(conn: Connection) -> None:
     assert catalog.family(repair.cases[ids["case"]]) == catalog.family(ids["case"])
     assert catalog.about(Subject(family=family)).name == "chest pain"
     assert catalog.survey(source, {"c1-renamed": fingerprint}).unchanged == (family,)
-    assert [(b.path, b.digest, b.binding) for b in catalog.behind(trial.thread)] == [
-        ("/cases/0", ids["case"], repair.binding),
-        ("/cases/0/appendices/0", appendix, None),
+    assert [
+        (b.path, b.digest, b.binding, b.replacement)
+        for b in catalog.behind(trial.thread)
+    ] == [
+        ("/cases/0", ids["case"], repair.binding, repair.cases[ids["case"]]),
+        ("/cases/0/appendices/0", appendix, None, None),
     ]
     assert catalog.behind(expected.thread) == []
+
+    troponin = '"Troponin 80 ng/L."'
+    assert catalog.title_of(ids["case"]) == f"chest pain (earlier) with {troponin}"
+    assert catalog.title_of(repair.cases[ids["case"]]) == f"chest pain with {troponin}"
+    catalog.note(
+        Subject(family=family), Entry(field=EntryField.NAME, present=False), alice.id
+    )
+    assert catalog.title_of(ids["case"]) == (
+        f"registry/c1-renamed (earlier) with {troponin}"
+    )
 
 
 def test_changed_vignettes_are_repaired(conn: Connection) -> None:
@@ -516,28 +554,49 @@ def test_changed_vignettes_are_repaired(conn: Connection) -> None:
         _ = catalog.repair(family, alice.id, id="c2", fingerprint=edited)
     with pytest.raises(ValueError, match="one of the id or the fingerprint"):
         _ = catalog.repair(family, alice.id, id="c1")
+    other = reg.add(
+        Case(vignette=Vignette(source=source, id="c2", fingerprint=fp("x")))
+    )
+    _ = store.add(reg, [other])
+    neighbour = catalog.adopt(other, alice.id)
+    with pytest.raises(ValueError, match=f"family {neighbour} already has the id 'c2'"):
+        _ = catalog.repair(family, alice.id, id="c2")
+    with pytest.raises(
+        ValueError, match=f"family {neighbour} already has that content"
+    ):
+        _ = catalog.repair(family, alice.id, fingerprint=fp("x"))
     repair = catalog.repair(family, alice.id, fingerprint=edited)
     rebound = resolve(store.get, repair.cases[ids["case"]], Case)
     assert rebound.vignette == case.vignette.model_copy(update={"fingerprint": edited})
     assert catalog.head(expected.thread).digest == expectation
     assert repair.edits == ()
-    assert [
-        (b.path, b.digest, b.binding)
-        for b in catalog.behind(expected.thread)
-        if b.binding is not None
-    ] == [("/case", ids["case"], repair.binding)]
+    [stale] = [b for b in catalog.behind(expected.thread) if b.binding is not None]
+    assert (stale.path, stale.digest, stale.binding, stale.replacement) == (
+        "/case",
+        ids["case"],
+        repair.binding,
+        repair.cases[ids["case"]],
+    )
 
-    with (
-        pytest.raises(errors.RaiseException, match="keep the id or the vignette"),
-        conn.transaction(),
+    for moved_to, id, fingerprint in (
+        (source, "elsewhere", '{"hex": "' + "0" * 64 + '"}'),
+        ("elsewhere", "c1", '{"hex": "' + edited.hex + '"}'),
     ):
-        _ = conn.execute(
-            """
-                INSERT INTO catalog.binding (family, source, source_id, vignette, by)
-                VALUES (%s, %s, 'elsewhere', %s::jsonb, %s)
+        with (
+            pytest.raises(errors.RaiseException, match="keep the source, and the id"),
+            conn.transaction(),
+        ):
+            _ = conn.execute(
+                """
+                INSERT INTO catalog.binding (family, source, source_id, fingerprint, by)
+                VALUES (%s, %s, %s, %s::jsonb, %s)
                 """,
-            (family, source, '{"hex": "' + "0" * 64 + '"}', alice.id),
-        )
+                (family, moved_to, id, fingerprint, alice.id),
+            )
+
+    second = catalog.repair(family, alice.id, id="c1-renamed")
+    [stale] = [b for b in catalog.behind(expected.thread) if b.binding is not None]
+    assert stale.replacement == second.cases[repair.cases[ids["case"]]]
 
 
 @pytest.mark.parametrize(
@@ -581,33 +640,29 @@ def test_cases_have_a_language(conn: Connection) -> None:
         )
 
 
-def test_languages_come_from_labels(conn: Connection) -> None:
+def test_languages_are_kept_on_digests(conn: Connection) -> None:
     catalog, store, reg, ids, alice = stored_world(conn)
     base = generation_recipe(reg)
     plan = compiled_recipe(store, reg, base)
 
-    def label(digest: str, language: str) -> int:
-        thread = catalog.create(digest, alice.id).thread
-        catalog.note(
-            Subject(thread=thread),
-            Entry(field=EntryField.LANGUAGE, value=language),
-            alice.id,
-        )
-        return thread
+    def in_language(digest: str, language: str) -> None:
+        catalog.language(digest, language, alice.id)
 
     assert set(texts(base, reg.get)) == {"instructions", "prompt", "output"}
     assert catalog.language_of(plan.skeleton) is None
     assert base.instructions is not None
-    _ = label(base.instructions, "en")
-    _ = label(base.prompt, "en")
+    in_language(base.instructions, "en")
+    in_language(base.prompt, "en")
     assert catalog.language_of(plan.skeleton) is None
-    _ = label(base.output, "en")
+    in_language(base.output, "en")
     assert catalog.language_of(plan.skeleton) == "en"
     assert catalog.language_of(ids["trial"]) == "en"
-    conflicting = label(base.output, "sv")
-    assert catalog.language_of(base.output) is None
+    origin = catalog.create(base.output, alice.id)
+    _ = catalog.create(base.output, alice.id, forked_from=origin.id)
+    assert catalog.language_of(base.output) == "en"
+    in_language(base.output, "sv")
     assert catalog.language_of(plan.skeleton) is None
-    catalog.note(Subject(thread=conflicting), Entry(field=EntryField.DELETED), alice.id)
+    in_language(base.output, "en")
     assert catalog.language_of(plan.skeleton) == "en"
 
     needed = [t for part in texts(base, reg.get).values() for t in part]
@@ -616,13 +671,35 @@ def test_languages_come_from_labels(conn: Connection) -> None:
         store, reg, base.model_copy(update={"translations": swedish})
     )
     assert catalog.language_of(translated.skeleton) is None
-    _ = label(swedish, "sv")
+    in_language(swedish, "sv")
     assert catalog.language_of(translated.skeleton) == "sv"
+    assert catalog.title_of(translated.skeleton).endswith(
+        f" · sv translations, {len(needed)} texts"
+    )
+
+    vignette, appendices = Slot(slot="vignette"), Slot(slot="appendices")
+    split = reg.add(
+        Prompt(segments=("Case:", "\n", vignette, appendices, "\n\nDifferential?"))
+    )
+    resplit = compiled_recipe(store, reg, base.model_copy(update={"prompt": split}))
+    assert resplit.skeleton == plan.skeleton
+    assert catalog.language_of(plan.skeleton) == "en"
+    unchanged = reg.add(Translations(entries={t: t for t in needed}))
+    retold = compiled_recipe(
+        store, reg, base.model_copy(update={"translations": unchanged})
+    )
+    assert retold.skeleton == plan.skeleton
+    in_language(unchanged, "en")
+    assert catalog.language_of(plan.skeleton) == "en"
+    in_language(unchanged, "sv")
+    assert catalog.language_of(plan.skeleton) is None
+    in_language(unchanged, "en")
 
     hand_written = resolve(reg.get, ids["judge"], Judge).skeleton
     assert catalog.language_of(hand_written) is None
-    _ = label(hand_written, "en")
+    in_language(hand_written, "en")
     assert catalog.language_of(hand_written) == "en"
+    assert catalog.language_of(ids["judge"]) == "en"
 
     scoring = resolve(reg.get, ids["scoring"], Scoring)
     assert catalog.language_of(ids["case"]) is None
@@ -636,6 +713,53 @@ def test_languages_come_from_labels(conn: Connection) -> None:
     assert [(f.code, f.message) for f in findings] == [
         ("language.mixed", "the request is en, but 1 of 1 cases is sv")
     ]
+
+    with pytest.raises(ValueError, match="not a language tag"):
+        catalog.language(base.output, "Swedish", alice.id)
+    with pytest.raises(ValueError, match="trial components have no language"):
+        catalog.language(ids["trial"], "en", alice.id)
+    with pytest.raises(ValueError, match="comes from its recipe"):
+        catalog.language(plan.skeleton, "en", alice.id)
+    with pytest.raises(LookupError):
+        catalog.language("sha256:" + "9" * 64, "en", alice.id)
+    thread = Subject(thread=origin.thread)
+    with pytest.raises(ValueError, match="kept on its digest"):
+        catalog.note(thread, Entry(field=EntryField.LANGUAGE, value="en"), alice.id)
+    with pytest.raises(errors.CheckViolation), conn.transaction():
+        _ = conn.execute(
+            """
+            INSERT INTO catalog.entry (thread, field, value, by)
+            VALUES (%s, 'language', 'en', %s)
+            """,
+            (origin.thread, alice.id),
+        )
+    with pytest.raises(errors.CheckViolation), conn.transaction():
+        _ = conn.execute(
+            """
+            INSERT INTO catalog.language (digest, kind, value, by)
+            VALUES (%s, 'chunk.output', 'Swedish', %s)
+            """,
+            (base.output, alice.id),
+        )
+    with pytest.raises(errors.CheckViolation), conn.transaction():
+        _ = conn.execute(
+            """
+            INSERT INTO catalog.language (digest, kind, value, by)
+            VALUES (%s, 'trial', 'en', %s)
+            """,
+            (ids["trial"], alice.id),
+        )
+    with (
+        pytest.raises(errors.RaiseException, match="comes from its recipe"),
+        conn.transaction(),
+    ):
+        _ = conn.execute(
+            """
+            INSERT INTO catalog.language (digest, kind, value, by)
+            VALUES (%s, 'skeleton', 'en', %s)
+            """,
+            (plan.skeleton, alice.id),
+        )
 
 
 def test_subject_is_one_thing() -> None:
@@ -677,21 +801,22 @@ def test_labels(conn: Connection) -> None:
 
 
 def test_database_guards_the_catalog(conn: Connection, admin: Connection) -> None:
-    catalog, _, _, ids, alice = stored_world(conn)
+    catalog, _, reg, ids, alice = stored_world(conn)
     trial = catalog.create(ids["trial"], alice.id)
     family = catalog.adopt(ids["case"], alice.id)
+    catalog.language(resolve(reg.get, ids["judge"], Judge).skeleton, "en", alice.id)
     catalog.note(
         Subject(thread=trial.thread),
         Entry(field=EntryField.NAME, value="x"),
         alice.id,
     )
     conn.commit()
-    for table in ("thread", "edit", "entry", "label", "family", "binding"):
+    for table in ("thread", "edit", "entry", "label", "family", "binding", "language"):
         with pytest.raises(errors.InsufficientPrivilege), conn.transaction():
             _ = conn.execute(
                 sql.SQL("DELETE FROM catalog.{}").format(sql.Identifier(table))
             )
-    for table in ("edit", "binding"):
+    for table in ("edit", "binding", "language"):
         with pytest.raises(errors.RaiseException, match="insert-only"):
             _ = admin.execute(
                 sql.SQL("UPDATE catalog.{} SET by = by").format(sql.Identifier(table))
@@ -736,14 +861,21 @@ def test_kinds_and_fields_match_the_database(admin: Connection) -> None:
         for (d,) in admin.execute(
             """
             SELECT pg_get_constraintdef(oid) FROM pg_constraint
-            WHERE conrelid IN ('catalog.thread'::regclass, 'catalog.entry'::regclass)
+            WHERE conrelid IN (
+                'catalog.thread'::regclass,
+                'catalog.entry'::regclass,
+                'catalog.language'::regclass
+            )
                 AND contype = 'c' AND pg_get_constraintdef(oid) LIKE '%%ANY (ARRAY%%'
             """
         )
     ]
-    for names in (THREAD_KINDS, {f.value for f in EntryField}):
-        [check] = [c for c in checks if all(f"'{n}'" in c for n in names)]
-        assert check.count("'") == 2 * len(names)
+    for names in (THREAD_KINDS, {f.value for f in EntryField}, LANGUAGE_KINDS):
+        [_] = [
+            c
+            for c in checks
+            if all(f"'{n}'" in c for n in names) and c.count("'") == 2 * len(names)
+        ]
     assert THREAD_KINDS == Component.registry.keys() - {"case", "compilation"}
 
 

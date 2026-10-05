@@ -50,3 +50,8 @@ development path. Roles could then come from Keycloak's realm roles instead of t
 - **Who may administer people.** `Role.ADMIN` exists, but nothing checks it; the CLI connects as `DB_USER`, so anyone
   with database access can add people.
 - **Expired sessions** are only removed by `People.purge_sessions()`; nothing calls it on a schedule.
+
+## Proposed amendments
+- CHANGE "`src/chatddx/core/identity.py`" → "`src/chatddx/identity/identity.py`" in "Roles" and "Authentication";
+  identity is its own package now (`src/chatddx/identity/__init__.py`), and `src/chatddx/store/people.py` still
+  holds its SQL.

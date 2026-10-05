@@ -1,4 +1,4 @@
--- src/chatddx/store/catalog.py: Catalog.edit repeats this check.
+-- src/chatddx/catalog/threads.py: check_based_on repeats this check.
 CREATE FUNCTION catalog.check_based_on() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
     IF NEW.based_on IS NOT NULL AND NOT EXISTS (
