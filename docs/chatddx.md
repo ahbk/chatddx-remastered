@@ -150,6 +150,9 @@ Canaries, prompt-token fingerprints and comparing completions show which one app
  - `tools.unanswered`
  - `judge.incomplete`
  - `score.incomplete`
+ - `execution.retries`
+ - `execution.order`
+ - `execution.concurrency`
  - plus the lints in `lint.py`.
 
 The runner warns; it does not refuse. Only structurally malformed specs and records raise errors:
@@ -264,6 +267,3 @@ See `docs/findings.md` for a list of all findings and what they mean.
 **Canary drift are not implemented:** nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
-
-- ADD to the "Frictionless development" examples: `execution.retries`, `execution.order`, `execution.concurrency`
-  (`src/chatddx/ledger/ledger.py:_executed`).

@@ -592,12 +592,16 @@ settings out of the trial means changing them doesn't make a new trial, which su
 other engines, runs with different settings aren't interchangeable (see "Open design issues").
 
 The settings are:
-- `order`: `case_major@1` (the default: every replicate of a case before the next case), `replicate_major@1`
-  (every case once per replicate), or `shuffled@1`, which needs a `shuffle_seed` and orders the items by a hash of
-  that seed, the case and the replicate.
+- `order`, the order in which a run sends its items: `case_major@1` (the default: every replicate of a case before
+  the next case), `replicate_major@1` (every case once per replicate), or `shuffled@1`, which needs a
+  `shuffle_seed` and orders the items by a hash of that seed, the case and the replicate.
 - `concurrency` (1 by default), `timeout_s` (optional) and `retries` (0 by default).
 
-`Execution.schedule(cases, replicates)` lists the (case, replicate) pairs in that order.
+`Execution.schedule(cases, replicates)` lists the (case, replicate) pairs in the order they are sent.
+
+A run's calls show whether its settings were followed: `check_run` warns when a call took more attempts than
+`retries` allows, when items were sent out of order, or when more calls were in flight than `concurrency` allows
+(`docs/ledger.md`, "Run"). Timeouts aren't checked.
 
 ## Scoring
 
@@ -888,11 +892,3 @@ reference, straight from the schema. `RefTo` used to do this, and was stopped be
 Schema plays no part in a component's digest, so adding it back changes no digest.
 
 ## Proposed amendments
-
-- CHANGE "Execution", so that `order` reads as the send order, which is what `check_run` checks
-  (`src/chatddx/ledger/ledger.py:_executed`): "`order`: `case_major@1` (the default: …" → "`order`, the order in
-  which a run sends its items: `case_major@1` (the default: …", and "`Execution.schedule(cases, replicates)` lists
-  the (case, replicate) pairs in that order." → "… in the order they are sent."
-- ADD to "Execution": "A run's calls show whether its settings were followed: `check_run` warns when a call took
-  more attempts than `retries` allows, when items were sent out of order, or when more calls were in flight than
-  `concurrency` allows (`docs/ledger.md`, "Run"). Timeouts aren't checked."
