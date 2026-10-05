@@ -306,6 +306,62 @@ def test_execution_is_checked_against_the_calls(reg: Registry) -> None:
     assert check(Execution(concurrency=2), item(0, 0, 6), item(1, 5, 9)) == []
 
 
+def test_judge_calls_are_checked_against_the_score_execution(reg: Registry) -> None:
+    ids = world(reg)
+    run_id, score_id = uuid4(), uuid4()
+    vignette = resolve(reg.get, ids["case"], Case).vignette.fingerprint
+    keys = [ItemKey(case=ids["case"], replicate=r) for r in range(2)]
+    run = Run(
+        stages=(RunStarted(run=run_id, at=NOW, rig=RIG, trial=ids["trial"]),),
+        items=tuple(
+            RunItem(
+                run=run_id,
+                key=k,
+                vignette=vignette,
+                call=Call(request=fp("body"), started_at=NOW, finished_at=NOW),
+            )
+            for k in keys
+        ),
+    )
+
+    def judged(replicate: int, start: int, end: int, attempts: int = 1) -> ScoreItem:
+        call = Call(
+            request=fp("judge"),
+            started_at=NOW + timedelta(seconds=start),
+            finished_at=NOW + timedelta(seconds=end),
+            attempts=attempts,
+        )
+        return ScoreItem(
+            score=score_id,
+            key=keys[replicate],
+            view=1,
+            value=1.0,
+            judge_calls=(JudgeCall(judge=ids["judge"], seed_index=0, call=call),),
+        )
+
+    def check(execution: Execution, *items: ScoreItem) -> list[str]:
+        started = ScoreStarted(
+            score=score_id,
+            run=run_id,
+            at=NOW,
+            rig=RIG,
+            scorer_code=RIG,
+            scoring=ids["scoring"],
+            execution=execution,
+        )
+        score = Score(stages=(started,), items=items)
+        return [f.code for f in check_score(score, run, reg)]
+
+    sequential = Execution()
+    assert check(sequential, judged(0, 0, 5), judged(1, 5, 9)) == []
+    assert check(sequential, judged(0, 0, 5, attempts=2)) == ["execution.retries"]
+    assert check(sequential, judged(0, 5, 9), judged(1, 0, 5)) == ["execution.order"]
+    assert check(sequential, judged(0, 0, 6), judged(1, 5, 9)) == [
+        "execution.concurrency"
+    ]
+    assert check(Execution(concurrency=2), judged(0, 0, 6), judged(1, 5, 9)) == []
+
+
 def test_records_refuse_what_cannot_have_happened() -> None:
     later = NOW + timedelta(seconds=1)
     with pytest.raises(ValidationError, match="finished before it started"):

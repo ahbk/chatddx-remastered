@@ -908,3 +908,12 @@ reference, straight from the schema. `RefTo` used to do this, and was stopped be
 Schema plays no part in a component's digest, so adding it back changes no digest.
 
 ## Proposed amendments
+- CHANGE "Execution" for scores (`src/chatddx/ledger/ledger.py:ScoreStarted`, `check_score`): "recorded in
+  `docs/ledger.md:RunStarted`" → "recorded in `docs/ledger.md:RunStarted` and `docs/ledger.md:ScoreStarted`";
+  "Execution settings say how a run issues its requests." → "Execution settings say how a run issues its requests,
+  or how a score issues its judge requests."; and "A run's calls show whether its settings were followed:
+  `check_run` warns …" → "A run's calls, and a score's judge calls, show whether the settings were followed:
+  `check_run` and `check_score` warn …".
+- CHANGE "What a factor is", "Recorded": "the execution settings, such as order and concurrency
+  (`RunStarted.execution`, see "Execution")" → "(`RunStarted.execution`, `ScoreStarted.execution`, see
+  "Execution")".

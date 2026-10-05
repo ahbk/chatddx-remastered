@@ -153,6 +153,10 @@ The package imports only `chatddx.factors`, so the code already leans on factors
 - Decided (B5, option a): `check_score` warns `score.scorer_code` when the scorer code that ran isn't the pinned
   one; the revision counts only when the scorer pins one.
 - Decided: O2 and the unrecorded tool code are items of their own (B14, B15).
+- Decided (L2, option a): the draft explains what a record holds (plan, conduct, observation) and which pair each
+  check compares.
+- Decided (B7, option a): `ScoreStarted.execution`, checked over judge calls with the run's three checks; a run item
+  counts as sent when its first judge call starts.
 
 ## Status
 Draft: `agents/ledger.md`.
@@ -167,7 +171,8 @@ Draft: `agents/ledger.md`.
 | B2, B3, B6, B12 | Code and tests: `score.incomplete`, `judge.incomplete`, `run.incomplete` for canaries, duplicate checks, record validation. `docs/findings.md`, `docs/chatddx.md` amendments. |
 | B4 | Decided (b). Code and tests (`_executed`); draft updated; `docs/findings.md`, `docs/factors.md` (send-order wording), `docs/chatddx.md` amendments. Timeouts stay an open issue. |
 | B5 | Decided (a). Code and tests; draft updated; `docs/findings.md`, `docs/factors.md`, `docs/chatddx.md` amendments. |
-| B7–B10, B13, B14, B15 | Open, one by one. Listed in the draft's "Open design issues" meanwhile. |
+| B7 | Decided (a). Code and test; draft updated; `docs/factors.md`, `docs/findings.md`, `docs/chatddx.md` amendments. |
+| B8–B10, B13, B14, B15 | Open, one by one. Listed in the draft's "Open design issues" meanwhile. |
 | B11 | Moved to factors with the compilation; the proposed `docs/factors.md` "Compilation" section states it. Still open. |
 | C1 | Decided (A). Code: `Compilation` in factors, `factor.compilation` dropped, the catalog's foreign keys retargeted, the seeder adds compilations as components. Doc: the draft drops its Compilation section. Amendments: `docs/factors.md`, `docs/store.md`, `docs/chatddx.md`. |
 | C2 | Decided (a). The draft already avoids "tier"; `docs/chatddx.md` amendment. Also proposed: `docs/store.md` wording for schema `ledger` (only `run_item` and `score_item` are case-derived). |

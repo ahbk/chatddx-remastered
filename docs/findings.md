@@ -107,3 +107,5 @@ the vignette read at the source differs from the case's fingerprint (`prepare_ca
     included.
 - ADD to "Ledger": `score.scorer_code`: the scorer code that ran isn't the code the scorer pins; the revision counts
   only when the scorer pins one (`src/chatddx/ledger/ledger.py:check_score`).
+- CHANGE the `execution.*` codes proposed above: `check_score` reports them too, for a score's judge calls against
+  `ScoreStarted.execution` (`src/chatddx/ledger/ledger.py:check_score`).

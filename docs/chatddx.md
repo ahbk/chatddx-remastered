@@ -268,3 +268,5 @@ See `docs/findings.md` for a list of all findings and what they mean.
 **Canary drift are not implemented:** nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
+- CHANGE "Scoring records", step 1: ADD "the execution settings of its judge calls (`execution`)" to what
+  `ScoreStarted` names (`src/chatddx/ledger/ledger.py:ScoreStarted`).

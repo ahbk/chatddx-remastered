@@ -1,5 +1,5 @@
 import json
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Annotated, ClassVar, Literal, Self, cast, override
 from uuid import UUID
@@ -277,6 +277,7 @@ class ScoreStarted(Record):
     rig: Code
     scorer_code: Code
     scoring: ScoringRef
+    execution: Execution = Execution()
 
 
 class ScoreFinished(Record):
@@ -453,13 +454,20 @@ def check_run(run: Run, registry: Registry) -> list[Finding]:
                 message=f"{unfingerprinted} items have no prompt token fingerprint",
             )
         )
-    return findings + _executed(run, trial)
-
-
-def _executed(run: Run, trial: Trial) -> list[Finding]:
-    execution = run.started.execution
-    findings: list[Finding] = []
     calls = [*(c for i in run.items for c in i.calls), *(c.call for c in run.canaries)]
+    sent = {i.key: i.call.started_at for i in run.items}
+    return findings + _executed(started.execution, trial, calls, sent)
+
+
+# `sent` holds when each item was sent: for a run its first call, for a score its first
+# judge call.
+def _executed(
+    execution: Execution,
+    trial: Trial,
+    calls: Sequence[Call],
+    sent: Mapping[ItemKey, datetime],
+) -> list[Finding]:
+    findings: list[Finding] = []
     allowed = execution.retries + 1
     if over := sum(1 for c in calls if c.attempts > allowed):
         findings.append(
@@ -475,11 +483,11 @@ def _executed(run: Run, trial: Trial) -> list[Finding]:
     }
     early = 0
     latest: datetime | None = None
-    for item in sorted(run.items, key=lambda i: position[i.key]):
-        sent = item.call.started_at
-        if latest is not None and sent < latest:
+    for key in sorted(sent, key=position.__getitem__):
+        at = sent[key]
+        if latest is not None and at < latest:
             early += 1
-        latest = sent if latest is None else max(latest, sent)
+        latest = at if latest is None else max(latest, at)
     if early:
         findings.append(
             Finding(
@@ -610,7 +618,13 @@ def check_score(score: Score, run: Run, registry: Registry) -> list[Finding]:
         findings.append(
             Finding(code="score.incomplete", message=f"{len(missing)} items missing")
         )
-    return findings
+    calls = [jc.call for i in score.items for jc in i.judge_calls]
+    sent: dict[ItemKey, datetime] = {}
+    for item in score.items:
+        for jc in item.judge_calls:
+            at = jc.call.started_at
+            sent[item.key] = min(sent.get(item.key, at), at)
+    return findings + _executed(started.execution, trial, calls, sent)
 
 
 def _named(code: Code) -> str:

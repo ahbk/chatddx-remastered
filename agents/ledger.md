@@ -8,8 +8,9 @@ How a skeleton was compiled is not in the ledger. Compiling is deterministic, so
 compilation is provenance, stored as a component (`docs/factors.md`, "Compilation").
 
 Records are not factors. A factor is chosen in advance and pinned by digest; a record is written when something
-happens. Records hold the *recorded* factors and the evidence of the *observed* ones (`docs/factors.md`, "What a
-factor is"). They refer to components by digest and to each other by id.
+happens. Records hold the plan of a run or a score, which is its *recorded* factors, what the rig did, and what the
+world answered, which is the evidence of the *observed* factors (`docs/factors.md`, "What a factor is"; see "What a
+record holds"). They refer to components by digest and to each other by id.
 
 Code paths are relative to `src/chatddx/ledger/` unless they start with `src/` or `docs/`. The package builds on
 `chatddx.factors` and imports no other chatddx package.
@@ -27,6 +28,32 @@ The started and finished rows are the log's *stages*. A new kind of stage would 
 not a new log.
 
 Records are never changed or removed: a log only grows, by adding rows.
+
+### What a record holds
+A record holds three kinds of content.
+
+| Content | What it is | Where | Examples |
+| --- | --- | --- | --- |
+| Plan | What the run or the score is set to do, written before it starts: its recorded factors. | Started rows | `trial`, `execution`, `canaries`, `verify_at`, `rig`, `scorer_code` |
+| Conduct | What the rig itself did. | Item rows | the request sent (`Call.request`, a fingerprint), when, how many attempts, the tool results sent back, a score item's value and detail |
+| Observation | What the world answered: the evidence of the observed factors. | Item rows | the response, the model name it gives, the prompt-token fingerprint, the vignette fingerprint read at the source |
+
+A run item holds all three: its key comes from the plan; its request fingerprint, times and attempts are conduct
+(the times also show how fast the engine answered); its response and fingerprints are observations. Finished rows
+add conclusions drawn from the rest: the seal and the findings.
+
+Each check compares two of these, or one of them with the pinned factors:
+
+| Compares | Findings |
+| --- | --- |
+| Plan and conduct | `run.incomplete`, `score.incomplete`, `execution.retries`, `execution.order`, `execution.concurrency` |
+| Pinned factors and plan | `score.scorer_code` |
+| Pinned factors and conduct | `judge.incomplete` |
+| Pinned factors and observations | `attestation.model`, `case.drift`, `tools.unanswered` |
+| Pinned factors with each other | `view.unreachable` (a scorer's view and the run's skeleton) |
+| Observations that should be there | `attestation.prompt_tokens` |
+| Observations of two runs | `attestation.prompt_tokens_drift` |
+| Rows and their seal | `ledger.seal` |
 
 ### Canonical form and versions
 A record is written out in canonical form, the same way as a component (`docs/factors.md`, "Canonical form and
@@ -245,7 +272,8 @@ A score grades one run with one scoring (`docs/factors.md`, "Scoring"). Its log 
 - defined in: `ledger.py:ScoreStarted`
 
 `ScoreStarted` holds the score's id, the id of the run it grades, the time, the version of the rig's code (`rig`),
-the scorer code that actually runs (`scorer_code`), and the scoring.
+the scorer code that actually runs (`scorer_code`), the scoring, and the execution settings of its judge calls
+(`execution`, the defaults when left out), which are checked the way a run's are (see "Score").
 
 `scorer_code` is a recorded factor. Set beside the code the scorer pins (`Scorer.code`), it shows whether what ran
 is what should have run, and `check_score` compares the two (see "Score").
@@ -297,7 +325,10 @@ It warns when
 - a finished score lacks an item for some run item and view (`score.incomplete`);
 - the scorer code that ran isn't the code the scorer pins (`score.scorer_code`): the distribution and the version
   must match, and the revision too when the scorer pins one;
-- the rows no longer match the seal (`ledger.seal`).
+- the rows no longer match the seal (`ledger.seal`);
+- the judge calls don't follow the score's execution settings, as for a run (`execution.retries`,
+  `execution.order`, `execution.concurrency`). A run item counts as sent when its first judge call starts; items
+  without judge calls are left out of the order.
 
 ## Findings
 A finding (`docs/factors.md`, "Errors and findings") has a level, a code, a message and, optionally, a subject. All
@@ -309,9 +340,9 @@ of the ledger's findings are warnings.
 | `case.drift` | `check_run` | item key | The vignette read at the source differs from the case's fingerprint. `prepare_case` reports the same code when the vignette is read. |
 | `tools.unanswered` | `check_run` | item key | An item's last response still calls tools, after its rounds ran out or the run stopped. |
 | `attestation.model` | `check_run` | item key | A call returned another model name than declared. |
-| `execution.retries` | `check_run` | none | Some calls took more attempts than the run's `retries` allows. One finding, with the count. |
-| `execution.order` | `check_run` | none | Some items were sent before items the run's order schedules ahead of them. One finding, with the count. |
-| `execution.concurrency` | `check_run` | none | More calls were in flight at once than the run's `concurrency` allows. One finding, with the peak. |
+| `execution.retries` | `check_run`, `check_score` | none | Some calls took more attempts than the run's or the score's `retries` allows. One finding, with the count. |
+| `execution.order` | `check_run`, `check_score` | none | Some items were sent before items the order schedules ahead of them. One finding, with the count. |
+| `execution.concurrency` | `check_run`, `check_score` | none | More calls were in flight at once than `concurrency` allows. One finding, with the peak. |
 | `attestation.prompt_tokens` | `check_run` | none | Some items have a call without a prompt-token fingerprint, for example because the engine didn't return token ids. One finding, with the count. |
 | `attestation.prompt_tokens_drift` | `compare_prompt_tokens` | item key | The engine read different prompt tokens for the same item in two runs. |
 | `ledger.seal` | `check_run`, `check_score` | run or score id | The rows no longer match the seal in the finished row. |
@@ -354,8 +385,6 @@ Some records state what should happen and others what did, but nothing compares 
 - **Only run items are attested.** Canary calls and judge calls get no model check and no prompt-token check.
 - **A response without a model name passes** the model check.
 - **`system_fingerprint` is kept but never compared** between calls or runs.
-- **Scores record no execution settings.** Judge calls are batched like any others, but a score's started row has
-  no order, concurrency, timeout or retries.
 - **`compare_prompt_tokens` takes any two runs.** It matches items by key and doesn't check that the runs are of the
   same trial.
 - **A score may grade an unfinished run.** `check_score` doesn't ask for the run to be finished or its seal to hold.
