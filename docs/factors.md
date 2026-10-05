@@ -34,12 +34,14 @@ Being a factor and being a component are separate questions. A factor is held in
    - the execution settings, such as order and concurrency (`RunStarted.execution`, see "Execution");
    - the version of the rig that sent the requests (`RunStarted.rig`);
    - the scorer code that actually ran (`ScoreStarted.scorer_code`). Set beside the code the scorer pins
-     (`Scorer.code`), it shows whether what ran is what should have run.
+     (`Scorer.code`), it shows whether what ran is what should have run, and `check_score` warns when they differ
+     (`docs/ledger.md`, "Score").
 3. **Observed**: set by nobody, and only detected afterwards. These are the parts of the world outside our control:
    a remote engine that changes without notice, a tool such as a web search that answers differently from day to
    day, a vignette edited at its source, GPU arithmetic that isn't deterministic. Fingerprints, returned model
    names, drift findings and canaries reveal them (`docs/ledger.md`, `docs/findings.md`).
 
+- CHANGE "What a factor is", "Recorded": "it shows whether what ran is what should have run." → ""
 Canary sets are components but not factors. They are *instruments*: fixed probe requests that measure observed
 factors without changing any output. They are components so that the same set can be compared across runs (see
 "Canary sets").
@@ -571,13 +573,23 @@ Canary probes at the start and end of a run apply to any engine and are planned 
 - principal author: Researchers
 - defined in: `trial.py:Trial`
 
-A trial (kind `trial`) is one scientific intent: a generation skeleton, an engine, the cases, the text-cleanup
-steps (`cleanup`) and the seeds. Cases and seeds are listed without duplicates. A trial pins the factors chosen in
-advance; each run of it adds recorded and observed ones (see "What a factor is").
+A trial (kind `trial`) represents one research question and holds:
+- a generation skeleton
+- an engine
+- the cases
+- the text-cleanup steps (`cleanup`)
+- the seeds
 
-The seeds are explicit. The portal can propose distinct random 31-bit seeds (`suggest_seeds`), which users are free
-to change. Each seed defines one replicate, identified by its position. With greedy sampling no seed is sent, but
-the seeds still count toward the trial's digest (see "Open design issues").
+Trials pin their factors in advance so each run of it adds recorded and observed ones (see "What a factor is").
+
+#### Send order and de-duplication
+Cases and seeds are listed without duplicates. Cases are sorted by digest so their order is no part of the trial.
+Run declares the send order (see "Execution"). Seeds keep their order as each seed's position names a replicate.
+
+#### Seeds
+Seeds are explicit, a helper can propose distinct random 31-bit seeds (`suggest_seeds`), which users are free to
+change. Each seed defines one replicate, identified by its position. With greedy sampling no seed is sent, but the
+seeds still count toward the trial's digest (see "Open design issues").
 
 ### Execution
 - defined in: `trial.py:Execution`, recorded in `docs/ledger.md:RunStarted`
@@ -592,12 +604,13 @@ settings out of the trial means changing them doesn't make a new trial, which su
 other engines, runs with different settings aren't interchangeable (see "Open design issues").
 
 The settings are:
-- `order`, the order in which a run sends its items: `case_major@1` (the default: every replicate of a case before
-  the next case), `replicate_major@1` (every case once per replicate), or `shuffled@1`, which needs a
-  `shuffle_seed` and orders the items by a hash of that seed, the case and the replicate.
-- `concurrency` (1 by default), `timeout_s` (optional) and `retries` (0 by default).
-
-`Execution.schedule(cases, replicates)` lists the (case, replicate) pairs in the order they are sent.
+- `order`, the order in which a run sends its items:
+  - `case_major@1` (the default: every replicate of a case before the next case, cases in digest order)
+  - `replicate_major@1` (every case once per replicate)
+  - `shuffled@1`, which needs a `shuffle_seed` and orders the items by a hash of that seed, the case and the replicate.
+- `concurrency` (1 by default)
+- `timeout_s` (optional)
+- `retries` (0 by default)
 
 A run's calls show whether its settings were followed: `check_run` warns when a call took more attempts than
 `retries` allows, when items were sent out of order, or when more calls were in flight than `concurrency` allows
@@ -892,11 +905,3 @@ reference, straight from the schema. `RefTo` used to do this, and was stopped be
 Schema plays no part in a component's digest, so adding it back changes no digest.
 
 ## Proposed amendments
-- CHANGE "Trial": "Cases and seeds are listed without duplicates." → "Cases and seeds are listed without duplicates.
-  Cases are kept sorted by digest, so their order is no part of the trial: the order items are sent in is the
-  run's (see "Execution"). Seeds keep their order, since each seed's position names a replicate."
-  (`src/chatddx/factors/trial.py:Trial`, `cases`). And in "Execution", `case_major@1` "(the default: every replicate
-  of a case before the next case)" → "(the default: every replicate of a case before the next case, cases in digest
-  order)".
-- CHANGE "What a factor is", "Recorded": "it shows whether what ran is what should have run." → "it shows whether
-  what ran is what should have run, and `check_score` warns when they differ (`docs/ledger.md`, "Score")."
