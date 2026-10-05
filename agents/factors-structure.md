@@ -580,7 +580,8 @@ what to do with data that fails.
 - defined in: `scoring.py:Scorer`
 
 A scorer (kind `scorer`) pins scoring code written by developers. It declares:
-- the code (`Code`: distribution, version and revision);
+- the code (`Code`: distribution, version and revision), and its `entry_point`: the function in that code that does
+  the scoring, written `module:attribute` as for tools (for example `chatddx_scoring.match:score`);
 - the expectation schema it consumes;
 - an ordered list of views;
 - ordered resource digests, such as synonym tables or ontology releases;
@@ -737,10 +738,6 @@ Nothing aggregates scores today, but anything that compares or pools runs by the
 conditions without noticing. It needs to group by the recorded factors as well, and to check the evidence of the
 observed ones (prompt-token fingerprints, returned models, canaries) before pooling.
 
-### Scorer code has no entry point
-A tool's code comes with an `entry_point`, a scorer's doesn't, so nothing says how a runner finds the scoring
-function.
-
 ### Passthrough can set keys a managed chunk left unset
 A passthrough key is refused only when another chunk also produces it. So `temperature: 0` in a passthrough makes
 the skeleton greedy when the sampling chunk sets no temperature, and `max_tokens` can sit beside
@@ -778,8 +775,9 @@ default. Whether vLLM 0.24's `FlexibleArgumentParser` accepts abbreviations is u
 - **Judge engines are never probed.** Canary probes run on the run's engine only.
 - **Skeleton provenance.** Should a skeleton be accepted only with a compilation record? Hand-written ones, such as
   judge prompts, are possible today.
-- **Metric names are free strings.** Only the scorer code pinned by `Scorer.code` gives `View.metric` a meaning,
-  and nothing checks that the code knows the name.
+- **The scorer interface is unspecified.** A scorer's entry point says where its code is, not what that code must
+  do: which arguments it takes and what it returns. Only that code gives `View.metric` a meaning, and nothing checks
+  that it knows the name.
 - **The model name is chosen in several places.** `render` needs the engine's digest for a local engine and
   `model` for a remote one. `src/chatddx/ledger/ledger.py:check_run` makes that choice, and so must every runner; it
   belongs on the engine, as one method.
@@ -827,5 +825,12 @@ If expectations written as free text turn up, a view could split them too. Two w
   digest stays the same. Each side gets the split it needs.
 - one `split` for both sides. That changes the meaning of an existing field, so `Scorer.schema_version` would have
   to go up, and the two sides rarely need the same split.
+
+### Finding code through packaging entry points
+Tools and scorers name their function in the component (`entry_point`, `module:attribute`). Python packaging offers
+another way: the distribution declares its function in its own metadata, under a group such as `chatddx.scorers` or
+`chatddx.tools`, and the runner looks it up with `importlib.metadata`. The pinned distribution and version would
+then decide which function runs, with no field in the component. It would keep the choice with the code's authors,
+at the cost of being less visible in the factors, and tools and scorers should switch together.
 
 ## Proposed amendments

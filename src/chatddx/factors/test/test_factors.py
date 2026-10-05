@@ -1144,6 +1144,7 @@ def test_views_are_checked_against_the_expectation_schema(reg: Registry) -> None
     scorer = reg.add(
         Scorer(
             code=RIG,
+            entry_point="chatddx_scoring.match:score",
             expectation_schema=closed,
             views=(
                 View(expectation="$.ddx[*]", metric="m"),

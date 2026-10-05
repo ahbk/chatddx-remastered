@@ -17,7 +17,7 @@ from .base import (
 )
 from .cases import CaseRef
 from .engine import EngineRef
-from .request import Skeleton, SkeletonRef, SlotName
+from .request import EntryPoint, Skeleton, SkeletonRef, SlotName
 from .select import SplitOp, check_selector, select, split
 
 
@@ -106,6 +106,7 @@ class View(Frozen):
 class Scorer(Component):
     kind: Literal["scorer"] = "scorer"
     code: Code
+    entry_point: EntryPoint
     expectation_schema: ExpectationSchemaRef
     views: tuple[View, ...] = Field(min_length=1)
     resources: tuple[str, ...] = ()

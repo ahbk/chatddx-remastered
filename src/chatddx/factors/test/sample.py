@@ -155,6 +155,7 @@ def world(reg: Registry) -> dict[str, str]:
             scorer=reg.add(
                 Scorer(
                     code=RIG,
+                    entry_point="chatddx_scoring.match:score",
                     expectation_schema=schema,
                     views=(
                         View(
