@@ -80,9 +80,9 @@ tags = ["ddx"]
     - the World inventory (mutable, ops-authored);
     - code, like the vLLM clamp lint.
   - **Fixed** (user's choices: typed in code with values in TOML, applied at authoring, keyed by model name). See
-    `agents/wip-facts.md`.
+    `agents/facts.md`.
     - The package is `chatddx.facts`. `ModelFacts.reasoning_chunk` and `sampling_chunk` write literal chunks,
-      and `lint(…, facts=)` checks pairs.
+      and `chatddx.facts.lint.lint(registry, facts, digests)` checks pairs.
     - The sample's two models are ported in `src/chatddx/data/sample/facts.toml`.
 - **G2. Reasoning levels.** [maybe fix remastered] (old C2)
   - The old intent levels were `default, off, on, minimal, low, medium, high, xhigh` and `budget`. They were
@@ -93,7 +93,7 @@ tags = ["ddx"]
     - The old levels are kept as facts per model: writes, collapses, refusals, a default and a budget.
     - They become literal `Reasoning` chunks at authoring (`ModelFacts.reasoning_chunk`).
     - `facts.reasoning_unmatched` catches a skeleton whose reasoning belongs to another model.
-    - Open: `xhigh` has no `Reasoning.effort` value yet (`agents/wip-facts.md`).
+    - Open: `xhigh` has no `Reasoning.effort` value yet (`agents/facts.md`).
 - **G3. Placing chunk-supplied text.** [maybe fix remastered] (old C4)
   - The only composition `compile_request` knows is output guidance appended to the instructions after a blank line
     (`src/chatddx/factors/request.py:compile_request`).
@@ -271,7 +271,7 @@ tags = ["ddx"]
       - the loop itself, and where tools run;
       - clearance for tools (`agents/wip-clearance.md`);
       - `schema.ref_unverified` doesn't look at toolset tools' parameters;
-      - gpt-oss with `required` (`agents/wip-facts.md`);
+      - gpt-oss with `required` (`agents/facts.md`);
       - a turn after a response that already called the answer tool isn't rejected.
     - Proposed amendments: `docs/factors.md`, `docs/ledger.md`, `docs/vllm.md` (5 corrected, 9, 10),
       `docs/findings.md`, `docs/clearance.md`, `docs/store.md`.
@@ -640,7 +640,8 @@ tags = ["ddx"]
   - the hosts' served names must become the engine digest;
   - per-endpoint capacity (`max_jobs`), credentials and the API kind have no home.
 - Fake vLLM.
-- Model specs (family, size, quantization, context length, licence).
+- Model specs (family, size, quantization, context length, licence): held by the facts since G1, descriptive only
+  (`agents/facts.md`).
 
 ### Scorers
 - Scoring code: the pattern matcher, `reciprocal_rank`, `first_mention` and `mentions`.
