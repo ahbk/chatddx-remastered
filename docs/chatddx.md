@@ -269,3 +269,6 @@ See `docs/findings.md` for a list of all findings and what they mean.
 **Canary drift are not implemented:** nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
+- CHANGE in "Findings and errors": "See `docs/findings.md` for a list of all findings and what they mean." → "Each
+  code is described where it's produced: `docs/factors.md`, "Lints"; `docs/ledger.md`, "Findings"; and, for the
+  `facts.*` codes, `agents/facts.md`, "Checking pairs"." `docs/findings.md` is proposed for removal.

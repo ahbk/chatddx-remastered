@@ -925,3 +925,11 @@ reference, straight from the schema. `RefTo` used to do this, and was stopped be
 Schema plays no part in a component's digest, so adding it back changes no digest.
 
 ## Proposed amendments
+- ADD to "Lints", after `vllm.grammar_before_reasoning`: "A skeleton asks for reasoning with
+  `enable_thinking: true`, a `reasoning_effort` other than `none`, or a `thinking_token_budget`, and turns it off with
+  `enable_thinking: false` or `reasoning_effort: none`, which win (`lint.py:_asks_to_reason`)." Moved from
+  `docs/findings.md`, "Factors", the only place that says it.
+- REMOVE from "Lints": "`docs/findings.md:Factors` explains each code." "Lints" explains each code itself, and the
+  facts' codes are explained in `agents/facts.md`, "Checking pairs".
+- CHANGE in "What a factor is", item 3: "(`docs/ledger.md`, `docs/findings.md`)" → "(`docs/ledger.md`, "Findings")":
+  `docs/findings.md` is proposed for removal.

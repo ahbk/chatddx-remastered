@@ -119,3 +119,12 @@ the vignette read at the source differs from the case's fingerprint (`prepare_ca
 - ADD to "Ledger": `tools.code`: a tool of the skeleton ran with code other than the code it pins, or its code isn't
   recorded in `RunStarted.tool_code`; the revision counts only when the tool pins one
   (`src/chatddx/ledger/run.py:check_run`, `_tool_code`).
+- REMOVE `docs/findings.md`. Every code here, and every code proposed above, is described where it's produced:
+  `docs/factors.md`, "Lints" (the factors' codes, `case.drift`, `engine.chat_template*` and `bundle.recanonicalized`
+  included); `docs/ledger.md`, "Findings" (the ledger's, `execution.*`, `canary.phase`, `tools.code`,
+  `score.scorer_code` and `score.run_unfinished` included); `agents/facts.md`, "Checking pairs" (`facts.*`). What
+  vLLM does is in `docs/vllm.md` (the clamp, item 2; harmony and Mistral sending tools unconstrained, item 5; the
+  refused thinking budget, item 7), and what makes a language unknown is in `docs/catalog.md`, "Languages". The two
+  things only this file says are proposed elsewhere: the ledger's findings having no mechanism of their own
+  (`docs/ledger.md`) and what counts as asking for reasoning (`docs/factors.md`). The references to this file are
+  proposed to change in `docs/factors.md` and `docs/chatddx.md`.

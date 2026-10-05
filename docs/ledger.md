@@ -407,3 +407,7 @@ Most of the plan is compared with what happened (see "What a record holds"), but
   how records travel with the factors they reference, for example for publication, isn't specified.
 
 ## Proposed amendments
+- ADD to "Open design issues", "Smaller issues": "**Findings have no mechanism of their own.** The runner keeps
+  those it sees while running in the finished row, and `check_run`, `check_score` and `compare_prompt_tokens` give the
+  rest when called. They might benefit from a separate mechanism, as linting is for factors, but nothing is planned
+  or decided." Moved from `docs/findings.md`, "Ledger", the only place that says it.
