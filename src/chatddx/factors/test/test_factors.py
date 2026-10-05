@@ -62,6 +62,7 @@ from chatddx.factors.scoring import (
     Judge,
     Scorer,
     View,
+    fill_text,
 )
 from chatddx.factors.test.sample import (
     KEY,
@@ -896,6 +897,27 @@ def test_bundle_roundtrip_and_tamper(reg: Registry) -> None:
     )
     with pytest.raises(StructuralError, match="does not match"):
         _ = tampered.load()
+
+
+def test_judges_fill_their_slots_from_a_view(reg: Registry) -> None:
+    assert fill_text("text@1", ["Chest pain."]) == "Chest pain."
+    assert fill_text("text@1", [["ACS", "PE"]]) == "ACS\nPE"
+    assert fill_text("text@1", ["ACS", "PE"]) == "ACS\nPE"
+    assert fill_text("text@1", []) == ""
+    assert fill_text("text@1", [{"b": "å", "a": 1}]) == '{\n  "b": "å",\n  "a": 1\n}'
+    assert fill_text("text@1", [1, "x"]) == '[\n  1,\n  "x"\n]'
+
+    ids = world(reg)
+    judge = resolve(reg.get, ids["judge"], Judge)
+    assert "fill" not in json.loads(judge.canonical)
+    view = View(output="/ddx", expectation="/ddx", metric="judge", judge=ids["judge"])
+    fills = judge.fills(view, {"ddx": ["ACS", "PE"]}, {"ddx": ["ACS"]})
+    assert fills == {"completion": "ACS\nPE", "expectation": "ACS"}
+    skeleton = resolve(reg.get, judge.skeleton, Skeleton)
+    body = render(skeleton, model="m", seed=None, fills=fills)
+    assert body["messages"] == [{"role": "user", "content": "Grade: ACS\nPE"}]
+    with pytest.raises(StructuralError, match="not this judge"):
+        _ = judge.fills(View(metric="m"), {}, {})
 
 
 def test_dangling_and_mistyped_refs(reg: Registry) -> None:

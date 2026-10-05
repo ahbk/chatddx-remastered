@@ -591,7 +591,7 @@ A view scores one part of an output against one part of an expectation. It holds
 - `output` and `expectation`: a selector into each (the whole document by default);
 - `split`: optionally, how to split what the output selector picks;
 - `metric`: a name that only the scorer's code interprets, with optional `params`;
-- `judge`: optionally, the judge it uses.
+- `judge`: optionally, the judge it uses. The view's selections are then what the judge sees (see "Judge").
 
 A selector is either a JSON Pointer (RFC 6901), which picks at most one value, or a JSONPath query (RFC 9535) from
 a fixed subset:
@@ -617,12 +617,26 @@ cleanup, the name pins the behavior.
 - principal author: Researchers
 - defined in: `scoring.py:Judge`
 
-A judge (kind `judge`) is an LLM used as a metric: a judge-purpose skeleton, an engine and its own seeds, without
-duplicates. A judge skeleton must contain the `completion` slot and may use `expectation`, `vignette` and
-`appendices`.
+A judge (kind `judge`) is an LLM used as a metric: a judge-purpose skeleton, an engine, its own seeds, without
+duplicates, and a fill rule. A judge skeleton must contain the `completion` slot and may use `expectation`,
+`vignette` and `appendices`.
+
+The view decides what the judge sees, and the judge decides how it is written out.
+`Judge.fills(view, answer, expectation)` fills `completion` with what the view's output selector picks from the
+answer, and `expectation` with what its expectation selector picks from the expectation's data. The answer is the
+model's output as the scorer parsed it. The judge's `fill` rule (`scoring.py:FillOp`) turns those selections into
+text, and, as with text cleanup, its name pins one behavior. There is one rule today, `text@1`, the default:
+- a single string goes in as it is, without quotes or escapes;
+- a list of strings, whether picked as one list or as several strings, goes in one string per line, and nothing
+  picked gives an empty text;
+- anything else goes in as JSON, indented by two spaces, keeping its key order and its non-ASCII characters.
+
+The `vignette` and `appendices` slots are filled as for the trial (see "Preparing a case").
 
 Judge requests go through the same rendering as generation requests, once per seed, and are recorded per score item
-(`docs/ledger.md:JudgeCall`). Their scores are reproducible on a best-effort basis. Because a judge prompt can
+(`docs/ledger.md:JudgeCall`). Their scores are reproducible on a best-effort basis. Given the scorer's parse of an
+answer, a judge request can be rebuilt from stored data and checked against the fingerprint its call stored; the
+parsing belongs to the scorer's code, so the rig can't do that check on its own. Because a judge prompt can
 contain case text, judge engines fall under the same clearance rule as generation engines (`docs/clearance.md`).
 
 ### Scoring
@@ -714,10 +728,6 @@ variation, and it has no name yet.
 Nothing aggregates scores today, but anything that compares or pools runs by the trial's digest alone would mix
 conditions without noticing. It needs to group by the recorded factors as well, and to check the evidence of the
 observed ones (prompt-token fingerprints, returned models, canaries) before pooling.
-
-### How judge slots are filled
-Nothing says what text the `completion` and `expectation` slots receive: the raw content or a view's selection,
-and how JSON is written out. Judge scores depend on it.
 
 ### Vignette encoding
 `prepare_case` decodes vignettes as strict UTF-8 and raises on anything else, while the fingerprint is taken over

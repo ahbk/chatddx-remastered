@@ -1,3 +1,5 @@
+import json
+from collections.abc import Sequence
 from typing import Annotated, Literal, override
 
 from pydantic import AfterValidator, Field, JsonValue
@@ -10,11 +12,12 @@ from .base import (
     RefTo,
     Resolver,
     Settings,
+    StructuralError,
     distinct,
 )
 from .cases import CaseRef
 from .engine import EngineRef
-from .request import Skeleton, SkeletonRef
+from .request import Skeleton, SkeletonRef, SlotName
 from .select import SplitOp, check_selector, select, split
 
 
@@ -35,12 +38,28 @@ class Expectation(Component):
 
 ExpectationRef = Annotated[Digest, RefTo("expectation")]
 
+# How a judge's slots are written out, one name per behavior as with CleanupOp (cases.py).
+FillOp = Literal["text@1"]
+
+
+def fill_text(op: FillOp, items: Sequence[JsonValue]) -> str:
+    assert op == "text@1"
+    value: JsonValue = items[0] if len(items) == 1 else list(items)
+    match value:
+        case str():
+            return value
+        case list() if all(isinstance(v, str) for v in value):
+            return "\n".join(str(v) for v in value)
+        case _:
+            return json.dumps(value, indent=2, ensure_ascii=False)
+
 
 class Judge(Component):
     kind: Literal["judge"] = "judge"
     skeleton: SkeletonRef
     engine: EngineRef
     seeds: Annotated[tuple[int, ...], AfterValidator(distinct)] = Field(min_length=1)
+    fill: FillOp = "text@1"
 
     @override
     def cross_check(self, get: Resolver) -> list[str]:
@@ -49,6 +68,16 @@ class Judge(Component):
         if skeleton.purpose != "judge":
             return [f"judge uses a {skeleton.purpose} skeleton"]
         return []
+
+    def fills(
+        self, view: "View", answer: JsonValue, expectation: JsonValue
+    ) -> dict[SlotName, str]:
+        if view.judge != self.digest:
+            raise StructuralError(f"the view is judged by {view.judge}, not this judge")
+        return {
+            "completion": fill_text(self.fill, view.output_items(answer)),
+            "expectation": fill_text(self.fill, view.expectation_items(expectation)),
+        }
 
 
 JudgeRef = Annotated[Digest, RefTo("judge")]
