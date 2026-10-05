@@ -35,7 +35,3 @@ For docs in (`docs/*`), the same rule applies as to this document: Humans write,
 * For placeholder usernames in docs and tests, use alice, bob, carol... or semantic names (archive, guest, nobody, other, collaborator-one, admin).
 
 ## Proposed amendments
-- ADD to "Environment": "While no database holds data worth keeping, migrations are edited in place rather than
-  followed by corrective ones, and existing databases are recreated." A corrective migration can also break the
-  tier-0-first path: a later tier-2 file that alters a table an earlier tier-0 migration dropped fails
-  (`src/chatddx/store/test/test_store.py:test_migrations_apply_up_to_a_tier`). Precedents: `e635b97`, `f6a45fe`.

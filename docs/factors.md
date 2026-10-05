@@ -116,7 +116,7 @@ An *error* stops the work.
 
 A *finding* (`base.py:Finding`) is a warning, or an info, about something valid but risky, or about something
 observed that doesn't match what was declared. It has a level, a code, a message and, optionally, the digest it
-concerns. Findings never stop the work. `docs/findings.md` lists every code.
+concerns.
 
 ### Registries and bundles
 A `Registry` (`bundle.py`) holds components by digest, in memory. `Registry.add_raw` accepts stored bytes only if
@@ -151,7 +151,7 @@ foreign key (`docs/store.md`).
 | Instrument | A component that measures without being a factor: canary sets. |
 | Provenance | A component that says how another was made, without being a factor: compilations. |
 | Run | One execution of a trial: its requests, responses and records (`docs/ledger.md`). |
-| Vignette | The clinical text of one case at its source. Sensitive and never stored; known by its source, its id there and its fingerprint. |
+| Vignette | The clinical text of one case at its source. Sensitive. |
 | Case | A vignette plus the appendices sent with it. |
 | Appendix | Extra plain text written for one vignette. |
 | Chunk | A component that fills one part of a request. |
@@ -207,8 +207,8 @@ complex. Appendices are not sensitive. They are stored and sent exactly as writt
 them.
 
 A case lists its appendices in a fixed order that is part of its digest, and refuses an appendix bound to another
-vignette (`Case.cross_check`). So an appendix is never reused across vignettes, but it can appear in several cases
-of the same vignette: for example a case with a lab appendix and one without.
+vignette (`Case.cross_check`). So an appendix is can't be reused across vignettes, but it can appear in several
+cases of the same vignette: for example a case with a lab appendix and one without.
 
 At send time the appendices are joined into one text by the skeleton's appendix layout (see "Rendering").
 
@@ -400,7 +400,7 @@ A recipe may reference one, and compilation then passes every text the recipe br
 - the toolset's guidance and its tools' descriptions;
 - the `title` and `description` strings of the output schema and of the tools' parameters.
 
-Property names, and the values of `enum`, `const`, `default` and `examples`, are never translated, so the answer's
+Property names, and the values of `enum`, `const`, `default` and `examples`, are not translated, so the answer's
 structure and its scoring don't change. Whitespace-only texts pass through unchanged. A text without a translation
 fails the compilation, which lists every missing text: nothing is guessed, and languages never mix.
 `texts(recipe, get)` lists, part by part, the texts a translation needs.
@@ -499,8 +499,8 @@ the appendices (by default a blank line before and between, nothing after) and g
 none.
 
 The runtime keys `model`, `messages`, `seed`, `stream`, `n` and `return_token_ids` (`request.py:RUNTIME_KEYS`) may
-not be set by any chunk, skeleton or canary. `render` sets four of them; `stream` and `n` are never sent. The wire
-body itself is never stored, only its fingerprint.
+not be set by any chunk, skeleton or canary. `render` sets four of them; `stream` and `n` are not sent. The wire
+body itself is only stored by its fingerprint.
 
 ### Tool rounds
 - defined in: `request.py:tool_calls`, `request.py:next_request`
