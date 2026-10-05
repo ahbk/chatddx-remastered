@@ -97,6 +97,13 @@ def test_digest_is_stable_and_order_independent(reg: Registry) -> None:
     assert json.loads(a.canonical)["v"] == 1
 
 
+def test_copies_compute_their_own_digest() -> None:
+    original = Sampling(temperature=0.5)
+    _ = original.digest
+    copy = original.model_copy(update={"temperature": 0.9})
+    assert copy.digest == Sampling(temperature=0.9).digest != original.digest
+
+
 def test_defaults_are_omitted_from_canonical_form() -> None:
     doc = json.loads(Sampling(temperature=0.5).canonical)
     assert doc == {"kind": "chunk.sampling", "temperature": 0.5, "v": 1}

@@ -437,11 +437,20 @@ def check_run(run: Run, registry: Registry) -> list[Finding]:
     assert isinstance(engine, LocalEngine | RemoteEngine)
     want = engine.served_model_name if isinstance(engine, LocalEngine) else engine.model
     for item in run.items:
-        for got in {c.returned_model for c in item.calls} - {None, want}:
+        returned = {c.returned_model for c in item.calls if c.response is not None}
+        for got in sorted(m for m in returned - {want} if m is not None):
             findings.append(
                 Finding(
                     code="attestation.model",
                     message=f"engine returned model {got!r}, declared {want!r}",
+                    subject=str(item.key),
+                )
+            )
+        if None in returned:
+            findings.append(
+                Finding(
+                    code="attestation.model",
+                    message=f"engine returned no model name, declared {want!r}",
                     subject=str(item.key),
                 )
             )

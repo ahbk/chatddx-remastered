@@ -3,7 +3,7 @@ import hmac
 import json
 import types
 import typing
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from functools import cached_property
 from typing import (
@@ -11,6 +11,7 @@ from typing import (
     Any,
     ClassVar,
     Literal,
+    Self,
     cast,
     get_args,
     get_origin,
@@ -180,6 +181,16 @@ class Component(Frozen):
     @cached_property
     def digest(self) -> str:
         return sha256_digest(self.canonical)
+
+    # A copy starts with the original's cached canonical form and digest.
+    @override
+    def model_copy(
+        self, *, update: Mapping[str, Any] | None = None, deep: bool = False
+    ) -> Self:
+        copy = super().model_copy(update=update, deep=deep)
+        for cached in ("canonical", "digest"):
+            _ = vars(copy).pop(cached, None)
+        return copy
 
     def refs(self) -> list[RefSite]:
         return list(iter_refs(self))

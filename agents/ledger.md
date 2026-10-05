@@ -212,7 +212,7 @@ It warns (see "Findings") when
 - an item's vignette fingerprint differs from its case's (`case.drift`);
 - an item's last response still calls tools, because the rounds ran out or the run stopped (`tools.unanswered`);
 - a call returned another model name than declared: the engine's digest for a local engine, the requested model for
-  a remote one (`attestation.model`). Every call of every item is checked; a response without a model name passes;
+  a remote one, or none at all (`attestation.model`). Every call of every item that got a response is checked;
 - an item has a call without a prompt-token fingerprint (`attestation.prompt_tokens`);
 - the rows no longer match the seal (`ledger.seal`);
 - the calls don't follow the execution settings (`execution.*`):
@@ -341,7 +341,7 @@ of the ledger's findings are warnings.
 | `run.incomplete` | `check_run` | none | A finished run lacks some of its trial's items, or some planned canary calls. One finding for each, with the count. |
 | `case.drift` | `check_run` | item key | The vignette read at the source differs from the case's fingerprint. `prepare_case` reports the same code when the vignette is read. |
 | `tools.unanswered` | `check_run` | item key | An item's last response still calls tools, after its rounds ran out or the run stopped. |
-| `attestation.model` | `check_run` | item key | A call returned another model name than declared. |
+| `attestation.model` | `check_run` | item key | A call's response gave another model name than declared, or none. |
 | `execution.retries` | `check_run`, `check_score` | none | Some calls took more attempts than the run's or the score's `retries` allows. One finding, with the count. |
 | `execution.order` | `check_run`, `check_score` | none | Some items were sent before items the order schedules ahead of them. One finding, with the count. |
 | `execution.concurrency` | `check_run`, `check_score` | none | More calls were in flight at once than `concurrency` allows. One finding, with the peak. |
@@ -385,7 +385,6 @@ Some records state what should happen and others what did, but nothing compares 
 - **The tool code that ran isn't recorded.** A tool pins its code like a scorer (`docs/factors.md`, "Tool"), but a
   `ToolRun` doesn't say which code ran, so nothing like `score.scorer_code` is possible for tools.
 - **Only run items are attested.** Canary calls and judge calls get no model check and no prompt-token check.
-- **A response without a model name passes** the model check.
 - **`system_fingerprint` is kept but never compared** between calls or runs.
 - **A score may grade an unfinished run.** `check_score` doesn't ask for the run to be finished or its seal to hold.
 - **Missing expectations aren't flagged.** `check_score` doesn't warn when a run item's case has no expectation in

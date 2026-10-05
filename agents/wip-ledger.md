@@ -159,6 +159,8 @@ The package imports only `chatddx.factors`, so the code already leans on factors
   counts as sent when its first judge call starts.
 - Decided (B8, option b): `compare_prompt_tokens` refuses runs whose trials differ in skeleton, engine or cleanup;
   cases and seeds may differ.
+- Decided (F1, option a): `Component.model_copy` drops the cached canonical form and digest.
+- Decided (B9, option a): `attestation.model` also when a call's response gives no model name.
 
 ## Status
 Draft: `agents/ledger.md`.
@@ -175,7 +177,9 @@ Draft: `agents/ledger.md`.
 | B5 | Decided (a). Code and tests; draft updated; `docs/findings.md`, `docs/factors.md`, `docs/chatddx.md` amendments. |
 | B7 | Decided (a). Code and test; draft updated; `docs/factors.md`, `docs/findings.md`, `docs/chatddx.md` amendments. |
 | B8 | Decided (b). Code and test; draft updated. |
-| B9, B10, B13, B14, B15 | Open, one by one. Listed in the draft's "Open design issues" meanwhile. |
+| B9 | Decided (a). Code and test; draft updated; `docs/findings.md` amendment. |
+| F1 | Decided (a). Code and test; `docs/factors.md` amendment. |
+| B10, B13, B14, B15, F2 | Open, one by one. Listed in the draft's "Open design issues" meanwhile. |
 | B11 | Moved to factors with the compilation; the proposed `docs/factors.md` "Compilation" section states it. Still open. |
 | C1 | Decided (A). Code: `Compilation` in factors, `factor.compilation` dropped, the catalog's foreign keys retargeted, the seeder adds compilations as components. Doc: the draft drops its Compilation section. Amendments: `docs/factors.md`, `docs/store.md`, `docs/chatddx.md`. |
 | C2 | Decided (a). The draft already avoids "tier"; `docs/chatddx.md` amendment. Also proposed: `docs/store.md` wording for schema `ledger` (only `run_item` and `score_item` are case-derived). |
@@ -225,7 +229,13 @@ Draft: `agents/ledger.md`.
 - **M3** The `check_score` half of the last paragraph points to `docs/ledger.md` "Run" only; "Score" too.
 - **F1** (factors) `Component.model_copy(update=…)` keeps the cached `digest` and `canonical` of the original
   (`src/chatddx/factors/base.py:Component`, `cached_property`): the copy reports the old digest. No production code
-  does it today; tests must build a fresh component.
+  does it today; tests must build a fresh component. Decided (a).
+- **F2** (factors) `model_copy(update=…)` also skips validation, so a copy can break its own kind's rules: a greedy
+  `Sampling` copied from a non-greedy one keeps `top_p`, and its digest differs from the same chunk built directly.
+
+## Check of 805316f
+- **M4** "Execution": "and they are not part of the trial's digest" and "kept out of the trial" still name the trial
+  only; a score's settings are likewise outside the scoring's digest.
 
 ## Surprises
 - `ruff check src` fails on `src/chatddx/inventory/test/test_inventory.py` (import order) at `e635b97`, before

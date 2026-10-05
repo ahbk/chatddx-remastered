@@ -99,6 +99,16 @@ def test_run_and_score_checks(reg: Registry) -> None:
         if f.code == "run.incomplete"
     ] == ["1 canary calls missing"]
     assert run.items[0].call.response == {"model": engine.served_model_name}
+    unnamed = items[0].call.model_copy(update={"response": {"choices": []}})
+    silent = Run(
+        stages=(started,), items=(items[0].model_copy(update={"call": unnamed}),)
+    )
+    assert [(f.code, f.message) for f in check_run(silent, reg)] == [
+        (
+            "attestation.model",
+            f"engine returned no model name, declared {engine.served_model_name!r}",
+        )
+    ]
     drifted = Run(
         stages=(started,),
         items=(item(0, call(engine.served_model_name), fp("edited at the source")),),

@@ -912,3 +912,5 @@ reference, straight from the schema. `RefTo` used to do this, and was stopped be
 Schema plays no part in a component's digest, so adding it back changes no digest.
 
 ## Proposed amendments
+- ADD to "Canonical form and digest": "A copy made with `model_copy(update=…)` computes its own canonical form and
+  digest; it doesn't inherit the original's" (`src/chatddx/factors/base.py:Component.model_copy`).

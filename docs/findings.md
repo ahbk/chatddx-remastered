@@ -109,3 +109,5 @@ the vignette read at the source differs from the case's fingerprint (`prepare_ca
   only when the scorer pins one (`src/chatddx/ledger/ledger.py:check_score`).
 - CHANGE the `execution.*` codes proposed above: `check_score` reports them too, for a score's judge calls against
   `ScoreStarted.execution` (`src/chatddx/ledger/ledger.py:check_score`).
+- CHANGE `attestation.model`: "the engine returned a different model name than declared …" → "… or a response gave
+  no model name; calls without a response are skipped" (`src/chatddx/ledger/ledger.py:check_run`).
