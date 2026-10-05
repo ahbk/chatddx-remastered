@@ -65,11 +65,11 @@ Both raise `Refused`, with the fact's reason when there is one, when:
 - a budget is asked for and the model's budget is refused or unknown (`reasoning_chunk`);
 - nothing is recommended for the level the effort lands on (`sampling_chunk`).
 
-The seeder is the only caller today (`docs/sample-data.md`). A `from_facts` record in a factors file is written once
-per model the facts know, named `<record> (<model>)`, and a recipe that uses it comes once per model too
-(`src/chatddx/seed/plan.py:_component`, `src/chatddx/seed/plan.py:plan_factors`). A refused chunk, and the recipes
-that need it, are skipped and reported. `chatddx init-data --facts PATH …` names the facts files, by default the
-data directory's `facts.toml` (`src/chatddx/cli.py`).
+The seeder is the only caller today (`agents/wip-sample-data.md`, "init-data"). A `from_facts` record in a factors
+file is written once per model the facts know, named `<record> (<model>)`, and a recipe that uses it comes once per
+model too (`src/chatddx/seed/plan.py:_component`, `src/chatddx/seed/plan.py:plan_factors`). A refused chunk, and the
+recipes that need it, are skipped and reported. `chatddx init-data --facts PATH …` names the facts files, by default
+the data directory's `facts.toml` (`src/chatddx/cli.py`).
 
 A collapsed level writes the same chunk as the level it lands on, so seeding gives them one digest under several
 names. The sample's Qwen3 has six reasoning threads for `enable_thinking = true`.

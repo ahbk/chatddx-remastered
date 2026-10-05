@@ -39,3 +39,7 @@ The sample data in `src/chatddx/data/sample/` holds:
   "Sample data"). It prints one line per record: created, validated, updated, skipped, missing, needs repair,
   forked or kept."
 - **Store API**, `Catalog`: add `find(kind, name, owner=)`, `forks(thread)`, `expectations_of(case)`.
+
+## Proposed amendments
+- REMOVE `docs/sample-data.md`: everything it says, the `init-data` command included, is folded into
+  `agents/wip-sample-data.md` ("The sample data now"), and no doc refers to it.
