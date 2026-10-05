@@ -163,3 +163,59 @@ C2 are cleared.
 ## Surprises
 - `ruff check src` fails on `src/chatddx/inventory/test/test_inventory.py` (import order) at `e635b97`, before
   these changes. Left as is.
+
+## C1: what a compilation is
+Investigated at `c2c3b3e`.
+
+### How it got here
+- `agents/manifest-reconciliation.md` D7: `request` stopped being a component; its chunk references became a
+  `Recipe` inside a `Compilation` *record*, "lineage as `Compilation` record".
+- `agents/manifest-triage.md` A5: case-derived tables got their own schema so a read restriction could come later;
+  "`compilation` stays out (`Compilation.case_derived` is false)". So `factor.compilation` was placed by
+  sensitivity, not by what it is.
+- `agents/wip-catalog.md` decision 3 (A2): recipes are skeleton threads; `catalog.edit.compilation` points at the
+  compilation that produced the edit's skeleton (`0009-t0-catalog.sql`, FK `(compilation, digest)` →
+  `factor.compilation (digest, skeleton)`).
+
+### What it is
+`compile_request(recipe, get)` is a pure function of the recipe's chunks and the compiler's code: nothing is
+observed. A compilation states "compiler C turns recipe R into skeleton S". It is a derivation, not an event.
+
+It has every trait of a component but one:
+- immutable, canonical form with `v`, keyed by the digest of its bytes;
+- its references are typed `RefTo` (`request.py:Recipe`), and the catalog walks them (`iter_refs(recipe, "/recipe")`
+  in `src/chatddx/store/catalog.py:behind`);
+- referenced by digest from outside (`catalog.edit.compilation`);
+- the odd one out: `at`.
+
+### Symptoms
+- **S1** Placed by sensitivity, not identity. `factor` already holds a non-factor (canary sets, "instruments",
+  `docs/factors.md`), so the schema really means "components"; compilation sits there in a table of its own,
+  outside the component machinery.
+- **S2** Its recipe's references are unchecked: only `skeleton` has a foreign key, and no reference rows exist.
+  `src/chatddx/store/test/test_store.py:test_compilations_are_idempotent` stores a recipe naming chunks that don't
+  exist.
+- **S3** `at` makes the digest an event's: compiling the same recipe again gives a new row. The seeder works around
+  it by not writing a compilation when the skeleton is unchanged (`src/chatddx/seed/write.py:record`), which also
+  drops a recipe change that leaves the skeleton the same. `catalog.edit.at` already holds when it was adopted.
+- **S4** Skeleton → recipe is many-to-one: different recipes can give one skeleton (`docs/factors.md`, "How chunks
+  affect each other"), and `at` adds duplicates of the same recipe. `Catalog.language_of` takes any of them
+  (`ORDER BY digest LIMIT 1`), not the one the thread's edit names.
+- **S5** Not in bundles: a published cage carries the skeleton but not how it was made, though the doc calls the
+  compilation "the lineage from the chunks to the frozen request".
+
+### Options
+- **A. A component that isn't a factor** (like canary sets): kind `compilation` in `factors/request.py` beside
+  `Recipe` and `compile_request`; drop `at`; stored in `factor.component` with reference rows; the catalog's foreign
+  key retargeted. The ledger becomes run and score logs only, so C1 dissolves: ledger = logs = schema `ledger`.
+- **B. Keep it a record, move it to the ledger**: `ALTER TABLE factor.compilation SET SCHEMA ledger`; grants per
+  table instead of per schema (reader may read the non-case-derived ones); reference checks added separately. "Ledger"
+  = all records = schema. S3–S5 stay.
+- **C. Fold it into the catalog**: the edit holds the recipe and the compiler. Provenance then exists only where a
+  thread does, never in bundles, and the catalog stops being "handles only". Not recommended.
+- Rejected: the recipe inside the skeleton. Two recipes with the same request would give different skeletons, so
+  different trials, against "the compiler's code is not a separate factor" (`docs/factors.md`).
+- Later, compatible with A: the recipe as a component of its own, so recipes can be threaded and named directly
+  (the G9 pain point in `agents/wip-sample-data.md`); it reopens catalog decision A2.
+
+Take: A.
