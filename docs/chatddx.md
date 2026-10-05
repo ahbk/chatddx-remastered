@@ -5,7 +5,7 @@ ChatDDX is a system to measure how accurately LLMs generate differential diagnos
 
 The rig provides:
 - an environment that can be provably reconstructed (the "cage").
-- means to observe ("record") each exchange within the cage.
+- means to record each exchange within the cage: what was planned, what was sent and what came back.
 - first principles for sensitive data so that policies governing this data can be enforced.
 
 It must be possible to deliver the cage together with the results, for scientific rigor.

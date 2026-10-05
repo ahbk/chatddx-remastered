@@ -41,7 +41,6 @@ Being a factor and being a component are separate questions. A factor is held in
    day, a vignette edited at its source, GPU arithmetic that isn't deterministic. Fingerprints, returned model
    names, drift findings and canaries reveal them (`docs/ledger.md`, `docs/findings.md`).
 
-- CHANGE "What a factor is", "Recorded": "it shows whether what ran is what should have run." → ""
 Canary sets are components but not factors. They are *instruments*: fixed probe requests that measure observed
 factors without changing any output. They are components so that the same set can be compared across runs (see
 "Canary sets").
@@ -573,23 +572,24 @@ Canary probes at the start and end of a run apply to any engine and are planned 
 - principal author: Researchers
 - defined in: `trial.py:Trial`
 
-A trial (kind `trial`) represents one research question and holds:
+A trial (kind `trial`) is one experimental condition (the smallest unit of a scientific intent) and holds:
 - a generation skeleton
 - an engine
 - the cases
 - the text-cleanup steps (`cleanup`)
 - the seeds
 
-Trials pin their factors in advance so each run of it adds recorded and observed ones (see "What a factor is").
+A trial pins the factors chosen in advance; each of its runs adds recorded and observed ones.
 
 #### Send order and de-duplication
 Cases and seeds are listed without duplicates. Cases are sorted by digest so their order is no part of the trial.
-Run declares the send order (see "Execution"). Seeds keep their order as each seed's position names a replicate.
+The run declares the send order (see "Execution"). Seeds keep their order as each seed's position names a
+replicate.
 
-#### Seeds
-Seeds are explicit, a helper can propose distinct random 31-bit seeds (`suggest_seeds`), which users are free to
-change. Each seed defines one replicate, identified by its position. With greedy sampling no seed is sent, but the
-seeds still count toward the trial's digest (see "Open design issues").
+#### Seeds are explicit
+A helper can propose distinct random 31-bit seeds (`suggest_seeds`), which users are free to change. Each seed
+defines one replicate, identified by its position. With greedy sampling no seed is sent, but the seeds still count
+toward the trial's digest (see "Open design issues").
 
 ### Execution
 - defined in: `trial.py:Execution`, recorded in `docs/ledger.md:RunStarted`
@@ -599,14 +599,17 @@ its own into its start record, and they are not part of the trial's digest. Runn
 settings is a new run of the same trial.
 
 Order and concurrency change outputs only on engines that aren't batch invariant, where they affect how requests
-are batched and so the arithmetic. Timeout and retries decide whether an item gets an answer at all. Keeping these
-settings out of the trial means changing them doesn't make a new trial, which suits batch-invariant engines. On
-other engines, runs with different settings aren't interchangeable (see "Open design issues").
+are batched and so the arithmetic. `Execution.schedule(cases, replicates)` lists the (case, replicate) pairs in
+send order.
+
+Timeout and retries decide whether an item gets an answer at all. Keeping these settings out of the trial means
+changing them doesn't make a new trial, which suits batch-invariant engines. On other engines, runs with different
+settings aren't interchangeable (see "Open design issues").
 
 The settings are:
 - `order`, the order in which a run sends its items:
   - `case_major@1` (the default: every replicate of a case before the next case, cases in digest order)
-  - `replicate_major@1` (every case once per replicate)
+  - `replicate_major@1` (every case once per replicate, cases in digest order)
   - `shuffled@1`, which needs a `shuffle_seed` and orders the items by a hash of that seed, the case and the replicate.
 - `concurrency` (1 by default)
 - `timeout_s` (optional)
