@@ -13,7 +13,8 @@ same, for scientific rigor. This document describes each factor as it exists tod
 it is about pinned factors, the ones stored as components (see "What a factor is").
 
 Code paths are relative to `src/chatddx/factors/` unless they start with `src/` or `docs/`. Principal authors are
-the roles in `src/chatddx/core/identity.py:Role`.
+the roles in `src/chatddx/core/identity.py:Role`. The package imports no other chatddx package; the model facts,
+the catalog, the ledger and the store build on it.
 
 ## What a factor is
 
@@ -53,8 +54,8 @@ Two runs of the same trial are interchangeable only when those agree too (see "O
 - Names, labels, languages, tags, descriptions, owners, collaborators and version history: `docs/catalog.md`.
 - Sensitivity and vetting: `docs/clearance.md`.
 - Knowledge about models (reasoning levels, recommended sampling, output caveats, specs): the model facts
-  (`src/chatddx/facts/facts.py`). Facts help write chunks and check them (see "Lints"), but no digest depends on
-  them.
+  (`src/chatddx/facts/facts.py`). Facts help write chunks and check them (`src/chatddx/facts/lint.py`), but no
+  digest depends on them.
 - Instruments: canary sets.
 
 ## How components work
@@ -697,7 +698,7 @@ Lints warn about settings that are valid but risky. They are plain functions ove
 component stores their findings. Keeping them out of the components means knowledge that changes between vLLM
 releases can change without changing any digest. `docs/findings.md:Factors` explains each code.
 
-`lint(registry, digests, facts=, languages=)` checks each listed component according to its kind.
+`lint(registry, digests, languages=, reasons=)` checks each listed component according to its kind.
 
 **Model artifacts, local engines and scorers**
 - `model.revision`: the revision isn't a 40-character commit, so it can move.
@@ -727,18 +728,16 @@ as vLLM reads them, with `_` and `-` alike:
   tool can be called.
 - `vllm.grammar_before_reasoning`: a constrained `native` or `tool` answer without `--reasoning-parser`, so the
   model can't reason first. It's a warning when the skeleton asks for reasoning, or leaves it to a model that
-  reasons by default; info when that's unknown; nothing when reasoning is off.
+  reasons by default; info when that's unknown; nothing when reasoning is off. Whether a model reasons by default
+  comes from `reasons=`, a function from an engine's digest to `True`, `False` or unknown, normally the model
+  facts' (`src/chatddx/facts/lint.py:reasons`). Without it, the default is unknown.
 
 On any other engine (a remote engine, or another vLLM version):
 - `schema.ref_unverified`: a `native` or `tool` schema has `$ref`, which the engine isn't known to resolve;
   `inline_refs@1` removes it.
 
-With model facts (`facts=`, `src/chatddx/facts/facts.py`):
-- `facts.missing` (info): there are no facts about the model, so the model checks were skipped.
-- `facts.reasoning_unmatched`: the reasoning settings match none of the model's reasoning levels.
-- `facts.budget_refused`: a thinking budget the model refuses.
-- `facts.output_refused`: the model refuses the output contract.
-- `facts.output_note` (info): the facts carry a note about the output contract.
+Checks against the model facts (`facts.*` findings) belong to the facts, not to this package
+(`src/chatddx/facts/lint.py`).
 
 With languages (`languages=`, normally `Catalog.language_of`), for trials only:
 - `language.mixed`: some cases are in another language than the request.
@@ -800,6 +799,14 @@ received case-derived content, which clearance may need.
   fetch the sensitive vignette again and redo the trial's cleanup. `prepare_case` covers the cleanup; nothing
   fetches the vignette.
 - **No helper turns a canary into a request** (model name, seed, `return_token_ids`).
+- **A missing slot fill is a bare `KeyError`.** `render` raises `KeyError` when `fills` lacks a slot the skeleton
+  uses, instead of a `StructuralError` naming the slot.
+- **Malformed tool calls fall between two helpers.** `tool_calls` skips a call without an id, a name or string
+  arguments, but `next_request` copies the response's tool calls as they are. The next request then holds a call
+  that no `tool` message answers, which an engine is likely to refuse.
+- **NaN and infinity get past validation.** A float field such as `Sampling.temperature`, or a value in a body,
+  accepts them, but the canonical form writes them as `null`. The stored component then reads back as a different
+  one (with `temperature` unset, under another digest), while the request still carries `NaN`.
 - **`Scorer.resources` are meant to be digests but typed as plain strings,** so nothing checks their form.
 - **Four cleanup steps exist.** Vignettes may also need non-breaking spaces turned into spaces, zero-width
   characters removed, Unicode line breaks turned into newlines, or trailing whitespace stripped.
