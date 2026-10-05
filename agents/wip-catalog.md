@@ -1,5 +1,8 @@
 # Catalog: work in progress
 
+Superseded by `agents/catalog.md` (the doc) and `agents/wip-catalog-review.md` (the decisions since); kept for
+its history.
+
 Material for `docs/catalog.md`. Split out of the former `agents/wip-bookkeeping.md` (the word "bookkeeping" is retired;
 its parts are now catalog, `agents/wip-identity.md` and `agents/wip-clearance.md`).
 "Decided" means the user said so; "Take" is the agent's recommendation and still open; "Implemented" means the code

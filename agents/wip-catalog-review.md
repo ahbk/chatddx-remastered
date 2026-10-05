@@ -40,7 +40,7 @@ open, decided (the user said so), held (waits for the language items), done.
    package gets its own tests, which need no Postgres. Done (c58edc7, 800b10c): modules `model`, `read`, `threads`,
    `families`, `language`, `titles`; `store/catalog.py:Rows` answers `read.Reader`; `catalog/test/memory.py`
    answers it from memory.
-4. Write `agents/catalog.md` against the final paths.
+4. Write `agents/catalog.md` against the final paths. Done.
 
 ## D: the doc says something the code doesn't do
 - D1 "every kind has threads except `case`": `compilation` has none either
