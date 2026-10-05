@@ -18,7 +18,7 @@ open, decided (the user said so), held (waits for the language items), done.
 
 ## P: before the catalog
 - P1 identity: coupled only through the package layout (A1) and owner semantics (T7). Default: move identity in the
-  same step as the catalog if A1 says so; leave rewriting `docs/identity.md` for its own session. decided: identity moves in step 3.
+  same step as the catalog if A1 says so; leave rewriting `docs/identity.md` for its own session. done (c58edc7): `src/chatddx/identity/`.
 - P2 facts: no coupling found. Loose end: `agents/wip-facts.md` says the old `tags` went to the catalog, but nothing
   puts model or engine threads (or tags) in the catalog. Default: not blocking. decided: not blocking.
 
@@ -30,13 +30,16 @@ open, decided (the user said so), held (waits for the language items), done.
 - A2 "latest wins" (heads, current entries, current bindings, labels). Decided: computed in Python from raw rows;
   `store` returns rows and decides nothing. The catalog is written by hand, so loading the rows is cheap. decided
 - A3 boundary rule for the docs: "store answers which rows exist; `chatddx.catalog` decides what they mean." Rules
-  that concurrent writers could break still need tier-2 backing. decided: goes in the docs.
+  that concurrent writers could break still need tier-2 backing. decided: goes in the docs; proposed for
+  `docs/store.md` (37f4b94), and in `agents/catalog.md`.
 
 ## Plan
 1. Decide the items below.
 2. Fix them in the current layout, in small commits pinned by tests.
 3. Refactor to A1 without changing behaviour: the `Catalog` tests stay as they are apart from imports; the pure
-   package gets its own tests, which need no Postgres.
+   package gets its own tests, which need no Postgres. Done (c58edc7, 800b10c): modules `model`, `read`, `threads`,
+   `families`, `language`, `titles`; `store/catalog.py:Rows` answers `read.Reader`; `catalog/test/memory.py`
+   answers it from memory.
 4. Write `agents/catalog.md` against the final paths.
 
 ## D: the doc says something the code doesn't do
@@ -88,7 +91,7 @@ open, decided (the user said so), held (waits for the language items), done.
   which `adopt` refuses. The tier-2 binding trigger lets a binding change source when the fingerprint stays; Python
   never does (`0018-t2-catalog-bindings.sql:9`). Default: refuse both. done (acc19d7, migration 0022).
 - B9 comments that explain what the code does (AGENTS.md "Docs"): `src/chatddx/core/titles.py:1`,
-  `src/chatddx/store/catalog.py:195,217,228,354`. Default: remove. decided: step 3.
+  `src/chatddx/store/catalog.py:195,217,228,354`. Default: remove. done (c58edc7).
 
 ## T: ambiguities and terms
 - T1 "label" means scorer view/resource labels (`catalog.label`) and language entries (`Catalog._label`, "reads …
