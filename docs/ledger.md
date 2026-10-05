@@ -405,5 +405,8 @@ Most of the plan is compared with what happened (see "What a record holds"), but
   where calls went").
 - **Records aren't in bundles.** A `Bundle` (`docs/factors.md`, "Registries and bundles") carries components only;
   how records travel with the factors they reference, for example for publication, isn't specified.
+- **Findings have no mechanism of their own.** The runner keeps those it sees while running in the finished row,
+  and `check_run`, `check_score` and `compare_prompt_tokens` give the rest when called. They might benefit from a
+  separate mechanism, as linting is for factors, but nothing is planned or decided.
 
 ## Proposed amendments

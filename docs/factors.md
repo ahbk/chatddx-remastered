@@ -40,7 +40,7 @@ Being a factor and being a component are separate questions. A factor is held in
 3. **Observed**: set by nobody, and only detected afterwards. These are the parts of the world outside our control:
    a remote engine that changes without notice, a tool such as a web search that answers differently from day to
    day, a vignette edited at its source, GPU arithmetic that isn't deterministic. Fingerprints, returned model
-   names, drift findings and canaries reveal them (`docs/ledger.md`, `docs/findings.md`).
+   names, drift findings and canaries reveal them (`docs/ledger.md`, "Findings").
 
 Canary sets are components but not factors. They are *instruments*: fixed probe requests that measure observed
 factors without changing any output. They are components so that the same set can be compared across runs (see
@@ -755,7 +755,7 @@ across runs; that comparison isn't implemented yet.
 
 Lints warn about settings that are valid but risky. They are plain functions over a registry, run on demand, and no
 component stores their findings. Keeping them out of the components means knowledge that changes between vLLM
-releases can change without changing any digest. `docs/findings.md:Factors` explains each code.
+releases can change without changing any digest.
 
 `lint(registry, digests, languages=, reasons=)` checks each listed component according to its kind.
 
@@ -790,6 +790,9 @@ as vLLM reads them, with `_` and `-` alike:
   reasons by default; info when that's unknown; nothing when reasoning is off. Whether a model reasons by default
   comes from `reasons=`, a function from an engine's digest to `True`, `False` or unknown, normally the model
   facts' (`src/chatddx/facts/lint.py:reasons`). Without it, the default is unknown.
+  A skeleton asks for reasoning with `enable_thinking: true`, a `reasoning_effort` other than `none`, or a
+  `thinking_token_budget`, and turns it off with `enable_thinking: false` or `reasoning_effort: none`, which win
+  (`lint.py:_asks_to_reason`).
 
 On any other engine (a remote engine, or another vLLM version):
 - `schema.ref_unverified`: a `native` or `tool` schema has `$ref`, which the engine isn't known to resolve;
