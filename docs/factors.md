@@ -595,10 +595,8 @@ toward the trial's digest (see "Open design issues").
 ### Execution
 - defined in: `trial.py:Execution`, recorded in `docs/ledger.md:RunStarted` and `docs/ledger.md:ScoreStarted`
 
-Execution settings say how a run issues its requests, or how a score issues its judge requests.
-They are a recorded factor, not a component: each run/score writes its own into its start record,
-and they are not part of the trial's digest. Running a trial again with other settings is a new run of the same
-trial. The settings are:
+When a run issues its request, or a score issues its judge requests, `Execution` provides the following
+details:
 - `order`, the order in which a run/score sends its items:
   - `case_major@1` (the default: every replicate of a case before the next case, cases in digest order)
   - `replicate_major@1` (every case once per replicate, cases in digest order)
@@ -609,15 +607,13 @@ trial. The settings are:
 
 `Execution.schedule(cases, replicates)` lists the (case, replicate) pairs in send order.
 
-The settings are kept out of the trial so changing them doesn't make a new trial. This suits batch-invariant
-engines, but order and concurrency change outputs on engines that aren't batch invariant (where they affect how
-requests are batched and so the arithmetic).
+These settings are a recorded factor (but not a component proper) written into the start record for each request,
+without affecting the trial's (or scoring's) digest, so running a trial (or scoring) again with other settings is
+a rerun of the same trial (or scoring).
 
-On a batch-invariant engine, timeout and retries only decide whether a request gets an answer.
-On other engines they also change which requests are batched together, so they can change outputs,
-as order and concurrency do.
-
-See "Runs of the same trial aren't interchangeable" under "Open design issues" for more information.
+This suits batch-invariant engines, but they change outputs on engines that aren't batch invariant (where they
+affect how requests are batched and so the arithmetic). See "Runs of the same trial aren't interchangeable" under
+"Open design issues" for more information.
 
 A run's calls, and a score's judge calls, show whether the settings were followed: `check_run` and `check_score`
 warn when a call took more attempts than `retries` allows, when items were sent out of order, or when more calls
