@@ -198,3 +198,6 @@ tier-2 triggers).
   (`src/chatddx/ledger/record.py:Record.case_derived`). The stage rows and canary calls sit beside them so that
   each log stays in one schema; `chatddx_reader`, refused the whole schema at tier 1
   (`src/chatddx/store/migrations/0002-t1-grants.sql`), can't read them either."
+- ADD to "Tiers", "Tier 2", the migration list: "`0022-t2-catalog-binding-source.sql`", and to its endowments: "`0022`
+  makes a new binding keep the previous one's source; `0018` let it change source as long as it kept the vignette
+  (`src/chatddx/store/migrations/0022-t2-catalog-binding-source.sql`, `src/chatddx/store/catalog.py:Catalog.repair`)."

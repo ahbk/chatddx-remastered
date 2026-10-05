@@ -396,41 +396,18 @@ class Catalog:
             ).fetchone()
             if stored is None:
                 raise LookupError(f"{case} is not a stored case")
-            conflict = self._conn.execute(
-                """
-                SELECT b.family, b.source_id = c.doc #>> '{vignette,id}'
-                FROM factor.component c, catalog.family f CROSS JOIN LATERAL (
-                    SELECT * FROM catalog.binding h
-                    WHERE h.family = f.id ORDER BY h.id DESC LIMIT 1
-                ) b
-                WHERE c.digest = %s AND b.source = c.doc #>> '{vignette,source}'
-                    AND (
-                        b.source_id = c.doc #>> '{vignette,id}'
-                        OR b.vignette = c.doc #> '{vignette,fingerprint}'
-                    )
-                LIMIT 1
-                """,
-                (case,),
-            ).fetchone()
-            if conflict is not None:
-                family, renamed = conflict[0], not conflict[1]
-                change = "a new name" if renamed else "new content"
+            vignette = resolve(Store(self._conn).get, case, Case).vignette
+            if (held := self._holder(vignette)) is not None:
+                other, same_id = held
+                change = "new content" if same_id else "a new name"
                 raise ValueError(
-                    f"{case} gives family {family}'s vignette {change}; rebind the family"
+                    f"{case} gives family {other}'s vignette {change}; rebind the family"
                 )
             row = self._conn.execute(
                 "INSERT INTO catalog.family (by) VALUES (%s) RETURNING id", (by,)
             ).fetchone()
             assert row is not None
-            _ = self._conn.execute(
-                """
-                INSERT INTO catalog.binding (family, source, source_id, vignette, by)
-                SELECT %s, doc #>> '{vignette,source}', doc #>> '{vignette,id}',
-                    doc #> '{vignette,fingerprint}', %s
-                FROM factor.component WHERE digest = %s
-                """,
-                (row[0], by, case),
-            )
+            _ = self._bind(int(row[0]), vignette, by)
             return int(row[0])
 
     def family(self, case: str) -> int | None:
@@ -534,6 +511,10 @@ class Catalog:
             return appendices[appendix]
 
         with self._conn.transaction():
+            if (held := self._holder(vignette, but=family)) is not None:
+                other, same_id = held
+                taken = f"the id {vignette.id!r}" if same_id else "that content"
+                raise ValueError(f"family {other} already has {taken}")
             binding = self._bind(family, vignette, by)
             cases: dict[str, str] = {}
             for digest in self._at(old, "case"):
@@ -716,6 +697,29 @@ class Catalog:
         ).fetchone()
         assert row is not None
         return _binding(family, row)
+
+    def _holder(
+        self, vignette: Vignette, *, but: int | None = None
+    ) -> tuple[int, bool] | None:
+        row = self._conn.execute(
+            """
+            SELECT family, source_id = %s FROM (
+                SELECT DISTINCT ON (family) * FROM catalog.binding
+                ORDER BY family, id DESC
+            ) b
+            WHERE source = %s AND (source_id = %s OR vignette = %s::jsonb)
+                AND family IS DISTINCT FROM %s::bigint
+            ORDER BY family LIMIT 1
+            """,
+            (
+                vignette.id,
+                vignette.source,
+                vignette.id,
+                _jsonb(vignette.fingerprint),
+                but,
+            ),
+        ).fetchone()
+        return None if row is None else (int(row[0]), bool(row[1]))
 
     def _at(self, vignette: Vignette, kind: LiteralString) -> list[str]:
         return [

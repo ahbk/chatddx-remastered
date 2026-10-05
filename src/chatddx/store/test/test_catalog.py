@@ -537,6 +537,17 @@ def test_changed_vignettes_are_repaired(conn: Connection) -> None:
         _ = catalog.repair(family, alice.id, id="c2", fingerprint=edited)
     with pytest.raises(ValueError, match="one of the id or the fingerprint"):
         _ = catalog.repair(family, alice.id, id="c1")
+    other = reg.add(
+        Case(vignette=Vignette(source=source, id="c2", fingerprint=fp("x")))
+    )
+    _ = store.add(reg, [other])
+    neighbour = catalog.adopt(other, alice.id)
+    with pytest.raises(ValueError, match=f"family {neighbour} already has the id 'c2'"):
+        _ = catalog.repair(family, alice.id, id="c2")
+    with pytest.raises(
+        ValueError, match=f"family {neighbour} already has that content"
+    ):
+        _ = catalog.repair(family, alice.id, fingerprint=fp("x"))
     repair = catalog.repair(family, alice.id, fingerprint=edited)
     rebound = resolve(store.get, repair.cases[ids["case"]], Case)
     assert rebound.vignette == case.vignette.model_copy(update={"fingerprint": edited})
@@ -548,17 +559,21 @@ def test_changed_vignettes_are_repaired(conn: Connection) -> None:
         if b.binding is not None
     ] == [("/case", ids["case"], repair.binding)]
 
-    with (
-        pytest.raises(errors.RaiseException, match="keep the id or the vignette"),
-        conn.transaction(),
+    for moved_to, id, vignette in (
+        (source, "elsewhere", '{"hex": "' + "0" * 64 + '"}'),
+        ("elsewhere", "c1", '{"hex": "' + edited.hex + '"}'),
     ):
-        _ = conn.execute(
-            """
+        with (
+            pytest.raises(errors.RaiseException, match="keep the source, and the id"),
+            conn.transaction(),
+        ):
+            _ = conn.execute(
+                """
                 INSERT INTO catalog.binding (family, source, source_id, vignette, by)
-                VALUES (%s, %s, 'elsewhere', %s::jsonb, %s)
+                VALUES (%s, %s, %s, %s::jsonb, %s)
                 """,
-            (family, source, '{"hex": "' + "0" * 64 + '"}', alice.id),
-        )
+                (family, moved_to, id, vignette, alice.id),
+            )
 
 
 @pytest.mark.parametrize(
