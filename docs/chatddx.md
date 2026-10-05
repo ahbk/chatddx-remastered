@@ -127,7 +127,7 @@ No comparison between the 3070 and the 5090; each hardware class is its own cage
   - The endpoint is vetted for sensitive cases.
   - It honors `seed` and returns model identifiers.
 
-Returns model identifiers: the run check compares the returned `model` with the declared one (`ledger.py: check_run`). `system_fingerprint` is kept in the raw response but not checked.
+Returns model identifiers: the run check compares the returned `model` with the declared one (`ledger.run:check_run`). `system_fingerprint` is kept in the raw response but not checked.
 
 - **Orchestrator.** Runs in Kubernetes, write the manifest and hosts the portal. A postgres database store user-managed data: factors and records are append-only; nothing is updated.
 
@@ -153,7 +153,7 @@ Canaries, prompt-token fingerprints and comparing completions show which one app
  - `execution.retries`
  - `execution.order`
  - `execution.concurrency`
- - `score.scorer_code` (`src/chatddx/ledger/ledger.py:check_score`)
+ - `score.scorer_code` (`ledger.score.py:check_score`)
  - plus the lints in `lint.py`.
 
 The runner warns; it does not refuse. Only structurally malformed specs and records raise errors:
@@ -243,7 +243,7 @@ There is however an intended flow of data behind the pieces, which is described 
   - optional detail;
   - the judge calls.
 7. Close the log. Score.finish() computes the seal over the started row and all item rows, then write the ScoreFinished row with any warnings.
-8. Check it (`src/chatddx/ledger/ledger.py:check_score`):
+8. Check it (`ledger.score:check_score`):
  - raises if the score belongs to another run;
  - raises if a view position is out of range;
  - raises if an item isn't in the run;
@@ -269,7 +269,3 @@ See `docs/findings.md` for a list of all findings and what they mean.
 **Canary drift are not implemented:** nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
-- CHANGE the paths to the ledger, which is now split by subject (`src/chatddx/ledger/`: `record.py`, `call.py`,
-  `run.py`, `score.py`): "(`ledger.py: check_run`)" → "(`src/chatddx/ledger/run.py:check_run`)" in "Target stack";
-  "`src/chatddx/ledger/ledger.py:check_score`" → "`src/chatddx/ledger/score.py:check_score`" in "Frictionless
-  development" and "Scoring records", step 8.
