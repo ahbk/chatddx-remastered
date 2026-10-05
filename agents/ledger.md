@@ -108,7 +108,7 @@ and the same `trial`, `execution`, `canaries` and `verify_at`.
 
 The execution settings matter most on engines that aren't batch invariant (`docs/factors.md`, "Local engine"). On a
 batch-invariant engine, order and concurrency don't change the outputs, so a re-run may be bitwise identical;
-otherwise reproducing a run is best-effort.
+otherwise reproducing a run is best-effort. The calls show whether the settings were followed (see "Run").
 
 `verify_at` is a set of phases: duplicates are refused, and the phases are kept in run order (`start` before
 `end`), so two started rows that plan the same probes seal the same. It needs at least one phase, and only means
@@ -187,9 +187,15 @@ It warns (see "Findings") when
 - a call returned another model name than declared: the engine's digest for a local engine, the requested model for
   a remote one (`attestation.model`). Every call of every item is checked; a response without a model name passes;
 - an item has a call without a prompt-token fingerprint (`attestation.prompt_tokens`);
-- the rows no longer match the seal (`ledger.seal`).
+- the rows no longer match the seal (`ledger.seal`);
+- the calls don't follow the execution settings (`execution.*`):
+  - a call took more attempts than `retries` allows (`execution.retries`);
+  - items were sent out of order: an item's first call started before that of an item `Execution.schedule` puts
+    ahead of it (`execution.order`);
+  - more calls were in flight at once than `concurrency` allows, canary calls included (`execution.concurrency`).
 
-Canary calls get neither the model check nor the prompt-token check.
+Canary calls get neither the model check nor the prompt-token check. Timeouts aren't checked (see "Open design
+issues").
 
 `compare_prompt_tokens(a, b)` compares two runs item by item, matching items by key. It warns
 (`attestation.prompt_tokens_drift`) where both first calls have a prompt-token fingerprint and the two differ: the
@@ -203,7 +209,8 @@ returned. It doesn't check that the two runs are of the same trial.
 A call records one exchange with an engine. Run items, tool rounds, canary calls and judge calls all hold calls. A
 call holds
 - `request`: the fingerprint of the request body;
-- `started_at` and `finished_at`;
+- `started_at` and `finished_at`. With retries, they run from the first attempt's start to the last attempt's
+  end;
 - `status`: the HTTP status, if a response came;
 - `attempts`: how many times the request was sent, 1 by default and more with retries (`docs/factors.md`,
   "Execution");
@@ -300,6 +307,9 @@ of the ledger's findings are warnings.
 | `case.drift` | `check_run` | item key | The vignette read at the source differs from the case's fingerprint. `prepare_case` reports the same code when the vignette is read. |
 | `tools.unanswered` | `check_run` | item key | An item's last response still calls tools, after its rounds ran out or the run stopped. |
 | `attestation.model` | `check_run` | item key | A call returned another model name than declared. |
+| `execution.retries` | `check_run` | none | Some calls took more attempts than the run's `retries` allows. One finding, with the count. |
+| `execution.order` | `check_run` | none | Some items were sent before items the run's order schedules ahead of them. One finding, with the count. |
+| `execution.concurrency` | `check_run` | none | More calls were in flight at once than the run's `concurrency` allows. One finding, with the peak. |
 | `attestation.prompt_tokens` | `check_run` | none | Some items have a call without a prompt-token fingerprint, for example because the engine didn't return token ids. One finding, with the count. |
 | `attestation.prompt_tokens_drift` | `compare_prompt_tokens` | item key | The engine read different prompt tokens for the same item in two runs. |
 | `ledger.seal` | `check_run`, `check_score` | run or score id | The rows no longer match the seal in the finished row. |
@@ -326,8 +336,8 @@ of the ledger's findings are warnings.
 
 ### Recorded settings aren't compared with what happened
 Some records state what should happen and others what did, but nothing compares them:
-- the execution settings and the calls: a call sent more times than `retries` allows, or one that took longer than
-  `timeout_s`, passes;
+- `timeout_s` and the calls: a call's times span all its attempts, so an attempt that ran past the timeout can't
+  be told from them;
 - `ScoreStarted.scorer_code` and the scorer's `Scorer.code`;
 - a call's request fingerprint and the request it should have been. A request can be rebuilt from stored data and
   the vignette, and a judge request from the scorer's parse of the answer (`docs/factors.md`, "Judge"), but nothing

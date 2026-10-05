@@ -100,3 +100,8 @@ the vignette read at the source differs from the case's fingerprint (`prepare_ca
 - keep "Ledger" to the codes of `check_run`, `check_score` and `compare_prompt_tokens` (`src/chatddx/ledger/ledger.py`):
 - The ledger doc now lists its codes with their subjects (`agents/ledger.md`, "Findings", the replacement for
   `docs/ledger.md`); "Ledger" here could point there instead of repeating them.
+- ADD to "Ledger" (`src/chatddx/ledger/ledger.py:check_run`, `_executed`):
+  - `execution.retries`: some calls took more attempts than the run's `retries` allows;
+  - `execution.order`: some items were sent before items the run's order schedules ahead of them;
+  - `execution.concurrency`: more calls were in flight at once than the run's `concurrency` allows, canary calls
+    included.

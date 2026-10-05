@@ -145,6 +145,9 @@ The package imports only `chatddx.factors`, so the code already leans on factors
   `0009` were edited in place, following `e635b97`.
 - Decided (C2, option a): "tier" means only the store's integrity tiers. Reproducibility is described in plain
   words: bitwise reproducible, or best-effort. Amendment proposed for `docs/chatddx.md` ("Compromises").
+- Decided (B4, option b): `check_run` warns `execution.retries`, `execution.order` and `execution.concurrency`.
+  "Order" means send order: an item is sent when its first call starts. With retries, a call's times run from the
+  first attempt's start to the last attempt's end. Timeouts stay unchecked.
 
 ## Status
 Draft: `agents/ledger.md`.
@@ -157,7 +160,8 @@ Draft: `agents/ledger.md`.
 | A9 | Code comment fixed. |
 | B1 | Decided (4a). Doc; `docs/chatddx.md` amendment. The finished row being outside the seal is an open issue. |
 | B2, B3, B6, B12 | Code and tests: `score.incomplete`, `judge.incomplete`, `run.incomplete` for canaries, duplicate checks, record validation. `docs/findings.md`, `docs/chatddx.md` amendments. |
-| B4, B5, B7–B10, B13 | Open, one by one. Listed in the draft's "Open design issues" meanwhile. |
+| B4 | Decided (b). Code and tests (`_executed`); draft updated; `docs/findings.md`, `docs/factors.md` (send-order wording), `docs/chatddx.md` amendments. Timeouts stay an open issue. |
+| B5, B7–B10, B13 | Open, one by one. Listed in the draft's "Open design issues" meanwhile. |
 | B11 | Moved to factors with the compilation; the proposed `docs/factors.md` "Compilation" section states it. Still open. |
 | C1 | Decided (A). Code: `Compilation` in factors, `factor.compilation` dropped, the catalog's foreign keys retargeted, the seeder adds compilations as components. Doc: the draft drops its Compilation section. Amendments: `docs/factors.md`, `docs/store.md`, `docs/chatddx.md`. |
 | C2 | Decided (a). The draft already avoids "tier"; `docs/chatddx.md` amendment. Also proposed: `docs/store.md` wording for schema `ledger` (only `run_item` and `score_item` are case-derived). |
@@ -166,6 +170,14 @@ Draft: `agents/ledger.md`.
 | D4 | Kept: bundles are a factors concept. Open issue "Records aren't in bundles". |
 | D5 | Noted only. |
 | E1–E6 | Doc. |
+
+## Flagged: order used as something other than send order
+- **O1** A trial's case list is ordered and its order is in the trial's digest (`src/chatddx/factors/trial.py:Trial`,
+  `cases`), but the only thing that reads that order is `Execution.schedule` (`case_major@1`, `replicate_major@1`).
+  So part of the send order is pinned, though send order is meant to be a recorded setting outside the trial's
+  identity (`docs/chatddx.md`, "execution settings are not part of trial identity"). Two trials with the same cases
+  in another order are different trials. Open.
+- **O2** Not checked: that start-phase canary calls precede the items and end-phase ones follow them.
 
 ## Surprises
 - `ruff check src` fails on `src/chatddx/inventory/test/test_inventory.py` (import order) at `e635b97`, before

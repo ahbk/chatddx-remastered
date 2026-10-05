@@ -20,7 +20,7 @@ from chatddx.factors.test.sample import (
     generation_recipe,
     world,
 )
-from chatddx.factors.trial import Trial
+from chatddx.factors.trial import Execution, Trial
 from chatddx.ledger.ledger import (
     Call,
     CanaryCall,
@@ -241,6 +241,57 @@ def test_records_carry_their_schema_version() -> None:
         _ = RunStarted.parse(json.dumps(doc))
     with pytest.raises(StructuralError, match="not a JSON object"):
         _ = RunStarted.parse("[]")
+
+
+def test_execution_is_checked_against_the_calls(reg: Registry) -> None:
+    ids = world(reg)
+    run_id = uuid4()
+    vignette = resolve(reg.get, ids["case"], Case).vignette.fingerprint
+
+    def at(seconds: int) -> datetime:
+        return NOW + timedelta(seconds=seconds)
+
+    def item(replicate: int, start: int, end: int, attempts: int = 1) -> RunItem:
+        call = Call(
+            request=fp("body"),
+            started_at=at(start),
+            finished_at=at(end),
+            attempts=attempts,
+            prompt_tokens=fp("tokens"),
+        )
+        return RunItem(
+            run=run_id,
+            key=ItemKey(case=ids["case"], replicate=replicate),
+            vignette=vignette,
+            call=call,
+        )
+
+    def check(execution: Execution, *items: RunItem) -> list[tuple[str, str]]:
+        started = RunStarted(
+            run=run_id, at=NOW, rig=RIG, trial=ids["trial"], execution=execution
+        )
+        run = Run(stages=(started,), items=items)
+        return [(f.code, f.message) for f in check_run(run, reg)]
+
+    sequential = Execution()
+    assert check(sequential, item(0, 0, 5), item(1, 5, 9)) == []
+    assert check(sequential, item(0, 0, 5, attempts=2), item(1, 5, 9)) == [
+        ("execution.retries", "1 calls took more than the 1 attempts allowed")
+    ]
+    assert check(Execution(retries=1), item(0, 0, 5, attempts=2)) == []
+    assert check(sequential, item(0, 5, 9), item(1, 0, 5)) == [
+        ("execution.order", "1 items were sent before items scheduled ahead of them")
+    ]
+    shuffled = Execution(order="shuffled@1", shuffle_seed=7)
+    first, second = (r for _, r in shuffled.schedule((ids["case"],), 2))
+    assert check(shuffled, item(first, 0, 5), item(second, 5, 9)) == []
+    assert [c for c, _ in check(shuffled, item(second, 0, 5), item(first, 5, 9))] == [
+        "execution.order"
+    ]
+    assert check(sequential, item(0, 0, 6), item(1, 5, 9)) == [
+        ("execution.concurrency", "2 calls were in flight at once, declared 1")
+    ]
+    assert check(Execution(concurrency=2), item(0, 0, 6), item(1, 5, 9)) == []
 
 
 def test_records_refuse_what_cannot_have_happened() -> None:

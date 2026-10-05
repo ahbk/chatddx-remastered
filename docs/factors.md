@@ -888,3 +888,11 @@ reference, straight from the schema. `RefTo` used to do this, and was stopped be
 Schema plays no part in a component's digest, so adding it back changes no digest.
 
 ## Proposed amendments
+
+- CHANGE "Execution", so that `order` reads as the send order, which is what `check_run` checks
+  (`src/chatddx/ledger/ledger.py:_executed`): "`order`: `case_major@1` (the default: …" → "`order`, the order in
+  which a run sends its items: `case_major@1` (the default: …", and "`Execution.schedule(cases, replicates)` lists
+  the (case, replicate) pairs in that order." → "… in the order they are sent."
+- ADD to "Execution": "A run's calls show whether its settings were followed: `check_run` warns when a call took
+  more attempts than `retries` allows, when items were sent out of order, or when more calls were in flight than
+  `concurrency` allows (`docs/ledger.md`, "Run"). Timeouts aren't checked."

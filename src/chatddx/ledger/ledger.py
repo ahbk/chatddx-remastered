@@ -87,6 +87,7 @@ class Record(Frozen):
 
 class Call(Frozen):
     request: Fingerprint
+    # With retries, from the first attempt's start to the last attempt's end.
     started_at: UtcDatetime
     finished_at: UtcDatetime
     status: int | None = None
@@ -450,6 +451,58 @@ def check_run(run: Run, registry: Registry) -> list[Finding]:
             Finding(
                 code="attestation.prompt_tokens",
                 message=f"{unfingerprinted} items have no prompt token fingerprint",
+            )
+        )
+    return findings + _executed(run, trial)
+
+
+def _executed(run: Run, trial: Trial) -> list[Finding]:
+    execution = run.started.execution
+    findings: list[Finding] = []
+    calls = [*(c for i in run.items for c in i.calls), *(c.call for c in run.canaries)]
+    allowed = execution.retries + 1
+    if over := sum(1 for c in calls if c.attempts > allowed):
+        findings.append(
+            Finding(
+                code="execution.retries",
+                message=f"{over} calls took more than the {allowed} attempts allowed",
+            )
+        )
+
+    position = {
+        ItemKey(case=c, replicate=r): n
+        for n, (c, r) in enumerate(execution.schedule(trial.cases, len(trial.seeds)))
+    }
+    early = 0
+    latest: datetime | None = None
+    for item in sorted(run.items, key=lambda i: position[i.key]):
+        sent = item.call.started_at
+        if latest is not None and sent < latest:
+            early += 1
+        latest = sent if latest is None else max(latest, sent)
+    if early:
+        findings.append(
+            Finding(
+                code="execution.order",
+                message=f"{early} items were sent before items scheduled ahead of them",
+            )
+        )
+
+    # Ends sort before starts at the same instant: a call ending as another starts
+    # doesn't overlap it.
+    events = sorted(
+        [(c.started_at, 1) for c in calls] + [(c.finished_at, -1) for c in calls]
+    )
+    in_flight = peak = 0
+    for _, step in events:
+        in_flight += step
+        peak = max(peak, in_flight)
+    if peak > execution.concurrency:
+        findings.append(
+            Finding(
+                code="execution.concurrency",
+                message=f"{peak} calls were in flight at once, declared "
+                + f"{execution.concurrency}",
             )
         )
     return findings
