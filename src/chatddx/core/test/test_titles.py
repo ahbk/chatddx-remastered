@@ -9,9 +9,18 @@ from chatddx.core.titles import (
 )
 from chatddx.factors.bundle import Registry
 from chatddx.factors.engine import RemoteEngine
-from chatddx.factors.request import Output, Reasoning, Sampling, ToolOutput
+from chatddx.factors.request import (
+    Output,
+    Reasoning,
+    Sampling,
+    Tool,
+    ToolOutput,
+    Toolset,
+    Translations,
+    texts,
+)
 from chatddx.factors.scoring import ExpectationSchema
-from chatddx.factors.test.sample import generation_recipe, world
+from chatddx.factors.test.sample import RIG, generation_recipe, world
 
 
 def titler(reg: Registry) -> Title:
@@ -40,10 +49,10 @@ def test_unnamed_components_are_described_by_what_they_hold() -> None:
         + " · native output: ddx · temperature 0.7, top_p 0.9, max_output_tokens 1024"
         + " · enable_thinking false"
     )
-    assert title(ids["engine"]) == "google/gemma-3-12b-it on vllm 0.24.0"
+    assert title(ids["engine"]) == "google/gemma-3-12b-it on vllm 0.24.0 (RTX 5090)"
     assert title(ids["case"]) == "registry/c1 with 1 appendix"
     assert title(ids["trial"]).endswith(
-        " on google/gemma-3-12b-it on vllm 0.24.0, 1 case, 2 seeds"
+        " on google/gemma-3-12b-it on vllm 0.24.0 (RTX 5090), 1 case, 2 seeds"
     )
     assert title(ids["canaries"]) == "1 canary"
     assert title(reg.add(Sampling())) == "default sampling"
@@ -61,6 +70,32 @@ def test_unnamed_components_are_described_by_what_they_hold() -> None:
         RemoteEngine(base_url=HttpUrl("https://example.org/v1"), model="gpt-x")
     )
     assert title(remote) == "gpt-x at example.org"
+
+
+def test_recipes_are_described_by_every_part() -> None:
+    reg = Registry()
+    _ = world(reg)
+    title = titler(reg)
+    recipe = generation_recipe(reg)
+    needed = [t for part in texts(recipe, reg.get).values() for t in part]
+    swedish = reg.add(Translations(entries={t: f"[sv] {t}" for t in needed}))
+    search = reg.add(
+        Tool(
+            name="web_search",
+            description="Search the web.",
+            parameters={"type": "object"},
+            code=RIG,
+            entry_point="chatddx_tools.web:search",
+        )
+    )
+    tools = reg.add(Toolset(tools=(search,)))
+    english = describe_recipe(recipe, title)
+    translated = recipe.model_copy(update={"translations": swedish})
+    assert describe_recipe(translated, title) == (
+        english + f" · translations, {len(needed)} texts"
+    )
+    with_tools = recipe.model_copy(update={"toolset": tools})
+    assert describe_recipe(with_tools, title) == english + " · with web_search"
 
 
 def test_changes_are_described_by_path_and_value() -> None:

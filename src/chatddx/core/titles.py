@@ -98,6 +98,8 @@ def describe_recipe(recipe: Recipe, title: Title) -> str:
         recipe.sampling,
         recipe.reasoning,
         recipe.passthrough,
+        recipe.translations,
+        recipe.toolset,
     )
     described = " · ".join(title(p) for p in parts if p is not None)
     return described if recipe.purpose == "generation" else f"judge: {described}"
@@ -174,8 +176,9 @@ def describe(component: Component, title: Title) -> str:
             return described
         case ModelArtifact(repo=repo):
             return repo
-        case LocalEngine(model=model, runtime=runtime):
-            return f"{title(model)} on {runtime.server} {runtime.version}"
+        case LocalEngine(model=model, runtime=runtime, hardware=hardware):
+            runs = f"{runtime.server} {runtime.version} ({hardware.gpu})"
+            return f"{title(model)} on {runs}"
         case RemoteEngine(model=model, base_url=url):
             return f"{model} at {url.host}"
         case ExpectationSchema(json_schema=schema):

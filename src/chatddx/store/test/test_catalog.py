@@ -374,7 +374,9 @@ def test_titles_fall_back_to_what_a_thread_holds(conn: Connection) -> None:
     assert catalog.title_of(plan.skeleton) == "plan (earlier)"
 
     trial = catalog.title_of(ids["trial"])
-    assert trial.endswith(" on google/gemma-3-12b-it on vllm 0.24.0, 1 case, 2 seeds")
+    assert trial.endswith(
+        " on google/gemma-3-12b-it on vllm 0.24.0 (RTX 5090), 1 case, 2 seeds"
+    )
     assert catalog.title_of(ids["case"]) == "registry/c1 with 1 appendix"
     family = catalog.adopt(ids["case"], alice.id)
     catalog.note(
