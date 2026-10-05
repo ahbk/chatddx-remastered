@@ -113,9 +113,6 @@ Left behind:
   issues").
 
 ## Open design issues
-- **Nothing outside the tests runs the checks.** `lint.py:lint` and `lint.py:reasons` have no caller outside the
-  tests, and neither does `src/chatddx/factors/lint.py:lint`. `init-data` lints nothing it lands. It seeds no trials
-  or judges yet, so it would get no `facts.*` finding anyway.
 - **Which models get seeded.** A `from_facts` record is written for every model the facts know, not for the models of
   the engines that will run it. Once engines are seeded, the two lists can differ.
 - **`xhigh` can't be written.** It's a level, but neither `Reasoning.effort` nor `Writes.effort` has the value, so a
@@ -140,7 +137,3 @@ Left behind:
   unknown.
 
 ## Proposed amendments
-- REMOVE the open design issue "**Nothing outside the tests runs the checks.**": `chatddx init-data` now runs
-  `lint.py:lint`, with `lint.py:reasons` passed to `src/chatddx/factors/lint.py:lint`, over every component it seeds,
-  with the facts it was planned with (`src/chatddx/seed/write.py:_Seeder.lint`, `src/chatddx/seed/plan.py:Plan`). It
-  seeds no trials or judges yet, so no `facts.*` finding can come up so far.
