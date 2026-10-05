@@ -11,7 +11,7 @@ from chatddx.factors.base import Fingerprint
 from chatddx.factors.cases import Vignette
 from chatddx.factors.scoring import Scorer
 
-# src/chatddx/store/migrations/0021-t2-catalog-tools.sql repeats these kinds.
+# src/chatddx/store/migrations/0012-t2-catalog.sql repeats these kinds.
 THREAD_KINDS = frozenset(
     {
         "chunk.instructions",
@@ -40,7 +40,7 @@ THREAD_KINDS = frozenset(
 )
 
 
-# src/chatddx/store/migrations/0024-t2-catalog-languages.sql repeats these kinds.
+# src/chatddx/store/migrations/0012-t2-catalog.sql repeats these kinds.
 LANGUAGE_KINDS = frozenset(
     {
         "chunk.instructions",
@@ -54,7 +54,7 @@ LANGUAGE_KINDS = frozenset(
 )
 
 
-# src/chatddx/store/migrations/: 0017 repeats these fields, 0019 and 0024 the pattern.
+# src/chatddx/store/migrations/0012-t2-catalog.sql repeats these fields and the pattern.
 LANGUAGE = re.compile(r"^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$")
 
 
@@ -254,7 +254,7 @@ def latest[K, V](rows: Iterable[tuple[K, V]]) -> dict[K, V]:
     return dict(rows)
 
 
-# src/chatddx/store/migrations/0011-t2-catalog-checks.sql repeats this check.
+# src/chatddx/store/migrations/0012-t2-catalog.sql repeats this check.
 def check_label(scorer: Scorer, part: Part, position: int) -> None:
     parts = scorer.views if part == "view" else scorer.resources
     if not 0 <= position < len(parts):

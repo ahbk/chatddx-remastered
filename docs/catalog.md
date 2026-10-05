@@ -389,3 +389,6 @@ moment can create two families, since nothing makes current bindings unique.
   notice rather than a warning.
 
 ## Proposed amendments
+- CHANGE in "Storage" "The catalog's migrations are among `0009` to `0026` in `src/chatddx/store/migrations/`" →
+  "The catalog's migrations are listed under "catalog" in `docs/store.md`": the migrations are squashed into one per
+  schema and tier (`agents/store.md`, "Migrations"), and the list there stays current as migrations are added.

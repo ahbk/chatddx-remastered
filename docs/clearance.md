@@ -27,3 +27,6 @@ they reach; nothing declares those yet.
 ## Proposed amendments
 - CHANGE "`src/chatddx/ledger/ledger.py:Record.case_derived`" → "`src/chatddx/ledger/record.py:Record.case_derived`":
   the ledger is now split by subject (`record.py`, `call.py`, `run.py`, `score.py`).
+- CHANGE "`src/chatddx/store/migrations/0002-t1-grants.sql`" →
+  "`src/chatddx/store/migrations/0002-t1-factor.sql` and `0005-t1-ledger.sql`": the migrations are squashed into one
+  per schema and tier (`agents/store.md`, "Migrations").
