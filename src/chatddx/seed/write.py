@@ -24,7 +24,7 @@ def _gifted(kind: str) -> bool:
     return kind.startswith("chunk.") or kind in ("tool", "skeleton", "expectation")
 
 
-def _short(digest: str) -> str:
+def short(digest: str) -> str:
     return digest.removeprefix("sha256:")[:6]
 
 
@@ -110,7 +110,7 @@ class _Seeder:
         for position, label in enumerate(r.labels):
             if label is not None and labelled.get(("view", position)) != label:
                 self.catalog.label(r.digest, "view", position, label, self.archive.id)
-        self.lines.append(f"[archive {r.kind}] {r.name}: {verb} {_short(r.digest)}")
+        self.lines.append(f"[archive {r.kind}] {r.name}: {verb} {short(r.digest)}")
 
     def case(self, source: Source, id: str, sample: SampleCase, schema: str) -> None:
         try:
@@ -139,7 +139,7 @@ class _Seeder:
         self.land(digest, f"case {id}")
         self.sync(Subject(family=family), sample.tags, None, sample.language, name=id)
         verb = "validated" if known else "created"
-        self.lines.append(f"[archive case] {id}: {verb} {_short(digest)}")
+        self.lines.append(f"[archive case] {id}: {verb} {short(digest)}")
         found = [
             t
             for t in self.catalog.expectations_of(digest)
@@ -149,7 +149,7 @@ class _Seeder:
         self.threads[("expectation", id)] = thread
         self.land(expectation, f"expectation {id}")
         self.sync(Subject(thread=thread))
-        self.lines.append(f"[archive expectation] {id}: {verb} {_short(expectation)}")
+        self.lines.append(f"[archive expectation] {id}: {verb} {short(expectation)}")
 
     def lint(self) -> None:
         registry, facts, digests = self.plan.registry, self.plan.facts, [*self.landed]
@@ -202,7 +202,7 @@ class _Seeder:
                 forked_from=head.id,
                 name=about.name,
             )
-            self.lines.append(f"[giftbag {kind}] {name}: forked {_short(head.digest)}")
+            self.lines.append(f"[giftbag {kind}] {name}: forked {short(head.digest)}")
 
 
 def seed(

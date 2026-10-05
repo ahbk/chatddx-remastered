@@ -14,34 +14,77 @@ all fixed but one. Each is condensed to where its result is described now and wh
 write-ups are in git history: `git show 79ec890:agents/wip-sample-data.md`.
 
 ## Start with this
-What's left is the parked work: engines and models, then free-text expectations (see "Parked"). Settle these
-first.
+The endgame is parity with the old `init-data`. Everything is in but the real engines: the configurations and cases,
+the tool and scorers, and the two fake engines with their endpoints (see "Engines and endpoints"). What's left, in
+order:
 
-### Decisions (the user's)
-1. **Which models `from_facts` writes for.** Today it's every model the facts know
-   (`src/chatddx/seed/plan.py:plan_factors`), not the models of the engines that will run the chunks. Once engines
-   are seeded, the two lists can differ. Take: write for the seeded engines' models and report a model without
-   facts, so facts about a model nobody runs are just unused (`docs/facts.md`, "Open design issues").
-2. **Where an engine's location lives.** The inventory knows only `[source.<name>]` tables
-   (`src/chatddx/inventory/inventory.py`). The runner needs engine digest → URL, and the start-up script needs the
-   paths of the model files and the chat template (`docs/factors.md`, "The inventory doesn't locate local engines
-   yet, and runs don't record where calls went"). Every endpoint item under "Engines and models" waits on this.
-3. **Where scorer code lives, and what it must do.** Settled (see "Decided"), and the tools and scorers are seeded
-   (see "Tools and scorers").
-4. **Where model hashes, revisions and chat-template digests come from.** They need the hosts: an import script
-   (`docs/chatddx.md`) or values the user supplies. An agent in a cloud container can't reach the hosts. Should the
-   sample seed engines with values marked as placeholders until then?
+### 1. Import the real engines on their hosts (decision 4A)
+The old `qwen3-8b-awq@pelle`, `qwen3-8b-awq@malborg` and `gpt-oss-20b@malborg` get seeded from values read on the
+hosts, not guessed. Most of the old data for them was guessed, malborg's vLLM 0.13.0 among it, and a guess in an
+engine lands in its digest, which is its served name and the key of every trial.
 
-The early work is done: the vignettes are in, `init-data` lints what it lands, and the fake vLLM is ported (see
-"The fake vLLM").
+1. **Settle first** (the user's):
+   - **Which chat template each engine runs.** The model repo's own (`chat_template.jinja`, or
+     `tokenizer_config.json`'s `chat_template` written to a file) or a file ops keep. It decides what the import
+     hashes, and whether HuggingFace can check it.
+   - **What a model's files are.** The whole model directory, or only what vLLM reads. `ModelArtifact.files` pins
+     them by path.
+   - **What `Runtime.closure` is**: the vLLM package's store path, or the container's system toplevel (a parked
+     question, see "Engines and models").
+   - **Where the real World inventory lives.** Take: `sample-world/inventory.toml`, beside the fakes, since the old
+     sample data held pelle and malborg and nothing about them is sensitive.
+   - **Decision 1**, which models `from_facts` writes chunks for. Today it's every model the facts know
+     (`src/chatddx/seed/plan.py:plan_factors`); with real engines the two lists can differ. Take: the seeded engines'
+     models, reporting a model without facts (`docs/facts.md`, "Open design issues").
+2. **Write `chatddx import-engine`**, a command run on a host. It's agent work, testable here against a made-up host
+   (a directory of files, a fake `nvidia-smi` on `PATH`, given process data). It:
+   - reads the GPU from `nvidia-smi --query-gpu=name,compute_cap,memory.total,driver_version
+     --format=csv,noheader`; the closure and vLLM version from the running `vllm serve`'s executable, or given; its
+     argv and env from the running process (`/proc/<pid>/cmdline` and `environ`), or given, splitting off what the
+     start-up script owns (the model, `--served-model-name`, `--chat-template`, `--host`, `--port`); the model's
+     files, each hashed under its relative path; the chat template, hashed; the repo and revision, given;
+   - checks what `LocalEngine` refuses (owned flags, `--config`, abbreviations, bare arguments) and runs the lints
+     that apply (`model.revision`, `engine.closure`, `check_chat_template`'s date check);
+   - prints, in this repo's formats, `[model.<name>]` and `[local_engine.<name>]` for `factors.toml`, and
+     `[host.<name>]` (where it keeps the model and template, its bind address) and `[endpoint.<name>]` (the engine's
+     digest, the URL) for the World inventory. The digest is computed by the same code that seeds it, so they agree.
+3. **Run it on pelle and malborg** (the user, or anyone on the hosts) and commit its output.
+4. **Seed and check.** `init-data --world …` lands the models and engines, their lints come back clean, and each
+   endpoint reports the engine it serves.
+5. **Serve them under their digests.** Until a start-up script reads a manifest the orchestrator writes
+   (`docs/chatddx.md`), each host's vLLM service has to run with the arguments `start_up` gives: the digest as
+   `--served-model-name` and the pinned template. Then `confirm` passes. A `chatddx start-up --world FILE
+   ENDPOINT` command, printing that command line with the engine read from the database, gives ops the exact line
+   for each host's configuration.
+6. **Optionally, check against HuggingFace** (4B as a check, not a source). With `huggingface.co` allowed in the
+   environment's network policy, the revisions and the weights' SHA-256s can be compared with the hub's.
+
+### 2. Then the small parity items
+- The old `init-data` created USER when missing; remastered requires `chatddx person add`. Take: keep it explicit,
+  since people have roles and passwords now.
+- `wipe-data`: tier 2 forbids DELETE, so removing a user's records means `deleted` entries and dropping them as
+  collaborators. Its semantics are to decide.
+- The old target format's `dont_miss`, `warning = false` and `text`, which no case used. `text`, a target in plain
+  words "for people or LLM judges", meets the free-text expectations (see "Parked").
+
+### After parity
+The free-text expectations (see "Parked"), and the runner, which the fake vLLM, the endpoints and `confirm` are
+ready for.
 
 ## Decided
 - Seed now: chunks, recipes (as compiled skeleton threads), cases with their families, an expectation schema and
   expectations.
-- Deferred: engines and models, and scorings (old D9), which come from a separate runtime-data pipe. The
-  `init-data` command and the compiler's `Code` (old C8) are done. Scorers were deferred too, until decision 3.
+- Deferred: scorings (old D9), which come from a separate runtime-data pipe. The `init-data` command and the
+  compiler's `Code` (old C8) are done. Engines and models were deferred too, until their locations and values were
+  decided, and so were scorers, until it was decided where their code lives.
 - Tools and scorers pin chatddx's own code, as compilations record their compiler: `Code` from `rig()` and an
   `entry_point` in chatddx. Packaging entry points can come later, for tools and scorers together.
+- Engine locations live in the World inventory (decision 2A). An `[endpoint.<name>]` binds an engine by digest, the
+  name it's served under, with its URL, `max_jobs` and credential; a `[host.<name>]` says where it keeps what
+  engines pin, by model artifact digest and chat-template hash. A remote engine keeps `base_url` in its digest, and
+  its endpoint adds only the credential and capacity.
+- Engine values come from the hosts (decision 4A), with the fake engines first, whose values are ours (4D). No
+  placeholders.
 - The scorer interface, version 1, is the old one fed through remastered's views: the entry point takes a view's
   metric, the items its output selector picks (none without an answer), the items its expectation selector picks,
   and the params, and gives a value and a detail.
@@ -75,12 +118,13 @@ The early work is done: the vignettes are in, `init-data` lints what it lands, a
 - `cases.toml`: the 99 cases, each with its tags, language and targets, without the `# guessed` markers.
 - `schemas/`: the two output schemas and the hand-written `targets.json`.
 
-`factors.toml` also holds the old tool, toolset, `plan-web` and scorers (see "Tools and scorers").
+`factors.toml` also holds the old tool, toolset, `plan-web` and scorers (see "Tools and scorers"), and the old fake
+stacks' models and engines (see "Engines and endpoints").
 
 The vignettes aren't in it: they're a fake-sensitive source, so they stay out of the package. `sample-world/` holds
 them as a World would:
 - `inventory.toml` is the sample World inventory. Its `[source.sample]` table locates `vignettes/` and declares it
-  sensitive.
+  sensitive, and it has the fake engines' endpoints and host (see "Engines and endpoints").
 - `vignettes/` has the 99 files of 7893656's `src/chatddx/data/cases`, byte for byte (their git blob hashes match the
   old repo's). 30 of them mix CRLF and LF line endings, so `.gitattributes` marks the directory `-text` to keep git
   from converting them.
@@ -112,9 +156,9 @@ created, validated, updated, skipped, missing, needs repair, forked or kept. It 
   inventory whose `[source.<name>]` table locates them, such as `sample-world/inventory.toml`. `--source` names the
   source (`sample`), which the cases are keyed by. A path that holds none of the sample's cases is refused before
   anything is written. `--facts` names the facts files, the data directory's `facts.toml` by default.
-- **Planning.** `chatddx.seed.plan_factors` is pure. It plans 46 records: 14 recipes (7 configurations × 2 models),
-  12 reasoning chunks, 5 sampling chunks, 7 outputs, a prompt, a tool, a toolset, an expectation schema and 4
-  scorers. It skips 4 reasoning chunks the facts refuse for gpt-oss.
+- **Planning.** `chatddx.seed.plan_factors` is pure. It plans 50 records: 14 recipes (7 configurations × 2 models),
+  12 reasoning chunks, 5 sampling chunks, 7 outputs, a prompt, a tool, a toolset, an expectation schema, 4
+  scorers, 2 models and 2 engines. It skips 4 reasoning chunks the facts refuse for gpt-oss.
 - **Chunks and recipes.** Each record becomes a thread named after it and owned by the archive. Recipes are
   compiled, and their compilations are recorded. A `from_facts` chunk is written from each model's facts, so the
   recipes using it come once per model, named `plan (Qwen/Qwen3-8B-AWQ)`. A refused combination is skipped and
@@ -135,8 +179,9 @@ created, validated, updated, skipped, missing, needs repair, forked or kept. It 
   Dutchfall11w: expectation.invalid: at the root: 'diagnosis' is a required property`, naming every record that
   shares the digest, and a last line counts them: `[lint] 0 findings in 230 components` for the sample. The
   findings are printed, not stored, and don't stop the seeding. Today the expectation schema, expectation and
-  scorer lints have something to check: without `CHATDDX_REVISION`, each scorer gets `scorer.revision`, so the
-  sample's count is 4 there. The vLLM, facts and language lints will apply once trials and judges are seeded.
+  scorer, model and engine lints have something to check: the fake models get `model.revision` and the fake
+  engines `engine.closure`, and without `CHATDDX_REVISION` each scorer gets `scorer.revision`, so the sample's
+  count is 4, or 8 without a revision. The vLLM, facts and language lints will apply once trials and judges are seeded.
 - **Compiler.** Compilations record the running code as their compiler (`src/chatddx/core/rig.py:rig`): the version
   from the package, and the revision from `CHATDDX_REVISION` when it's set.
 
@@ -149,7 +194,9 @@ The old checkout's vignettes were checked in a scratch database:
 - through `--world sample-world/inventory.toml`, on a database seeded from the 7893656 checkout, all 236 were
   validated and every fork kept;
 - once the tools and scorers were added, the same database got the tool, the toolset, 4 scorers and the 2 `plan-web`
-  skeletons created, with the tool, toolset and skeletons forked for alice, and a re-run validated everything.
+  skeletons created, with the tool, toolset and skeletons forked for alice, and a re-run validated everything;
+- once the fake engines were added, it got their 2 models and 2 engines created, and both sample endpoints reported
+  the engine they serve.
 
 Tests: `src/chatddx/store/test/test_seed.py`.
 
@@ -159,8 +206,36 @@ Still open:
 - Tags and collaborators are only ever added on a re-run, never removed.
 - The seeded chunks have no language, so a trial's request language is unknown (G18).
 
+## Engines and endpoints
+Decisions 2A and 4D, done:
+- **The inventory** (`src/chatddx/inventory/inventory.py`) takes `[endpoint.<name>]` and `[host.<name>]` beside
+  `[source.<name>]`. A host's locations are its own, given as its start-up script reads them, so they aren't resolved
+  against the inventory file.
+- **`src/chatddx/inventory/serving.py`**:
+  - `start_up` joins an endpoint with its engine and its host into what the start-up script runs: vLLM's arguments
+    (the model's location, the digest as `--served-model-name`, the template, the host's bind address and the URL's
+    port, then the engine's argv), the closure and the env. It refuses a host that doesn't locate the model or the
+    template, a remote engine, and an engine whose argv sets `--host` or `--port`, which the endpoint decides;
+  - `url_of` gives an endpoint's URL, a remote engine's `base_url`;
+  - `confirm` checks that the endpoint's `/v1/models` lists the name its engine is served under, the digest of a
+    local engine and the model of a remote one, before case-derived content goes out.
+- **The seeder** takes `model`, `local_engine` and `remote_engine` tables, and resolves every reference by name in
+  one place (`REFERENCES` in `src/chatddx/seed/plan.py`). Engines aren't gifted, as the old giftbag gave no stacks.
+- **The fake engines** (`factors.toml`): the old fake stacks' models and flags. Every value is ours and says what it
+  is: the real repo, so its facts apply, with revision `fake` and one empty file for no weights; no GPU; the runtime
+  `0.24.0+fake` run by `chatddx fake-vllm` rather than a Nix closure; an empty chat template. So `init-data`'s lints
+  give each fake model `model.revision` and each fake engine `engine.closure`, four warnings on every run.
+- **The sample World** (`sample-world/inventory.toml`) has an endpoint per fake engine, `127.0.0.1:12099` and
+  `:12100` (vLLM serves one model a process), and the fake host, which keeps the models by repo name and the empty
+  template at `/dev/null`. An engine change means a new digest there; a test catches the drift.
+- **init-data** with `--world` ends with a line per endpoint: the URL and the seeded engine it serves, or why it
+  can't be started or doesn't serve a seeded engine (`src/chatddx/seed/world.py`).
+- **Tests**: `src/chatddx/inventory/test/test_serving.py` starts the fake vLLM from a sample endpoint's start-up and
+  confirms it serves its engine's digest, and that another endpoint pointing there doesn't. Started by hand with
+  `chatddx fake-vllm` and those arguments, it confirms too.
+
 ## Tools and scorers
-Decision 3 is settled (see "Decided"):
+Where tool and scorer code lives is settled (see "Decided"):
 - **Code.** A `tool` or `scorer` record without a `code` pins the running chatddx, the `Code` compilations record as
   their compiler (`src/chatddx/seed/plan.py:plan_factors`). `src/chatddx/core/rig.py:entry` finds an entry point's
   function, and runs only the running chatddx: other pinned code is refused, not run unpinned. Planning refuses an
@@ -248,9 +323,9 @@ Not faked yet:
 
 | old entity | records | new home | open |
 |---|---|---|---|
-| machine, os | 3, 3 | `LocalEngine.hardware`, `.runtime` (inline) | deferred |
-| llm | 2 | `ModelArtifact`; its facts in `facts.toml` (G1) | deferred, except the facts |
-| serving, stack | 5, 5 | `LocalEngine` + World inventory | deferred |
+| machine, os | 3, 3 | `LocalEngine.hardware`, `.runtime` (inline) | fake done; pelle, malborg by the import |
+| llm | 2 | `ModelArtifact` (fakes seeded); its facts in `facts.toml` (G1) | the real artifacts, by the import |
+| serving, stack | 5, 5 | `LocalEngine` + World inventory endpoint and host | fake done; pelle, malborg by the import |
 | client | 2 | `Code` on `RunStarted`, written per run | dropped |
 | tool, toolset | 1, 1 | `tool` + `chunk.toolset` (G8), code in `chatddx.tools` | the loop, clearance |
 | instruction | 2 | `chunk.instructions` + `chunk.prompt` (G3) | |
@@ -358,20 +433,18 @@ Each gap was tagged [maybe fix remastered]: the sample data needed something rem
 The deferred work. Settle "Start with this" first.
 
 ### Engines and models
-- Model file hashes (`ModelArtifact.files`) and the chat-template digest need an import script on the hosts.
+The fake engines are seeded and located (see "Engines and endpoints"); the real ones wait on the import (see "Start
+with this"). Still open:
 - Hardware:
-  - compute capability is missing from the old data;
   - `gpu_count` is missing (`docs/factors.md`, "Smaller issues");
   - CPU, RAM, location, GPU uuid and machine id have no home.
-- Runtime:
-  - Is `Runtime.closure` the vLLM package or the container toplevel?
-  - malborg says vLLM 0.13.0 (guessed), but the docs say both hosts run 0.24.0.
-- No split between args in the digest and recorded-only args (`performance`). `max-num-seqs` affects batching.
+- Runtime: is `Runtime.closure` the vLLM package or the container toplevel? The import has to know.
+- No split between args in the digest and recorded-only args (`performance`). `max-num-seqs` affects batching. An
+  endpoint now decides `--host` and `--port`; the rest of the old `performance` args would land in `argv`.
 - Endpoints:
-  - nothing maps an engine digest to a URL, and the World inventory locates only vignette sources;
-  - the hosts' served names must become the engine digest;
-  - per-endpoint capacity (`max_jobs`), credentials and the API kind have no home.
-- The fake vLLM is in (see "The fake vLLM"). A start-up script can run it with vLLM's command line.
+  - a credential is only a name: nothing stores or passes secrets yet;
+  - `Call` records no URL, so the ledger can't show which endpoint got case-derived content (the runner's);
+  - whether `confirm` is part of the clearance hard block (`agents/wip-clearance.md`, "Open", 4).
 - Model specs (family, size, quantization, context length, licence) are held by the facts, descriptive only
   (`docs/facts.md`).
 
@@ -406,7 +479,7 @@ sample stays on 7893656 until this starts.
   - an expectation schema for free text beside `targets.json`, whose `additionalProperties: false` leaves no room.
     Open: one text, or the comment and the "Chatddx:" answer kept apart;
   - a judge-purpose prompt with `completion` and `expectation`, and maybe `vignette`; a judge, which needs an
-    engine; and a scorer whose view names the judge. So it waits on engines (decision 2) and a way to run judges;
+    engine; and a scorer whose view names the judge. So it waits on a judge engine and a way to run judges;
   - a language for the notes. They're `sv`, while 79 of the cases are `en`, so a judge would read Swedish notes
     about an English answer (G18);
   - somewhere for clinicians to write them other than the vignette files. Expectations are written in the portal

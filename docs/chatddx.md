@@ -270,3 +270,7 @@ Each code is described where it's produced: `docs/factors.md`, "Lints"; `docs/le
 **Canary drift are not implemented:** nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
+- CHANGE in the glossary's "Inventory", "Vignette sources are `[source.<name>]` tables (a directory of files today,
+  sensitive unless declared otherwise)." → "Vignette sources are `[source.<name>]` tables (a directory of files
+  today, sensitive unless declared otherwise), engines' endpoints are `[endpoint.<name>]` tables, and what hosts keep
+  where are `[host.<name>]` tables (`src/chatddx/inventory/inventory.py`)."

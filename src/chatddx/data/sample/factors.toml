@@ -234,3 +234,36 @@ description = "Unguided free text, whole, against the case's diagnosis."
 entry_point = "chatddx.scorers.patterns:score"
 expectation_schema = "targets"
 views = [{ label = "text", expectation = "/diagnosis", metric = "first_mention" }]
+
+# Models and engines: only the old inventory's two fake stacks (chatddx 7893656, src/chatddx/data/inventory/fake.toml)
+# so far, since every value of theirs is ours to choose. pelle's and malborg's wait for an import on those hosts.
+# The fake vLLM imitates a model by its name and reads no weights. So a fake model is the real repo, which its facts
+# are keyed by, with revision "fake" and one empty file standing for no weights. A fake engine has no GPU, runs
+# chatddx's fake vLLM rather than a Nix closure, and has an empty chat template. The lints say so on landing.
+[model."qwen3-8b-awq@fake"]
+repo = "Qwen/Qwen3-8B-AWQ"
+revision = "fake"
+files = [{ path = "none", sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" }]
+
+[model."gpt-oss-20b@fake"]
+repo = "openai/gpt-oss-20b"
+revision = "fake"
+files = [{ path = "none", sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" }]
+
+[local_engine."qwen3-8b-awq@fake"]
+description = "Qwen3 on the fake vLLM, served as the old fake stack served it."
+tags = ["fake"]
+model = "qwen3-8b-awq@fake"
+hardware = { gpu = "none", compute_capability = [0, 0], vram_mib = 0, driver = "none" }
+runtime = { version = "0.24.0+fake", closure = "chatddx fake-vllm" }
+chat_template = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+argv = ["--reasoning-parser", "qwen3", "--enable-auto-tool-choice", "--tool-call-parser", "hermes"]
+
+[local_engine."gpt-oss-20b@fake"]
+description = "gpt-oss on the fake vLLM, served as the old fake stack served it."
+tags = ["fake"]
+model = "gpt-oss-20b@fake"
+hardware = { gpu = "none", compute_capability = [0, 0], vram_mib = 0, driver = "none" }
+runtime = { version = "0.24.0+fake", closure = "chatddx fake-vllm" }
+chat_template = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+argv = ["--reasoning-parser", "openai_gptoss", "--enable-auto-tool-choice", "--tool-call-parser", "openai"]

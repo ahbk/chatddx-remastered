@@ -20,6 +20,19 @@ from chatddx.store.test.conftest import connect
 
 CASES = load_cases(SAMPLE / "cases.toml")
 REVISION = "f" * 40
+# The fake engines say what they are: no commit, no Nix closure.
+FAKES = [
+    *(
+        f"[lint warning] model {name}: model.revision: revision 'fake' is not a "
+        + "commit and can move"
+        for name in ("qwen3-8b-awq@fake", "gpt-oss-20b@fake")
+    ),
+    *(
+        f"[lint warning] engine.local {name}: engine.closure: closure 'chatddx "
+        + "fake-vllm' is not a Nix store path"
+        for name in ("qwen3-8b-awq@fake", "gpt-oss-20b@fake")
+    ),
+]
 SAMPLE_WORLD = Path(__file__).parents[4] / "sample-world" / "inventory.toml"
 
 
@@ -57,15 +70,23 @@ def test_init_data_seeds_the_archive(conn: Connection) -> None:
     lines = seed(conn, plan, CASES, vignettes(), alice)
     threads = len(plan.records) + len(CASES)
     assert tally(lines) == Counter(
-        {"archive created": threads + len(CASES), "skipped": 4, "share": 1, "lint": 1}
+        {
+            "archive created": threads + len(CASES),
+            "skipped": 4,
+            "share": 1,
+            "lint": len(FAKES) + 1,
+        }
     )
     shared = threads + len(CASES)
     assert (
-        lines[-2]
+        lines[-len(FAKES) - 2]
         == f"[share] {shared} of {shared} archive threads and families with alice"
     )
     components = len({r.digest for r in plan.records}) + 2 * len(CASES)
-    assert lines[-1] == f"[lint] 0 findings in {components} components"
+    assert lines[-len(FAKES) - 1 :] == [
+        *FAKES,
+        f"[lint] {len(FAKES)} findings in {components} components",
+    ]
 
     catalog = Catalog(conn)
     archive = People(conn).find("archive")
@@ -101,7 +122,7 @@ def test_init_data_seeds_the_archive(conn: Connection) -> None:
 
     again = seed(conn, sample_plan(), CASES, vignettes(), alice)
     assert {v for v in tally(again) if v.startswith("archive")} == {"archive validated"}
-    assert again[-2].startswith("[share] 0 of ")
+    assert again[-len(FAKES) - 2].startswith("[share] 0 of ")
 
 
 def test_init_data_lints_what_it_lands(
@@ -118,9 +139,10 @@ def test_init_data_lints_what_it_lands(
             f"[lint warning] scorer {name}: scorer.revision: scorer code has no revision"
             for name in ("plan", "diagnoses", "free-text", "raw")
         ),
+        *FAKES,
         "[lint warning] expectation Dutchfall11w: expectation.invalid: at the root: "
         + "'diagnosis' is a required property",
-        f"[lint] 5 findings in {components} components",
+        f"[lint] {5 + len(FAKES)} findings in {components} components",
     ]
 
 
@@ -231,6 +253,18 @@ def test_init_data_command(
     for neither_or_both in ([], ["--world", str(world), "--vignettes", str(cases)]):
         with pytest.raises(SystemExit):
             main(["init-data", "alice", *neither_or_both])
+
+    main(["init-data", "alice", "--world", str(SAMPLE_WORLD)])
+    sample = Inventory.load(SAMPLE_WORLD)
+    assert [
+        line
+        for line in capsys.readouterr().out.splitlines()
+        if line.startswith("[world endpoint]")
+    ] == [
+        f"[world endpoint] {name}: {e.url} serves engine.local {name} "
+        + e.engine.removeprefix("sha256:")[:6]
+        for name, e in sample.endpoints.items()
+    ]
 
 
 def test_the_sample_world_holds_the_vignettes_at_7893656() -> None:

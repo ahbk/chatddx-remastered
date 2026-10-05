@@ -941,3 +941,11 @@ Schema plays no part in a component's digest, so adding it back changes no diges
 - ADD to "Tool" and "Scorer": "Only the running chatddx can be run: `src/chatddx/core/rig.py:entry` finds an entry
   point's function and refuses a pin that isn't the running code. The sample's tools and scorers pin it as
   compilations record their compiler (`src/chatddx/seed/plan.py:plan_factors`)."
+- CHANGE the heading "The inventory doesn't locate local engines yet, and runs don't record where calls went" →
+  "Runs don't record where calls went", and its first paragraph → "A local engine pins what it is but not where it
+  is. Where it is lives in the inventory: an endpoint binds an engine by digest to a URL, with its capacity and
+  credential, and names the host that runs it; a host says where it keeps the model files and chat templates its
+  engines pin, keyed by model artifact digest and template hash (`src/chatddx/inventory/inventory.py`).
+  `src/chatddx/inventory/serving.py:start_up` joins them into what the start-up script runs, and `confirm` checks
+  that the endpoint's `/v1/models` lists the engine's served name before anything is sent." Keep the paragraph on
+  remote engines and `Call`.

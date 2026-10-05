@@ -14,6 +14,7 @@ from chatddx.inventory.inventory import Inventory
 from chatddx.inventory.sources import DirectorySource
 from chatddx.seed import load_cases, plan_factors, seed
 from chatddx.seed.plan import SAMPLE
+from chatddx.seed.world import endpoints
 from chatddx.store.migrate import TOP_TIER, migrate, pending
 from chatddx.store.people import People
 
@@ -56,8 +57,9 @@ def _init_data(args: argparse.Namespace) -> None:
     facts = Facts.load(*(args.facts or [sample / "facts.toml"]))
     plan = plan_factors(sample / "factors.toml", facts, rig())
     cases = load_cases(sample / "cases.toml")
-    if args.world is not None:
-        source = Inventory.load(args.world).source(args.source)
+    world = None if args.world is None else Inventory.load(args.world)
+    if world is not None:
+        source = world.source(args.source)
     elif args.vignettes.is_dir():
         source = DirectorySource(name=args.source, path=args.vignettes.resolve())
     else:
@@ -77,6 +79,8 @@ def _init_data(args: argparse.Namespace) -> None:
                 f"no person with login {args.user!r}: add them with `chatddx person add`"
             )
         lines = seed(conn, plan, cases, source, user, giftbag=args.giftbag)
+    if world is not None:
+        lines += endpoints(world, plan)
     for line in lines:
         print(line)
 

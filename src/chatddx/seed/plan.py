@@ -8,6 +8,7 @@ from pydantic import JsonValue, ValidationError
 from chatddx.core.rig import entry
 from chatddx.factors.base import Code, Component
 from chatddx.factors.bundle import Registry
+from chatddx.factors.engine import LocalEngine, ModelArtifact, RemoteEngine
 from chatddx.factors.request import (
     Compilation,
     FewShot,
@@ -41,6 +42,15 @@ TABLES: dict[str, type[Component]] = {
     "toolset": Toolset,
     "expectation_schema": ExpectationSchema,
     "scorer": Scorer,
+    "model": ModelArtifact,
+    "local_engine": LocalEngine,
+    "remote_engine": RemoteEngine,
+}
+# References outside recipes, by table and field: each names records of another table.
+REFERENCES: dict[str, dict[str, str]] = {
+    "toolset": {"tools": "tool"},
+    "scorer": {"expectation_schema": "expectation_schema"},
+    "local_engine": {"model": "model"},
 }
 # A recipe's references, by field; each names a record of the table of the same name.
 RECIPE_PARTS = (
@@ -205,14 +215,14 @@ def plan_factors(
             else:
                 description = body.pop("description", None)
             fork_of = body.pop("fork_of", None)
-            if table == "toolset" and isinstance(tools := body.get("tools"), list):
-                body["tools"] = [plan.named("tool", str(t)).digest for t in tools]
-            if table == "scorer" and isinstance(
-                schema := body.get("expectation_schema"), str
-            ):
-                body["expectation_schema"] = plan.named(
-                    "expectation_schema", schema
-                ).digest
+            for key, target in REFERENCES.get(table, {}).items():
+                match body.get(key):
+                    case str() as named:
+                        body[key] = plan.named(target, named).digest
+                    case list() as names:
+                        body[key] = [plan.named(target, str(n)).digest for n in names]
+                    case _:
+                        pass
             # Tools and scorers pin the code that runs them: the running chatddx, which
             # compilations record as their compiler, unless they name other code.
             if table in ("tool", "scorer") and "code" not in body:

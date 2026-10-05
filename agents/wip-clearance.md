@@ -45,6 +45,10 @@ ledger provide the means; the runner enforces.
    - the engine digest plus URL (what the old `EndpointBinding` did).
    Related: whether `RemoteEngine.base_url` stays in the digest or moves to the inventory, so that local and remote
    engines are bound the same way.
+   Since decision 2A (`agents/wip-sample-data.md`, "Engines and endpoints"), the inventory has named endpoints, each
+   binding one engine digest to a URL (`src/chatddx/inventory/inventory.py:EndpointSpec`), and `base_url` stays in
+   the remote engine's digest. So a grant can key on the endpoint's name with the digest and URL it holds, as the
+   old `EndpointBinding` did.
 2. **Where vetting is declared.** In the inventory (ops write it alongside the endpoint) or in the database (granted
    through the portal and logged). The second gives an audit trail and fits the append-only store; the first keeps
    all location facts in one place.
