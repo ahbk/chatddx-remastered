@@ -86,7 +86,7 @@ open, decided (the user said so), held (waits for the language items), done.
 
 ## T: ambiguities and terms
 - T1 "label" means scorer view/resource labels (`catalog.label`) and language entries (`Catalog._label`, "reads …
-  from these labels", `docs/factors.md` "language labels"). Default: keep "label" for scorers only. decided; renaming `_label` is held: language, the factors.md amendment too.
+  from these labels", `docs/factors.md` "language labels"). Default: keep "label" for scorers only. done: `_language`, stray locals renamed, `docs/factors.md` amendment.
 - T2 "Recipes are skeleton threads": a recipe's history is kept on a skeleton thread. decided: doc.
 - T3 fork vs branch. Default: fork. decided: doc.
 - T4 configuration (a skeleton thread, `docs/chatddx.md`) vs variation (a fork of any kind). decided: doc.

@@ -111,16 +111,16 @@ def describe_case(root: str, appendices: Iterable[str], title: Title) -> str:
 
 
 def describe_change(path: str, after: JsonValue, title: Title) -> str:
-    label = path.removeprefix("/recipe/").removeprefix("/")
+    key = path.removeprefix("/recipe/").removeprefix("/")
     match after:
         case None:
-            return f"no {label}"
+            return f"no {key}"
         case str() if _DIGEST.match(after):
-            return f"{label}: {title(after)}"
+            return f"{key}: {title(after)}"
         case str():
-            return f"{label}: {snippet(after)}"
+            return f"{key}: {snippet(after)}"
         case _:
-            return f"{label}: {_value(after)}"
+            return f"{key}: {_value(after)}"
 
 
 def describe(component: Component, title: Title) -> str:

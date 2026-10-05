@@ -915,3 +915,6 @@ Schema plays no part in a component's digest, so adding it back changes no diges
   `run.py`, `score.py`): in "The inventory doesn't locate local engines yet, …", "`Call`
   (`src/chatddx/ledger/ledger.py`)" → "`Call` (`src/chatddx/ledger/call.py`)"; in "Smaller issues", "The model name
   is chosen in several places", "`src/chatddx/ledger/ledger.py:check_run`" → "`src/chatddx/ledger/run.py:check_run`".
+- CHANGE in "Translations": "language labels are catalog entries (`docs/catalog.md`)" → "languages are recorded in
+  the catalog (`docs/catalog.md`)". "Label" now means only a scorer's view and resource labels
+  (`src/chatddx/store/catalog.py:Catalog.label`), so a language is no longer called one.

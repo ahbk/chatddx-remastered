@@ -626,12 +626,12 @@ def test_cases_have_a_language(conn: Connection) -> None:
         )
 
 
-def test_languages_come_from_labels(conn: Connection) -> None:
+def test_languages_come_from_entries(conn: Connection) -> None:
     catalog, store, reg, ids, alice = stored_world(conn)
     base = generation_recipe(reg)
     plan = compiled_recipe(store, reg, base)
 
-    def label(digest: str, language: str) -> int:
+    def in_language(digest: str, language: str) -> int:
         thread = catalog.create(digest, alice.id).thread
         catalog.note(
             Subject(thread=thread),
@@ -643,13 +643,13 @@ def test_languages_come_from_labels(conn: Connection) -> None:
     assert set(texts(base, reg.get)) == {"instructions", "prompt", "output"}
     assert catalog.language_of(plan.skeleton) is None
     assert base.instructions is not None
-    _ = label(base.instructions, "en")
-    _ = label(base.prompt, "en")
+    _ = in_language(base.instructions, "en")
+    _ = in_language(base.prompt, "en")
     assert catalog.language_of(plan.skeleton) is None
-    _ = label(base.output, "en")
+    _ = in_language(base.output, "en")
     assert catalog.language_of(plan.skeleton) == "en"
     assert catalog.language_of(ids["trial"]) == "en"
-    conflicting = label(base.output, "sv")
+    conflicting = in_language(base.output, "sv")
     assert catalog.language_of(base.output) is None
     assert catalog.language_of(plan.skeleton) is None
     catalog.note(Subject(thread=conflicting), Entry(field=EntryField.DELETED), alice.id)
@@ -661,12 +661,12 @@ def test_languages_come_from_labels(conn: Connection) -> None:
         store, reg, base.model_copy(update={"translations": swedish})
     )
     assert catalog.language_of(translated.skeleton) is None
-    _ = label(swedish, "sv")
+    _ = in_language(swedish, "sv")
     assert catalog.language_of(translated.skeleton) == "sv"
 
     hand_written = resolve(reg.get, ids["judge"], Judge).skeleton
     assert catalog.language_of(hand_written) is None
-    _ = label(hand_written, "en")
+    _ = in_language(hand_written, "en")
     assert catalog.language_of(hand_written) == "en"
 
     scoring = resolve(reg.get, ids["scoring"], Scoring)

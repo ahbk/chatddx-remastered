@@ -67,9 +67,9 @@ class _Seeder:
         compilation: str | None = None,
         fork_of: int | None = None,
     ) -> tuple[int, str]:
-        label = f"{kind} {name}" if name is not None else kind
+        what = f"{kind} {name}" if name is not None else kind
         if len(found) > 1:
-            raise ValueError(f"the archive has {len(found)} threads for {label}")
+            raise ValueError(f"the archive has {len(found)} threads for {what}")
         if not found:
             forked_from = None if fork_of is None else self.catalog.head(fork_of).id
             edit = self.catalog.create(

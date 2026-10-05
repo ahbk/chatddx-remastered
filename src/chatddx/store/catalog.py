@@ -372,7 +372,6 @@ class Catalog:
                     return f"{names[t]} (earlier)"
         return self._derive(digest)
 
-    # The language a component is in, from labels; None when unlabelled or unclear.
     def language_of(self, digest: str) -> str | None:
         store = Store(self._conn)
         match self._kind(digest):
@@ -388,19 +387,19 @@ class Catalog:
             case "skeleton":
                 compilations = store.compilations(digest)
                 if not compilations:
-                    return self._label(digest)
+                    return self._language(digest)
                 recipe = compilations[0].recipe
                 if recipe.translations is not None:
-                    return self._label(recipe.translations)
+                    return self._language(recipe.translations)
                 parts: list[str | None] = [
                     getattr(recipe, part)
                     for part in texts(recipe, store.get)
                     if part != "appendix_layout"
                 ]
-                labels = {None if p is None else self._label(p) for p in parts}
-                return labels.pop() if len(labels) == 1 else None
+                languages = {None if p is None else self._language(p) for p in parts}
+                return languages.pop() if len(languages) == 1 else None
             case _:
-                return self._label(digest)
+                return self._language(digest)
 
     def adopt(self, case: str, by: int) -> int:
         with self._conn.transaction():
@@ -633,7 +632,7 @@ class Catalog:
             return None
         return resolve(Store(self._conn).get, edit.compilation, Compilation).recipe
 
-    def _label(self, digest: str) -> str | None:
+    def _language(self, digest: str) -> str | None:
         rows = self._conn.execute(
             f"""
             SELECT DISTINCT (
