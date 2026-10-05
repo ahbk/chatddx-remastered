@@ -23,9 +23,21 @@ open, decided (the user said so), done.
   puts model or engine threads (or tags) in the catalog. Default: not blocking. open
 
 ## A: where the catalog lives
-- A1 package. Options: (a) `chatddx/catalog/` holds models, titles and `Catalog`; migrations stay in store;
-  (b) as (a), plus `catalog/migrations/` collected by `store/migrate.py`; (c) pure/SQL split like factors/ledger.
-  Default: (a), revisit (b) with `docs/store.md`. open
+- A1 package. Decided: (c), like the ledger. `chatddx.catalog` holds the models and every decision, and imports
+  only `chatddx.factors`. `src/chatddx/store/catalog.py:Catalog` stays as a thin layer with the same public
+  methods: it reads rows, calls `chatddx.catalog`, and writes them back in one transaction. All SQL stays in
+  `store`. `core/identity.py` moves to `chatddx/identity/` in the same step. decided
+- A2 "latest wins" (heads, current entries, current bindings, labels). Decided: computed in Python from raw rows;
+  `store` returns rows and decides nothing. The catalog is written by hand, so loading the rows is cheap. decided
+- A3 boundary rule for the docs: "store answers which rows exist; `chatddx.catalog` decides what they mean." Rules
+  that concurrent writers could break still need tier-2 backing. open
+
+## Plan
+1. Decide the items below.
+2. Fix them in the current layout, in small commits pinned by tests.
+3. Refactor to A1 without changing behaviour: the `Catalog` tests stay as they are apart from imports; the pure
+   package gets its own tests, which need no Postgres.
+4. Write `agents/catalog.md` against the final paths.
 
 ## D: the doc says something the code doesn't do
 - D1 "every kind has threads except `case`": `compilation` has none either
