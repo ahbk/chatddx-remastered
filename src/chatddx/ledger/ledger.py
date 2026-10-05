@@ -463,7 +463,34 @@ def check_run(run: Run, registry: Registry) -> list[Finding]:
         )
     calls = [*(c for i in run.items for c in i.calls), *(c.call for c in run.canaries)]
     sent = {i.key: i.call.started_at for i in run.items}
-    return findings + _executed(started.execution, trial, calls, sent)
+    return findings + _executed(started.execution, trial, calls, sent) + _bracketed(run)
+
+
+# Canaries measure the engine before and after the items, so they mustn't overlap them.
+def _bracketed(run: Run) -> list[Finding]:
+    item_calls = [c for i in run.items for c in i.calls]
+    if not item_calls:
+        return []
+    first = min(c.started_at for c in item_calls)
+    last = max(c.finished_at for c in item_calls)
+    early = sum(
+        1 for c in run.canaries if c.phase == "start" and c.call.finished_at > first
+    )
+    late = sum(1 for c in run.canaries if c.phase == "end" and c.call.started_at < last)
+    return [
+        Finding(code="canary.phase", message=message)
+        for count, message in (
+            (
+                early,
+                f"{early} start canary calls hadn't finished when the first item was sent",
+            ),
+            (
+                late,
+                f"{late} end canary calls started before the last item call finished",
+            ),
+        )
+        if count
+    ]
 
 
 # `sent` holds when each item was sent: for a run its first call, for a score its first

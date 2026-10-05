@@ -166,6 +166,8 @@ The package imports only `chatddx.factors`, so the code already leans on factors
   after the score started.
 - Decided (B13, option a): `ToolRun.result` is always the text sent back (required); `error` is an optional reason
   beside it. Replaces B12's "a result or an error". No stored data, so `RunItem.schema_version` stays 1.
+- Decided (B14, option a): `check_run` warns `canary.phase` when canary calls overlap the items.
+- M8 left as is (user).
 
 ## Status
 Draft: `agents/ledger.md`.
@@ -187,7 +189,8 @@ Draft: `agents/ledger.md`.
 | B10 | Decided (b). Code and tests; draft updated; `docs/findings.md`, `docs/chatddx.md` amendments. |
 | F2 | Decided (a). Code and test (supersedes F1's cache dropping); `docs/factors.md` amendment updated. |
 | B13 | Decided (a). Code and tests; draft updated. |
-| B14, B15 | Open, one by one. Listed in the draft's "Open design issues" meanwhile. |
+| B14 | Decided (a). Code and test; draft updated; `docs/findings.md` amendment. |
+| B15 | Open, next. | Listed in the draft's "Open design issues" meanwhile. |
 | B11 | Moved to factors with the compilation; the proposed `docs/factors.md` "Compilation" section states it. Still open. |
 | C1 | Decided (A). Code: `Compilation` in factors, `factor.compilation` dropped, the catalog's foreign keys retargeted, the seeder adds compilations as components. Doc: the draft drops its Compilation section. Amendments: `docs/factors.md`, `docs/store.md`, `docs/chatddx.md`. |
 | C2 | Decided (a). The draft already avoids "tier"; `docs/chatddx.md` amendment. Also proposed: `docs/store.md` wording for schema `ledger` (only `run_item` and `score_item` are case-derived). |

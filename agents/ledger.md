@@ -46,7 +46,7 @@ Each check compares two of these, or one of them with the pinned factors:
 
 | Compares | Findings |
 | --- | --- |
-| Plan and conduct | `run.incomplete`, `score.incomplete`, `execution.retries`, `execution.order`, `execution.concurrency` |
+| Plan and conduct | `run.incomplete`, `score.incomplete`, `execution.retries`, `execution.order`, `execution.concurrency`, `canary.phase` |
 | Pinned factors and plan | `score.scorer_code` |
 | Pinned factors and conduct | `judge.incomplete` |
 | Pinned factors and observations | `attestation.model`, `case.drift`, `tools.unanswered` |
@@ -179,6 +179,9 @@ The arguments aren't repeated: they are in the previous call's response.
 A canary call records one canary of the run's set, sent at one phase. It holds the run's id, the phase (`start` or
 `end`), the canary's position in the set, and a `Call`.
 
+Canaries measure the engine before and after the items, so a start-phase call should finish before the first item
+is sent, and an end-phase call should start after the last item call finishes (see "Run").
+
 ### RunFinished
 - principal author: none; written by the runner
 - defined in: `ledger.py:RunFinished`, `ledger.py:Run.finish`
@@ -221,7 +224,9 @@ It warns (see "Findings") when
   - a call took more attempts than `retries` allows (`execution.retries`);
   - items were sent out of order: an item's first call started before that of an item `Execution.schedule` puts
     ahead of it (`execution.order`);
-  - more calls were in flight at once than `concurrency` allows, canary calls included (`execution.concurrency`).
+  - more calls were in flight at once than `concurrency` allows, canary calls included (`execution.concurrency`);
+- canary calls overlap the items (`canary.phase`): a start-phase call hadn't finished when the first item was sent,
+  or an end-phase call started before the last item call, tool rounds included, had finished.
 
 Canary calls get neither the model check nor the prompt-token check. Timeouts aren't checked (see "Open design
 issues").
@@ -349,6 +354,7 @@ of the ledger's findings are warnings.
 | `execution.retries` | `check_run`, `check_score` | none | Some calls took more attempts than the run's or the score's `retries` allows. One finding, with the count. |
 | `execution.order` | `check_run`, `check_score` | none | Some items were sent before items the order schedules ahead of them. One finding, with the count. |
 | `execution.concurrency` | `check_run`, `check_score` | none | More calls were in flight at once than `concurrency` allows. One finding, with the peak. |
+| `canary.phase` | `check_run` | none | Some start-phase canary calls hadn't finished when the first item was sent, or some end-phase ones started before the last item call finished. One finding for each phase, with the count. |
 | `attestation.prompt_tokens` | `check_run` | none | Some items have a call without a prompt-token fingerprint, for example because the engine didn't return token ids. One finding, with the count. |
 | `attestation.prompt_tokens_drift` | `compare_prompt_tokens` | item key | The engine read different prompt tokens for the same item in two runs. |
 | `ledger.seal` | `check_run`, `check_score` | run or score id | The rows no longer match the seal in the finished row. |
@@ -385,8 +391,6 @@ Some records state what should happen and others what did, but nothing compares 
 
 ### Smaller issues
 - **Canary drift isn't checked.** Nothing compares canary outputs between phases or between runs.
-- **Canary phases aren't checked against the items.** Nothing checks that start-phase canary calls come before the
-  items and end-phase ones after them.
 - **The tool code that ran isn't recorded.** A tool pins its code like a scorer (`docs/factors.md`, "Tool"), but a
   `ToolRun` doesn't say which code ran, so nothing like `score.scorer_code` is possible for tools.
 - **Only run items are attested.** Canary calls and judge calls get no model check and no prompt-token check.

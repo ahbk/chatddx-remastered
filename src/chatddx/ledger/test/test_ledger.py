@@ -340,6 +340,45 @@ def test_execution_is_checked_against_the_calls(reg: Registry) -> None:
     assert check(Execution(concurrency=2), item(0, 0, 6), item(1, 5, 9)) == []
 
 
+def test_canaries_bracket_the_items(reg: Registry) -> None:
+    ids = world(reg)
+    run_id = uuid4()
+    vignette = resolve(reg.get, ids["case"], Case).vignette.fingerprint
+
+    def call(start: int, end: int) -> Call:
+        return Call(
+            request=fp("body"),
+            started_at=NOW + timedelta(seconds=start),
+            finished_at=NOW + timedelta(seconds=end),
+        )
+
+    item = RunItem(
+        run=run_id,
+        key=ItemKey(case=ids["case"], replicate=0),
+        vignette=vignette,
+        call=call(10, 20),
+    )
+
+    def check(start: tuple[int, int], end: tuple[int, int]) -> list[str]:
+        started = RunStarted(
+            run=run_id, at=NOW, rig=RIG, trial=ids["trial"], canaries=ids["canaries"]
+        )
+        canaries = (
+            CanaryCall(run=run_id, phase="start", canary=0, call=call(*start)),
+            CanaryCall(run=run_id, phase="end", canary=0, call=call(*end)),
+        )
+        run = Run(stages=(started,), items=(item,), canaries=canaries)
+        return [f.message for f in check_run(run, reg) if f.code == "canary.phase"]
+
+    assert check((0, 10), (20, 30)) == []
+    assert check((0, 15), (25, 30)) == [
+        "1 start canary calls hadn't finished when the first item was sent"
+    ]
+    assert check((0, 5), (15, 30)) == [
+        "1 end canary calls started before the last item call finished"
+    ]
+
+
 def test_judge_calls_are_checked_against_the_score_execution(reg: Registry) -> None:
     ids = world(reg)
     run_id, score_id = uuid4(), uuid4()

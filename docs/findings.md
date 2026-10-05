@@ -113,3 +113,6 @@ the vignette read at the source differs from the case's fingerprint (`prepare_ca
   no model name; calls without a response are skipped" (`src/chatddx/ledger/ledger.py:check_run`).
 - ADD to "Ledger": `score.run_unfinished`: the run hasn't finished, or finished after the score started, so the
   scorer may have graded only part of it (`src/chatddx/ledger/ledger.py:check_score`).
+- ADD to "Ledger": `canary.phase`: canary calls overlap the items: a start-phase call hadn't finished when the
+  first item was sent, or an end-phase call started before the last item call finished (`src/chatddx/ledger/ledger.py:check_run`,
+  `_bracketed`).
