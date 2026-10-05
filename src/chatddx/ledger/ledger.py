@@ -556,7 +556,14 @@ def _rounds(item: RunItem, skeleton: Skeleton, registry: Registry) -> list[Findi
     return []
 
 
-def compare_prompt_tokens(a: Run, b: Run) -> list[Finding]:
+def compare_prompt_tokens(a: Run, b: Run, registry: Registry) -> list[Finding]:
+    ta, tb = (resolve(registry.get, r.started.trial, Trial) for r in (a, b))
+    if differ := [
+        f for f in ("skeleton", "engine", "cleanup") if getattr(ta, f) != getattr(tb, f)
+    ]:
+        raise StructuralError(
+            f"the runs build their prompts from different {', '.join(differ)}"
+        )
     theirs = {i.key: i.call.prompt_tokens for i in b.items}
     return [
         Finding(

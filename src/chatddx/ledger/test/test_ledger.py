@@ -117,9 +117,22 @@ def test_run_and_score_checks(reg: Registry) -> None:
             item(1, items[1].call.model_copy(update={"prompt_tokens": None})),
         ),
     )
-    assert [f.code for f in compare_prompt_tokens(rerun, run)] == [
+    assert [f.code for f in compare_prompt_tokens(rerun, run, reg)] == [
         "attestation.prompt_tokens_drift"
     ]
+    trial = resolve(reg.get, ids["trial"], Trial)
+
+    def run_of(**changes: object) -> Run:
+        other = reg.add(Trial.model_validate({**trial.model_dump(), **changes}))
+        moved = started.model_copy(update={"trial": other})
+        return Run(stages=(moved,), items=rerun.items)
+
+    reseeded = run_of(seeds=(9, 10))
+    assert [f.code for f in compare_prompt_tokens(reseeded, run, reg)] == [
+        "attestation.prompt_tokens_drift"
+    ]
+    with pytest.raises(StructuralError, match="different cleanup"):
+        _ = compare_prompt_tokens(run_of(cleanup=("strip@1",)), run, reg)
     assert "attestation.prompt_tokens" in [f.code for f in check_run(rerun, reg)]
 
     with pytest.raises(StructuralError, match="outside the trial"):

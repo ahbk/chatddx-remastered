@@ -224,10 +224,12 @@ It warns (see "Findings") when
 Canary calls get neither the model check nor the prompt-token check. Timeouts aren't checked (see "Open design
 issues").
 
-`compare_prompt_tokens(a, b)` compares two runs item by item, matching items by key. It warns
+`compare_prompt_tokens(a, b, registry)` compares two runs item by item, matching items by key. It warns
 (`attestation.prompt_tokens_drift`) where both first calls have a prompt-token fingerprint and the two differ: the
 engine read different tokens for the same item. Later calls aren't compared, since they depend on what the tools
-returned. It doesn't check that the two runs are of the same trial.
+returned. It refuses (`StructuralError`) two runs whose trials build their prompts differently: another skeleton, engine
+or text cleanup. The runs may be of different trials otherwise, since cases are matched by key and the seed doesn't
+shape the prompt.
 
 ## Call
 - principal author: none; written by the runner or the scorer as part of another record
@@ -385,8 +387,6 @@ Some records state what should happen and others what did, but nothing compares 
 - **Only run items are attested.** Canary calls and judge calls get no model check and no prompt-token check.
 - **A response without a model name passes** the model check.
 - **`system_fingerprint` is kept but never compared** between calls or runs.
-- **`compare_prompt_tokens` takes any two runs.** It matches items by key and doesn't check that the runs are of the
-  same trial.
 - **A score may grade an unfinished run.** `check_score` doesn't ask for the run to be finished or its seal to hold.
 - **Missing expectations aren't flagged.** `check_score` doesn't warn when a run item's case has no expectation in
   the scoring.

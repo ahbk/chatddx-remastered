@@ -157,6 +157,8 @@ The package imports only `chatddx.factors`, so the code already leans on factors
   check compares.
 - Decided (B7, option a): `ScoreStarted.execution`, checked over judge calls with the run's three checks; a run item
   counts as sent when its first judge call starts.
+- Decided (B8, option b): `compare_prompt_tokens` refuses runs whose trials differ in skeleton, engine or cleanup;
+  cases and seeds may differ.
 
 ## Status
 Draft: `agents/ledger.md`.
@@ -172,7 +174,8 @@ Draft: `agents/ledger.md`.
 | B4 | Decided (b). Code and tests (`_executed`); draft updated; `docs/findings.md`, `docs/factors.md` (send-order wording), `docs/chatddx.md` amendments. Timeouts stay an open issue. |
 | B5 | Decided (a). Code and tests; draft updated; `docs/findings.md`, `docs/factors.md`, `docs/chatddx.md` amendments. |
 | B7 | Decided (a). Code and test; draft updated; `docs/factors.md`, `docs/findings.md`, `docs/chatddx.md` amendments. |
-| B8–B10, B13, B14, B15 | Open, one by one. Listed in the draft's "Open design issues" meanwhile. |
+| B8 | Decided (b). Code and test; draft updated. |
+| B9, B10, B13, B14, B15 | Open, one by one. Listed in the draft's "Open design issues" meanwhile. |
 | B11 | Moved to factors with the compilation; the proposed `docs/factors.md` "Compilation" section states it. Still open. |
 | C1 | Decided (A). Code: `Compilation` in factors, `factor.compilation` dropped, the catalog's foreign keys retargeted, the seeder adds compilations as components. Doc: the draft drops its Compilation section. Amendments: `docs/factors.md`, `docs/store.md`, `docs/chatddx.md`. |
 | C2 | Decided (a). The draft already avoids "tier"; `docs/chatddx.md` amendment. Also proposed: `docs/store.md` wording for schema `ledger` (only `run_item` and `score_item` are case-derived). |
@@ -212,6 +215,17 @@ Draft: `agents/ledger.md`.
   observed ones"): the plan (started rows), the rig's conduct (what it sent, when, how many attempts, which tool
   results), and observations (what the world answered). The checks pair them up.
 - **L4** Fixed in the draft: "Each such fact is a *record*"; a record is a row holding many facts.
+
+## Check of 17067a0
+- **M1** "Execution" speaks of runs and trials only: scores also write their own settings, outside the scoring's
+  digest, and `order` also orders a score's judge requests.
+- **M2** "Timeout and retries … do not affect output beyond that, regardless of batch invariance": on an engine
+  that isn't batch invariant, a retried or timed-out request changes which requests are batched together, so it
+  can change outputs, its own and others'.
+- **M3** The `check_score` half of the last paragraph points to `docs/ledger.md` "Run" only; "Score" too.
+- **F1** (factors) `Component.model_copy(update=…)` keeps the cached `digest` and `canonical` of the original
+  (`src/chatddx/factors/base.py:Component`, `cached_property`): the copy reports the old digest. No production code
+  does it today; tests must build a fresh component.
 
 ## Surprises
 - `ruff check src` fails on `src/chatddx/inventory/test/test_inventory.py` (import order) at `e635b97`, before
