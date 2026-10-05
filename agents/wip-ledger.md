@@ -143,9 +143,11 @@ The package imports only `chatddx.factors`, so the code already leans on factors
   beside canary sets as instruments. It lives in `src/chatddx/factors/request.py`, without `at`; the ledger is the
   run and score logs only, which is also what schema `ledger` holds. No data to keep: migrations `0001`, `0003` and
   `0009` were edited in place, following `e635b97`.
+- Decided (C2, option a): "tier" means only the store's integrity tiers. Reproducibility is described in plain
+  words: bitwise reproducible, or best-effort. Amendment proposed for `docs/chatddx.md` ("Compromises").
 
 ## Status
-Draft: `agents/ledger.md`. Its avoiding "tier" is provisional until C2 is cleared.
+Draft: `agents/ledger.md`.
 
 | Item | Outcome |
 | --- | --- |
@@ -158,7 +160,7 @@ Draft: `agents/ledger.md`. Its avoiding "tier" is provisional until C2 is cleare
 | B4, B5, B7–B10, B13 | Open, one by one. Listed in the draft's "Open design issues" meanwhile. |
 | B11 | Moved to factors with the compilation; the proposed `docs/factors.md` "Compilation" section states it. Still open. |
 | C1 | Decided (A). Code: `Compilation` in factors, `factor.compilation` dropped, the catalog's foreign keys retargeted, the seeder adds compilations as components. Doc: the draft drops its Compilation section. Amendments: `docs/factors.md`, `docs/store.md`, `docs/chatddx.md`. |
-| C2 | Open, next. |
+| C2 | Decided (a). The draft already avoids "tier"; `docs/chatddx.md` amendment. Also proposed: `docs/store.md` wording for schema `ledger` (only `run_item` and `score_item` are case-derived). |
 | C3–C7 | Doc. |
 | D1–D3 | Out of the doc; `docs/store.md` (D1) and `docs/catalog.md` (D2) already cover them; D3 → `docs/clearance.md` amendment. |
 | D4 | Kept: bundles are a factors concept. Open issue "Records aren't in bundles". |

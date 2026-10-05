@@ -193,3 +193,8 @@ tier-2 triggers).
 - CHANGE "Store API": "`run(id)`, `score(id)`, `compilations(skeleton)`: reassemble from rows" → "`run(id)`,
   `score(id)`: reassemble from rows; seals don't depend on row order. `compilations(skeleton)`: the compilation
   components whose `/skeleton` reference points at the skeleton, by digest" (`src/chatddx/store/store.py`).
+- CHANGE "Layout": "Schema `ledger`, case-derived:" → "Schema `ledger`, the run and score logs (`docs/ledger.md`):",
+  and ADD after the table list: "Of these, only `run_item` and `score_item` hold case-derived records
+  (`src/chatddx/ledger/ledger.py:Record.case_derived`). The stage rows and canary calls sit beside them so that
+  each log stays in one schema; `chatddx_reader`, refused the whole schema at tier 1
+  (`src/chatddx/store/migrations/0002-t1-grants.sql`), can't read them either."
