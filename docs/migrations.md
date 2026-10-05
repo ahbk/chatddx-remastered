@@ -99,3 +99,7 @@ it, if any. A new schema gets its own section with all three tiers.
   - Language tags and kinds on `catalog.language`, and no language for a skeleton already known to be compiled
     (`src/chatddx/catalog/language.py:check_language`).
   - Insert-only triggers on every table.
+
+## Proposed amendments
+- CHANGE under "ledger" the headings "#### Tier 1" and "#### Tier 2" → "### Tier 1" and "### Tier 2", as under the
+  other schemas.

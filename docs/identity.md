@@ -57,5 +57,6 @@ development path. Roles could then come from Keycloak's realm roles instead of t
   holds its SQL.
 - CHANGE in "People" "`src/chatddx/store/migrations/0004-t0-identity.sql`, `0006-t0-identity-auth.sql`" →
   "`src/chatddx/store/migrations/0007-t0-identity.sql`", and in "Roles"
-  "`src/chatddx/store/migrations/0008-t2-identity-checks.sql`" → "`src/chatddx/store/migrations/0009-t2-identity.sql`":
-  the migrations are squashed into one per schema and tier (`agents/store.md`, "Migrations").
+  "`src/chatddx/store/migrations/0008-t2-identity-checks.sql`" →
+  "`src/chatddx/store/migrations/0009-t2-identity.sql`": the migrations are squashed into one per schema and tier
+  (`docs/migrations.md`).

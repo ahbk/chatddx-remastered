@@ -64,3 +64,26 @@ fail, rather than skip, when Postgres is unreachable.
   rebuild them from `doc`.
 - No async API yet; the runner may want one (psycopg 3 has both).
 - Per-kind read-only views, for a future ORM, aren't written.
+
+## Proposed amendments
+- CHANGE in "Code", the `Store` bullet: "writes components with their reference rows in one transaction" → "writes
+  components with their reference rows in one transaction, skipping those already stored"; "`append(*records)`
+  writes ledger rows in one transaction and never overwrites one" → "`append(*records)` writes ledger rows in one
+  transaction and raises on a duplicate key, so a row is never overwritten"; and ADD "`load` returns a `Registry`
+  without checking it, so `Registry.check` and `Registry.bundle` work on it as on any other"
+  (`src/chatddx/store/store.py`).
+- ADD to "Known gaps": "A log can be written that can't be read back. `Store.append` checks only keys and foreign
+  keys, and a finished row has no foreign key to its started row, so a finished row alone is accepted, and
+  `Store.run` then fails with `StructuralError: RunStarted vNone is not readable by v1`. `Run` and `Score` validate a
+  log only when it is read." (`migrations/0004-t0-ledger.sql`, `store.py:Store.run`, `Store.score`)
+- ADD to "Known gaps": "`RunStarted.canaries` has no foreign key, so a run can name a canary set that isn't stored,
+  and `check_run` then can't resolve it." (`migrations/0004-t0-ledger.sql`, `src/chatddx/ledger/run.py:RunStarted`,
+  `check_run`)
+- ADD to "Known gaps": "Runs and scores can't be found: `Store.run` and `Store.score` take an id, and nothing lists the
+  runs of a trial or the scores of a run." (`store.py`)
+- ADD to "Known gaps": "A schema-version bump strands stored rows. `Store.get`, `load`, `run` and `score` parse every
+  row, and parsing refuses another version (`docs/factors.md`, "Versions"; `docs/ledger.md`, "Canonical form and
+  versions"), so after a bump the store can't return rows of the old version, nor load a closure that holds one. The
+  rows can't be rewritten either: the tables are insert-only, and digests and seals depend on the bytes.
+  `docs/factors.md`, "Splitting expectations", already considers a bump of `Scorer.schema_version`."
+  (`src/chatddx/factors/base.py:parse_component`, `src/chatddx/ledger/record.py:Record.parse`)

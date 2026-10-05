@@ -391,3 +391,20 @@ Most of the plan is compared with what happened (see "What a record holds"), but
   how records travel with the factors they reference, for example for publication, isn't specified.
 
 ## Proposed amendments
+- ADD a section "Storage" before "Terms": "The ledger is the schema `ledger` (`docs/store.md`; tables in
+  `docs/migrations.md`, "ledger"): one table per row type, each row holding its record's canonical bytes (`payload`)
+  and a `jsonb` copy (`doc`).
+  - `Store.append(*records)` writes rows in one transaction and raises on a duplicate key, so a row is never
+    overwritten. It checks nothing else: `Run` and `Score` validate a log when `Store.run(id)` and `Store.score(id)`
+    read it back.
+  - Components come first: a started row's trial, a score's scoring and an item's case must already be stored
+    (`Store.add`), and a score's started row needs its run's started row. A run's canary set has no foreign key, so
+    nothing makes sure it is stored, and `check_run` can't resolve it if it isn't.
+  - `check_run` takes its registry from `Store.load([trial, canaries])`, and `check_score` from `Store.load` of the
+    scoring and the run's trial.
+  - `chatddx_reader` can't read the schema at all, which is the store's answer to "Case-derived records"."
+  (`src/chatddx/store/store.py:Store.append`, `Store.run`, `Store.score`;
+  `src/chatddx/store/migrations/0004-t0-ledger.sql`, `0005-t1-ledger.sql`; `run.py:check_run`, `score.py:check_score`)
+- ADD to "Canonical form and versions": "The store parses every row it returns, so after a bump it can't return rows
+  of the old version (`docs/store.md`, "Known gaps")." (`src/chatddx/store/store.py:Store.run`, `Store.score`,
+  `record.py:Record.parse`)
