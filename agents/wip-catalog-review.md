@@ -63,7 +63,7 @@ open, decided (the user said so), held (waits for the language items), done.
 
 ## B: code that looks wrong, or gaps (B1-B5 confirmed with a probe)
 - B1 titles leave out translations and toolset: an English and a Swedish configuration get identical titles
-  (`src/chatddx/core/titles.py:92`). Default: add both. done (6b79f40); a title for translations that names its language is held: language.
+  (`src/chatddx/core/titles.py:92`). Default: add both. done (6b79f40); a translations chunk's title names its language: done (56ace55).
 - B2 engine titles leave out hardware: the 3070 and 5090 engines of one model and runtime collide
   (`src/chatddx/core/titles.py:177`). Default: add the GPU. done (6b79f40), the GPU in parentheses.
 - B3 every case of a family has the family's name as its title, whatever its appendices
@@ -77,8 +77,10 @@ open, decided (the user said so), held (waits for the language items), done.
   Default: document. decided: doc.
 - B6 `language_of`: a trial follows its skeleton, a judge doesn't (it falls to its own row). Since B4, a language
   can be written on any stored digest, but `language_of` ignores it on compiled skeletons, trials, expectations
-  and cases, whose language comes from elsewhere. Open: does a judge follow its skeleton, and which kinds may have a
-  language at all. held: language.
+  and cases, whose language comes from elsewhere. Decided: a judge follows its skeleton; a language is refused
+  except on `LANGUAGE_KINDS` (text-bearing chunks, skeletons), and on a skeleton already known to be compiled. done
+  (857147a). Residual, for "Open design issues": a language written on a skeleton that is compiled later is
+  ignored.
 - B7 a skeleton with several compilations: `language_of` and titles use the first by digest. Default: language needs
   all to agree; titles keep the first. held: language.
 - B8 `repair(id=…)` doesn't check that the new place is free, so two families can end up bound to one vignette,
@@ -96,7 +98,7 @@ open, decided (the user said so), held (waits for the language items), done.
 - T5 `Variation.head` is the origin's head, not the fork's. Default: rename it. done (f1e397f): `origin_head`.
 - T6 `catalog.binding.vignette` holds a fingerprint; `Binding.vignette` is (source, id, fingerprint). Default:
   clarify in the doc, leave the column. Reopened: no deployed data, so the column could be renamed `fingerprint`.
-  open
+  done (d22a11e, migrations 0025, 0026).
 - T7 owner: is a thread's creator its owner? Nothing writes an owner on `create`; the seed does it by hand. Also
   "owner" in the roles' sense (`docs/chatddx.md`, "Roles mentioned"). done (0e56ad2): `Catalog.create(owner=)`, the creator by default.
 - T8 any field is accepted on any subject; removal differs per field (name: no value; tag, collaborator:
