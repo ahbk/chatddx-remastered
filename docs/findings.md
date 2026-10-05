@@ -14,7 +14,7 @@ some run items have no prompt-token fingerprint, for example because the engine 
 - `attestation.prompt_tokens_drift`:
 an item read different prompt tokens than the same item in another run (`compare_prompt_tokens`).
 
-`run.incomplete`:
+- `run.incomplete`:
 a finished run lacks some of the trial's items, or some planned canary calls (`check_run`).
 
 - `ledger.seal`:

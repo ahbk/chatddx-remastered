@@ -242,7 +242,6 @@ There is however an intended flow of data behind the pieces, which is described 
  - raises if the score belongs to another run;
  - raises if a view position is out of range;
  - raises if an item isn't in the run;
- - raises if a judge isn't one the scorer's views name, or a seed index is out of range;
  - warns if rows changed after sealing.
  - raises for duplicate score items
  - raises for a judge call whose judge isn't its item's view's judge

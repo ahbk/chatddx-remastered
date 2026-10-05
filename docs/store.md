@@ -21,7 +21,7 @@ It includes roles and owner (admin) setup, migrations and tests.
     it again is a no-op.
 
 - Schema `ledger`, case-derived: `run_stage (run, stage)`, `run_item (run, case, replicate)`,
-  `canary_call (run, phase, probe)`, `score_stage (score, stage)`, `score_item (score, case, replicate, view)`.
+  `canary_call (run, phase, canary)`, `score_stage (score, stage)`, `score_item (score, case, replicate, view)`.
   Item rows reference their log's started row through a constant `stage` column. `payload` holds
   `Record.canonical`; `doc` is its `jsonb` copy.
 
@@ -178,6 +178,3 @@ tier-2 triggers).
   `Store.load`); a future ORM or view must not rebuild them from `doc`." (`src/chatddx/factors/base.py:46`)
 
 ## Proposed amendments
-
-- CHANGE: in "Layout", `canary_call (run, phase, probe)` → `canary_call (run, phase, canary)`; there is no `probe`
-  column (`src/chatddx/store/migrations/0001-t0-tables.sql`, `ledger.canary_call`).
