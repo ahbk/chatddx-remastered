@@ -34,13 +34,13 @@ it, if any. A new schema gets its own section with all three tiers.
   rows and canary calls reference their log's started row through a constant `stage` column, and a score's started
   row references its run's. Trials, scorings and cases reference `factor.component`.
 
-#### Tier 1
+### Tier 1
 - `0005-t1-ledger.sql`: PUBLIC loses all access; the writer gets SELECT, INSERT, with default privileges. The reader
   gets nothing: `run_item` and `score_item` hold case-derived records
   (`src/chatddx/ledger/record.py:Record.case_derived`), and the stage rows and canary calls sit beside them so that
   each log stays in one schema.
 
-#### Tier 2
+### Tier 2
 - `0006-t2-ledger.sql`: CHECKs that `doc` matches `payload` and that every key column matches `doc`; insert-only
   triggers on every table.
 
@@ -99,7 +99,3 @@ it, if any. A new schema gets its own section with all three tiers.
   - Language tags and kinds on `catalog.language`, and no language for a skeleton already known to be compiled
     (`src/chatddx/catalog/language.py:check_language`).
   - Insert-only triggers on every table.
-
-## Proposed amendments
-- CHANGE under "ledger" the headings "#### Tier 1" and "#### Tier 2" → "### Tier 1" and "### Tier 2", as under the
-  other schemas.

@@ -93,6 +93,9 @@ Each component type has a schema version (`base.py:Component.schema_version`, 1 
 field with a backward-compatible default needs no new version; changing an existing field's meaning or default
 does. Bytes written with another version are refused rather than guessed at (`base.py:parse_component`).
 
+The store parses every component it returns, so after a bump it can't return components of the old version, nor
+load a closure that holds one (`docs/store.md`, "Known gaps").
+
 ### Kinds
 Every component has a `kind` that says what it is: `model`, `engine.local`, `engine.remote`, the nine chunk kinds
 (`chunk.instructions`, `chunk.few_shot`, `chunk.prompt`, `chunk.output`, `chunk.sampling`, `chunk.reasoning`,
@@ -137,8 +140,16 @@ SHA-256 by default, or HMAC-SHA-256 with a `key_id` naming the key (`Fingerprint
 pin their code this way, and bundles name the code that wrote them.
 
 ### Storage
-Components are stored in one table for all kinds, plus one row per reference so that every reference gets a
-foreign key (`docs/store.md`).
+Components are stored in one table for all kinds, plus one row per reference so that every reference gets a foreign
+key (`docs/store.md`; tables in `docs/migrations.md`, "factor").
+
+`src/chatddx/store/store.py:Store.add(registry, roots)` checks the closure (`Registry.check`) and writes it; a
+component already stored is skipped, so adding again is a no-op. `Store.get` and `Store.load(roots)` read components
+back from their canonical text through `Registry.add_raw`, so digests are verified, but `load` returns the registry
+unchecked and reports no `bundle.recanonicalized`.
+
+A bundle is exported with `Store.load(roots).bundle(roots, generator)` and imported with `Bundle.load()` followed
+by `Store.add`.
 
 ## Terms
 
@@ -452,6 +463,9 @@ affect each other"), so a skeleton may have several compilations, and a hand-wri
 Its references, the recipe's chunks and the skeleton, are checked like any component's. A bundle carries a
 compilation when it is one of the roots, and the chunks then come with it, so the bundle shows how its skeleton was
 made. Nothing checks that the recipe compiles to the skeleton.
+
+Since no component refers to a compilation, a skeleton's compilations are found through their `/skeleton` reference
+rows (`src/chatddx/store/store.py:Store.compilations`).
 
 ### Skeleton
 - principal author: none; normally produced by `compile_request`
@@ -911,16 +925,3 @@ reference, straight from the schema. `RefTo` used to do this, and was stopped be
 Schema plays no part in a component's digest, so adding it back changes no digest.
 
 ## Proposed amendments
-- CHANGE "Storage" to: "Components are stored in one table for all kinds, plus one row per reference so that every
-  reference gets a foreign key (`docs/store.md`; tables in `docs/migrations.md`, "factor").
-  `src/chatddx/store/store.py:Store.add(registry, roots)` checks the closure (`Registry.check`) and writes it; a
-  component already stored is skipped, so adding again is a no-op. `Store.get` and `Store.load(roots)` read components
-  back from their canonical text through `Registry.add_raw`, so digests are verified, but `load` returns the registry
-  unchecked and reports no `bundle.recanonicalized`. A bundle is exported with `Store.load(roots).bundle(roots,
-  generator)` and imported with `Bundle.load()` followed by `Store.add`." (`src/chatddx/store/store.py`,
-  `bundle.py:Registry.add_raw`, `Bundle.load`)
-- ADD to "Compilation": "Since no component refers to a compilation, a skeleton's compilations are found through
-  their `/skeleton` reference rows (`src/chatddx/store/store.py:Store.compilations`)."
-- ADD to "Versions": "The store parses every component it returns, so after a bump it can't return components of the
-  old version, nor load a closure that holds one (`docs/store.md`, "Known gaps")."
-  (`src/chatddx/store/store.py:Store.get`, `Store.load`, `bundle.py:Registry.add_raw`)

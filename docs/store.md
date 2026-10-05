@@ -9,15 +9,17 @@ Code paths are relative to `src/chatddx/store/` unless they start with `src/` or
 Migrations are documented in `docs/migrations.md`.
 
 ## Code
-- `store.py:Store`: components and records. `add(registry, roots)` checks the closure and writes components with
-  their reference rows in one transaction; `get` and `load` read them back from `canonical` and verify digests;
-  `append(*records)` writes ledger rows in one transaction and never overwrites one; `run` and `score` reassemble
-  records from rows; `compilations(skeleton)` finds a skeleton's compilations by their `/skeleton` reference.
+- `store.py:Store`: components and records.
+  - `add(registry, roots)` checks the closure and writes components with their reference rows in one transaction,
+    skipping those already stored; `get` and `load` read them back from `canonical` and verify digests;
+  - `append(*records)` writes ledger rows in one transaction and raises on a duplicate key, so a row is never
+    overwritten.
 - `people.py:People`: people, passwords and sessions.
 - `catalog.py:Catalog`: the catalog's writes and reads. Each method reads through `catalog.py:Rows`, which answers
   `src/chatddx/catalog/read.py:Reader` from the tables, lets `chatddx.catalog` decide, and writes the result in one
   transaction. The store answers which rows exist; `chatddx.catalog` decides what they mean.
 - `migrate.py`: `migrate(conn, tier)` and `pending(conn, tier)`.
+- `load` returns a `Registry` without checking it, so `Registry.check` and `Registry.bundle` work on it as on any other.
 
 ## Tiers
 Integrity comes in three tiers, and a deployment applies migrations up to a chosen tier. Each schema has migrations
@@ -64,26 +66,17 @@ fail, rather than skip, when Postgres is unreachable.
   rebuild them from `doc`.
 - No async API yet; the runner may want one (psycopg 3 has both).
 - Per-kind read-only views, for a future ORM, aren't written.
+- A log can be written that can't be read back. `Store.append` checks only keys and foreign keys, and a finished
+  row has no foreign key to its started row, so a finished row alone is accepted, and `Store.run` then fails with
+  `StructuralError: RunStarted vNone is not readable by v1`. `Run` and `Score` validate a log only when it is read.
+- `RunStarted.canaries` has no foreign key, so a run can name a canary set that isn't stored, and `check_run` then
+  can't resolve it." (`migrations/0004-t0-ledger.sql`, `src/chatddx/ledger/run.py:RunStarted`, `check_run`)
+- Runs and scores can't be found: `Store.run` and `Store.score` take an id, and nothing lists the runs of a trial
+  or the scores of a run.
+- A schema-version bump strands stored rows. `Store.get`, `load`, `run` and `score` parse every row, and parsing
+  refuses another version (`docs/factors.md`, "Versions"; `docs/ledger.md`, "Canonical form and versions"), so
+  after a bump the store can't return rows of the old version, nor load a closure that holds one. The rows can't
+  be rewritten either: the tables are insert-only, and digests and seals depend on the bytes.
+  `docs/factors.md`, "Splitting expectations", already considers a bump of `Scorer.schema_version`.
 
 ## Proposed amendments
-- CHANGE in "Code", the `Store` bullet: "writes components with their reference rows in one transaction" → "writes
-  components with their reference rows in one transaction, skipping those already stored"; "`append(*records)`
-  writes ledger rows in one transaction and never overwrites one" → "`append(*records)` writes ledger rows in one
-  transaction and raises on a duplicate key, so a row is never overwritten"; and ADD "`load` returns a `Registry`
-  without checking it, so `Registry.check` and `Registry.bundle` work on it as on any other"
-  (`src/chatddx/store/store.py`).
-- ADD to "Known gaps": "A log can be written that can't be read back. `Store.append` checks only keys and foreign
-  keys, and a finished row has no foreign key to its started row, so a finished row alone is accepted, and
-  `Store.run` then fails with `StructuralError: RunStarted vNone is not readable by v1`. `Run` and `Score` validate a
-  log only when it is read." (`migrations/0004-t0-ledger.sql`, `store.py:Store.run`, `Store.score`)
-- ADD to "Known gaps": "`RunStarted.canaries` has no foreign key, so a run can name a canary set that isn't stored,
-  and `check_run` then can't resolve it." (`migrations/0004-t0-ledger.sql`, `src/chatddx/ledger/run.py:RunStarted`,
-  `check_run`)
-- ADD to "Known gaps": "Runs and scores can't be found: `Store.run` and `Store.score` take an id, and nothing lists the
-  runs of a trial or the scores of a run." (`store.py`)
-- ADD to "Known gaps": "A schema-version bump strands stored rows. `Store.get`, `load`, `run` and `score` parse every
-  row, and parsing refuses another version (`docs/factors.md`, "Versions"; `docs/ledger.md`, "Canonical form and
-  versions"), so after a bump the store can't return rows of the old version, nor load a closure that holds one. The
-  rows can't be rewritten either: the tables are insert-only, and digests and seals depend on the bytes.
-  `docs/factors.md`, "Splitting expectations", already considers a bump of `Scorer.schema_version`."
-  (`src/chatddx/factors/base.py:parse_component`, `src/chatddx/ledger/record.py:Record.parse`)
