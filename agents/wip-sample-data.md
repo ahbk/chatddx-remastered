@@ -36,9 +36,6 @@ Settle these first.
    sample seed engines with values marked as placeholders until then?
 
 ### Worth doing early
-- **`init-data` lints what it lands** and prints the findings (G14). Nothing outside the tests calls
-  `src/chatddx/factors/lint.py:lint` or `src/chatddx/facts/lint.py:lint`. The expectation lints would apply to the
-  seeded expectations today, and the vLLM, facts and language lints once trials and judges are seeded.
 - **The fake vLLM.** It's planned (`docs/vllm.md`, AGENTS.md) but not started. The engine and runner work will want
   to test against it. The old repo has one to start from: `src/chatddx/dev/fake_vllm.py` at 7893656 (660 lines), with
   canned answers in `src/chatddx/dev/samples/` (`typical`, `rich`, `broken`) and tests in `src/chatddx/dev/tests/`.
@@ -108,7 +105,7 @@ them as a World would:
 `chatddx init-data USER (--vignettes DIR | --world FILE) [--source NAME] [--giftbag] [--data DIR] [--facts PATH …]`
 (`src/chatddx/cli.py`) connects as `DB_USER` and seeds in one transaction for the `archive` person, created if
 missing. It shares everything with USER, who must exist (`chatddx person add`). It prints one line per record:
-created, validated, updated, skipped, missing, needs repair, forked or kept.
+created, validated, updated, skipped, missing, needs repair, forked or kept. It ends with the lints' findings.
 - **Inputs.** `--data` is what gets seeded, the package's sample data by default. The vignettes come from
   `--vignettes`, a directory of `<id>.txt` files such as `sample-world/vignettes`, or from `--world`, a World
   inventory whose `[source.<name>]` table locates them, such as `sample-world/inventory.toml`. `--source` names the
@@ -130,6 +127,14 @@ created, validated, updated, skipped, missing, needs repair, forked or kept.
 - **`--giftbag`.** USER also gets their own fork of every chunk, skeleton and expectation thread, so the catalog's
   variations and proposals follow the archive when it moves. Expectation schemas stay the archive's. Existing forks
   are kept (`src/chatddx/seed/write.py:_gifted`).
+- **Lints.** Every component that got a thread or a family this run, validated or not, is linted
+  (`src/chatddx/seed/write.py:_Seeder.lint`): `src/chatddx/factors/lint.py:lint`, with the catalog's languages and
+  the facts' `reasons`, and `src/chatddx/facts/lint.py:lint`, with the facts the plan was made with (`Plan.facts`).
+  A missing case, or one that needs repair, isn't linted. Each finding is a line, `[lint warning] expectation
+  Dutchfall11w: expectation.invalid: at the root: 'diagnosis' is a required property`, naming every record that
+  shares the digest, and a last line counts them: `[lint] 0 findings in 230 components` for the sample. The
+  findings are printed, not stored, and don't stop the seeding. Today only the expectation schema and expectation
+  lints have anything to check. The vLLM, facts and language lints will apply once trials and judges are seeded.
 - **Compiler.** Compilations record the running code as their compiler (`src/chatddx/core/rig.py:rig`): the version
   from the package, and the revision from `CHATDDX_REVISION` when it's set.
 
@@ -227,8 +232,7 @@ Each gap was tagged [maybe fix remastered]: the sample data needed something rem
   - trials aren't re-keyed by a repair; `behind` proposes the new cases to their owners;
   - a repair rebuilds only the cases at the family's current binding, not older ones.
 - **G14. Expectation data isn't validated.** Fixed with lints (`docs/factors.md`, "Lints"). The hand-written targets
-  schema passes all 99 cases' targets. Still open:
-  - `init-data` should lint what it lands (see "Start with this");
+  schema passes all 99 cases' targets, and `init-data` lints what it lands (see "init-data"). Still open:
   - `Output.json_schema` goes to the engine unchecked, and the same validator could give it an
     `output.schema_invalid`.
 

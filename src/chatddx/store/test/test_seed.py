@@ -1,4 +1,5 @@
 from collections import Counter
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -33,7 +34,7 @@ def vignettes(**changed: bytes) -> MemorySource:
 def tally(lines: list[str]) -> Counter[str]:
     def what(line: str) -> str:
         prefix = line[1 : line.index("]")].split(" ")[0]
-        if prefix in ("skipped", "share"):
+        if prefix in ("skipped", "share", "lint"):
             return prefix
         return f"{prefix} {line.split(': ', 1)[1].split(' ')[0]}"
 
@@ -46,13 +47,15 @@ def test_init_data_seeds_the_archive(conn: Connection) -> None:
     lines = seed(conn, plan, CASES, vignettes(), alice)
     threads = len(plan.records) + len(CASES)
     assert tally(lines) == Counter(
-        {"archive created": threads + len(CASES), "skipped": 4, "share": 1}
+        {"archive created": threads + len(CASES), "skipped": 4, "share": 1, "lint": 1}
     )
     shared = threads + len(CASES)
     assert (
-        lines[-1]
+        lines[-2]
         == f"[share] {shared} of {shared} archive threads and families with alice"
     )
+    components = len({r.digest for r in plan.records}) + 2 * len(CASES)
+    assert lines[-1] == f"[lint] 0 findings in {components} components"
 
     catalog = Catalog(conn)
     archive = People(conn).find("archive")
@@ -78,7 +81,20 @@ def test_init_data_seeds_the_archive(conn: Connection) -> None:
 
     again = seed(conn, sample_plan(), CASES, vignettes(), alice)
     assert {v for v in tally(again) if v.startswith("archive")} == {"archive validated"}
-    assert again[-1].startswith("[share] 0 of ")
+    assert again[-2].startswith("[share] 0 of ")
+
+
+def test_init_data_lints_what_it_lands(conn: Connection) -> None:
+    alice = People(conn).add("alice", "Alice")
+    plan = sample_plan()
+    unlike = replace(CASES["Dutchfall11w"], targets={"warning": {"pattern": "shock"}})
+    lines = seed(conn, plan, {**CASES, "Dutchfall11w": unlike}, vignettes(), alice)
+    components = len({r.digest for r in plan.records}) + 2 * len(CASES)
+    assert [line for line in lines if line.startswith("[lint")] == [
+        "[lint warning] expectation Dutchfall11w: expectation.invalid: at the root: "
+        + "'diagnosis' is a required property",
+        f"[lint] 1 finding in {components} components",
+    ]
 
 
 def test_init_data_updates_and_gives_forks(conn: Connection, tmp_path: Path) -> None:

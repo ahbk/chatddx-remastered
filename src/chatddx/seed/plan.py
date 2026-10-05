@@ -69,6 +69,7 @@ class Planned:
 @dataclass
 class Plan:
     registry: Registry
+    facts: Facts
     records: list[Planned] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)
 
@@ -146,7 +147,7 @@ def plan_factors(
     if stray := set(data) - set(TABLES) - {"recipe"}:
         raise ValueError(f"{path}: unknown tables {sorted(stray)}")
     root = root or path.parent
-    plan = Plan(Registry())
+    plan = Plan(Registry(), facts)
     planned: dict[tuple[str, str], Variants] = {}
     models = sorted(facts.models)
 

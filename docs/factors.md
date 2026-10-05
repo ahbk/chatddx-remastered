@@ -928,3 +928,6 @@ reference, straight from the schema. `RefTo` used to do this, and was stopped be
 Schema plays no part in a component's digest, so adding it back changes no digest.
 
 ## Proposed amendments
+- ADD to "Lints", after "run on demand, and no component stores their findings.": "`chatddx init-data` runs
+  them over every component it seeds and prints the findings, which it doesn't store either
+  (`src/chatddx/seed/write.py:_Seeder.lint`)."
