@@ -17,10 +17,11 @@ from .plan import Plan, Planned, SampleCase
 ARCHIVE = "archive"
 
 
-# Kinds a giftbag forks for its owner: what the old giftbag held (slices,
-# configurations and cases' targets). Expectation schemas stay the archive's.
+# Kinds a giftbag forks for its owner: what the old giftbag held (slices with their
+# tools, configurations and cases' targets). Expectation schemas and scorers stay the
+# archive's.
 def _gifted(kind: str) -> bool:
-    return kind.startswith("chunk.") or kind in ("skeleton", "expectation")
+    return kind.startswith("chunk.") or kind in ("tool", "skeleton", "expectation")
 
 
 def _short(digest: str) -> str:
@@ -105,6 +106,10 @@ class _Seeder:
         self.threads[(r.kind, r.name)] = thread
         self.land(r.digest, f"{r.kind} {r.name}")
         self.sync(Subject(thread=thread), r.tags, r.description)
+        labelled = self.catalog.labels(r.digest) if r.labels else {}
+        for position, label in enumerate(r.labels):
+            if label is not None and labelled.get(("view", position)) != label:
+                self.catalog.label(r.digest, "view", position, label, self.archive.id)
         self.lines.append(f"[archive {r.kind}] {r.name}: {verb} {_short(r.digest)}")
 
     def case(self, source: Source, id: str, sample: SampleCase, schema: str) -> None:

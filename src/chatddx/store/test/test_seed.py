@@ -1,4 +1,5 @@
 from collections import Counter
+from collections.abc import Iterator
 from dataclasses import replace
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from chatddx.store.store import Connection
 from chatddx.store.test.conftest import connect
 
 CASES = load_cases(SAMPLE / "cases.toml")
+REVISION = "f" * 40
 SAMPLE_WORLD = Path(__file__).parents[4] / "sample-world" / "inventory.toml"
 
 
@@ -39,6 +41,14 @@ def tally(lines: list[str]) -> Counter[str]:
         return f"{prefix} {line.split(': ', 1)[1].split(' ')[0]}"
 
     return Counter(what(line) for line in lines)
+
+
+# Its own patch, so it's undone last, after the database fixtures that read DB_NAME.
+@pytest.fixture(autouse=True)
+def revision() -> Iterator[None]:
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv("CHATDDX_REVISION", REVISION)
+        yield
 
 
 def test_init_data_seeds_the_archive(conn: Connection) -> None:
@@ -78,22 +88,39 @@ def test_init_data_seeds_the_archive(conn: Connection) -> None:
     assert family is not None
     assert catalog.about(Subject(family=family)).language == "en"
     assert catalog.title_of(case.digest) == "DutchFall10w"
+    scorer = plan.named("scorer", "plan")
+    assert catalog.labels(scorer.digest) == {
+        ("view", 0): "differential",
+        ("view", 1): "warning",
+        ("view", 2): "disposition",
+    }
+    [tool] = catalog.find("tool", "web_search", owner=archive.id)
+    assert catalog.about(Subject(thread=tool)).description == (
+        "Search the web for up-to-date information"
+    )
 
     again = seed(conn, sample_plan(), CASES, vignettes(), alice)
     assert {v for v in tally(again) if v.startswith("archive")} == {"archive validated"}
     assert again[-2].startswith("[share] 0 of ")
 
 
-def test_init_data_lints_what_it_lands(conn: Connection) -> None:
+def test_init_data_lints_what_it_lands(
+    conn: Connection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("CHATDDX_REVISION")
     alice = People(conn).add("alice", "Alice")
     plan = sample_plan()
     unlike = replace(CASES["Dutchfall11w"], targets={"warning": {"pattern": "shock"}})
     lines = seed(conn, plan, {**CASES, "Dutchfall11w": unlike}, vignettes(), alice)
     components = len({r.digest for r in plan.records}) + 2 * len(CASES)
     assert [line for line in lines if line.startswith("[lint")] == [
+        *(
+            f"[lint warning] scorer {name}: scorer.revision: scorer code has no revision"
+            for name in ("plan", "diagnoses", "free-text", "raw")
+        ),
         "[lint warning] expectation Dutchfall11w: expectation.invalid: at the root: "
         + "'diagnosis' is a required property",
-        f"[lint] 1 finding in {components} components",
+        f"[lint] 5 findings in {components} components",
     ]
 
 
@@ -124,16 +151,21 @@ def test_init_data_updates_and_gives_forks(conn: Connection, tmp_path: Path) -> 
             (
                 "[archive chunk.output] management-plan:",
                 "[archive skeleton] plan (",
+                "[archive skeleton] plan-web (",
             )
         )
     ]
-    assert len([line for line in lines if "updated" in line]) == 3
+    assert len([line for line in lines if "updated" in line]) == 5
     assert any(
         line.startswith("[archive case] DutchFall10w: needs repair") for line in lines
     )
     forked = [line for line in lines if line.startswith("[giftbag")]
     assert forked and all(line.split(": ")[1].startswith("forked") for line in forked)
-    assert not any(line.startswith("[giftbag expectation_schema") for line in forked)
+    assert not any(
+        line.startswith(("[giftbag expectation_schema", "[giftbag scorer"))
+        for line in forked
+    )
+    assert any(line.startswith("[giftbag tool] web_search: forked") for line in forked)
 
     catalog = Catalog(conn)
     archive = People(conn).find("archive")

@@ -1,5 +1,6 @@
-# The old inventory's slices and configurations (chatddx 7893656, src/chatddx/data/inventory/slices.toml and
-# configurations.toml), hand-edited into remastered's shape. `chatddx init-data` seeds them for the archive.
+# The old inventory's slices, configurations and scorers (chatddx 7893656, src/chatddx/data/inventory/slices.toml,
+# configurations.toml and scorers.toml), hand-edited into remastered's shape. `chatddx init-data` seeds them for
+# the archive.
 #
 # Tables are kinds and keys are component fields, except:
 # - a reference names a record of the referenced kind;
@@ -9,7 +10,10 @@
 #   is made per model too. A model whose facts refuse the chunk gets none, and is reported;
 # - `fork_of` names a record of the same kind that this one is a variation of. It's seeded as a fork of that
 #   record's thread, and doesn't inherit its fields;
-# - `tags` and `description` are catalog entries, not fields.
+# - a tool or a scorer without a `code` pins the running chatddx, as compilations record it as their compiler, and
+#   its `entry_point` must name a function there;
+# - `tags` and `description` are catalog entries, not fields, and so is a scorer view's `label`. A tool's
+#   `description` is a field too, the one the model reads.
 
 # instruction.ddx was a system message made of the guidance slots and a user message of {{case}}: this prompt, with
 # the output's guidance becoming the system message. instruction.bare is the same prompt with an output that
@@ -118,8 +122,22 @@ from_facts = { effort = "xhigh" }
 description = "A budget worth comparing against plain on."
 from_facts = { effort = "on", budget = 2048 }
 
-# toolset.web and tool.web_search wait for tool code in remastered: a tool pins the code that runs it (G8), and
-# web_search's implementation (chatddx.runtime.tools.web_search) has no home yet. So does configuration.plan-web.
+# Tools.
+[tool.web_search]
+name = "web_search"
+description = "Search the web for up-to-date information"
+entry_point = "chatddx.tools.web_search:web_search"
+
+[tool.web_search.parameters]
+type = "object"
+properties.query = { type = "string" }
+properties.max_results = { type = "integer", default = 5 }
+required = ["query"]
+additionalProperties = false
+
+[toolset.web]
+tools = ["web_search"]
+guidance = "You have access to a web_search tool. Use it whenever you need current facts, documentation, or anything you're not confident about from memory, instead of guessing."
 
 # Configurations: recipes, compiled into skeleton threads.
 [recipe.plan]
@@ -144,6 +162,15 @@ fork_of = "plan"
 prompt = "case"
 output = "management-plan-prompted"
 sampling = "recommended"
+
+[recipe.plan-web]
+description = "The management plan, with a web search to call."
+tags = ["ddx"]
+fork_of = "plan"
+prompt = "case"
+output = "management-plan"
+sampling = "recommended"
+toolset = "web"
 
 [recipe.diagnoses]
 description = "The differential alone, as the medical-assistant agents ask for it."
@@ -170,3 +197,40 @@ sampling = "recommended"
 # Reference data for scoring.
 [expectation_schema.targets]
 json_schema_path = "schemas/targets.json"
+
+# Scorers. The old scorers each read one named view of whichever output had it: reciprocal_rank the differential,
+# first_mention the whole text, and warning_mentions and disposition_mentions their parts of the plan, all against
+# the case's targets. A scorer here is bound to an output's shape by its selectors, so there is one per shape, with
+# the old scorers as its views and the old view names as their labels.
+[scorer.plan]
+description = "The management plan's differential, warning and disposition, against the case's targets."
+entry_point = "chatddx.scorers.patterns:score"
+expectation_schema = "targets"
+views = [
+  { label = "differential", output = "$.diagnoses[*].diagnosis", expectation = "/diagnosis", metric = "reciprocal_rank" },
+  { label = "warning", output = "$.acute_warning", expectation = "/warning", metric = "mentions" },
+  { label = "disposition", output = "$.management.disposition", expectation = "/disposition", metric = "mentions" },
+]
+
+[scorer.diagnoses]
+description = "The listed differential, against the case's diagnosis."
+entry_point = "chatddx.scorers.patterns:score"
+expectation_schema = "targets"
+views = [
+  { label = "differential", output = "$.diagnoses[*]", expectation = "/diagnosis", metric = "reciprocal_rank" },
+]
+
+[scorer.free-text]
+description = "The free text, whole and line by line, against the case's diagnosis."
+entry_point = "chatddx.scorers.patterns:score"
+expectation_schema = "targets"
+views = [
+  { label = "text", expectation = "/diagnosis", metric = "first_mention" },
+  { label = "differential", split = "lines@1", expectation = "/diagnosis", metric = "reciprocal_rank" },
+]
+
+[scorer.raw]
+description = "Unguided free text, whole, against the case's diagnosis."
+entry_point = "chatddx.scorers.patterns:score"
+expectation_schema = "targets"
+views = [{ label = "text", expectation = "/diagnosis", metric = "first_mention" }]

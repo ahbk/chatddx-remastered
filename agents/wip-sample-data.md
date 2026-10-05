@@ -14,8 +14,8 @@ all fixed but one. Each is condensed to where its result is described now and wh
 write-ups are in git history: `git show 79ec890:agents/wip-sample-data.md`.
 
 ## Start with this
-What's left is the parked work: engines and models, then scorers, then free-text expectations (see "Parked").
-Settle these first.
+What's left is the parked work: engines and models, then free-text expectations (see "Parked"). Settle these
+first.
 
 ### Decisions (the user's)
 1. **Which models `from_facts` writes for.** Today it's every model the facts know
@@ -26,11 +26,8 @@ Settle these first.
    (`src/chatddx/inventory/inventory.py`). The runner needs engine digest → URL, and the start-up script needs the
    paths of the model files and the chat template (`docs/factors.md`, "The inventory doesn't locate local engines
    yet, and runs don't record where calls went"). Every endpoint item under "Engines and models" waits on this.
-3. **Where scorer code lives, and what it must do.** This is tool code's problem too: `web_search` has no home
-   (G8). The options are a `Code` pin with an `entry_point`, as today, or packaging entry points, which tools and
-   scorers should adopt together (`docs/factors.md`, "Finding code through packaging entry points"). The scorer
-   interface, meaning its arguments and return value, is unspecified (`docs/factors.md`, "Smaller issues").
-   Everything under "Scorers" waits on this.
+3. **Where scorer code lives, and what it must do.** Settled (see "Decided"), and the tools and scorers are seeded
+   (see "Tools and scorers").
 4. **Where model hashes, revisions and chat-template digests come from.** They need the hosts: an import script
    (`docs/chatddx.md`) or values the user supplies. An agent in a cloud container can't reach the hosts. Should the
    sample seed engines with values marked as placeholders until then?
@@ -41,8 +38,13 @@ The early work is done: the vignettes are in, `init-data` lints what it lands, a
 ## Decided
 - Seed now: chunks, recipes (as compiled skeleton threads), cases with their families, an expectation schema and
   expectations.
-- Deferred: engines and models, scorers, scorings (old D9), which come from a separate runtime-data pipe. The
-  `init-data` command and the compiler's `Code` (old C8) are done.
+- Deferred: engines and models, and scorings (old D9), which come from a separate runtime-data pipe. The
+  `init-data` command and the compiler's `Code` (old C8) are done. Scorers were deferred too, until decision 3.
+- Tools and scorers pin chatddx's own code, as compilations record their compiler: `Code` from `rig()` and an
+  `entry_point` in chatddx. Packaging entry points can come later, for tools and scorers together.
+- The scorer interface, version 1, is the old one fed through remastered's views: the entry point takes a view's
+  metric, the items its output selector picks (none without an answer), the items its expectation selector picks,
+  and the params, and gives a value and a detail.
 - Base the sample data on 7893656. Quirks found while tweaking it, such as 13d317d's rename and the
   `DutchFall10w`/`Dutchfall*` spelling, are welcome stress tests.
 - Olof's comments on the cases (13d317d, 504792c) will be the foundation for a free-text expectation scored by
@@ -73,6 +75,8 @@ The early work is done: the vignettes are in, `init-data` lints what it lands, a
 - `cases.toml`: the 99 cases, each with its tags, language and targets, without the `# guessed` markers.
 - `schemas/`: the two output schemas and the hand-written `targets.json`.
 
+`factors.toml` also holds the old tool, toolset, `plan-web` and scorers (see "Tools and scorers").
+
 The vignettes aren't in it: they're a fake-sensitive source, so they stay out of the package. `sample-world/` holds
 them as a World would:
 - `inventory.toml` is the sample World inventory. Its `[source.sample]` table locates `vignettes/` and declares it
@@ -91,7 +95,9 @@ them as a World would:
 - `reasoning.default` is no chunk: a recipe without a reasoning chunk leaves reasoning to the model. No recipe uses
   one, so the reasoning chunks are seeded as threads of their own.
 - `sampling.recommended-4k` is gone with `max_tokens`.
-- `toolset.web`, `tool.web_search` and `configuration.plan-web` wait for tool code (G8).
+- `configuration.plan-web` is `recipe.plan-web`, a fork of `plan` with `toolset.web`. Its tool's code is the old
+  `chatddx.runtime.tools.web_search`, ported to the standard library as `chatddx.tools.web_search`.
+- The four old scorers are views of four scorers, one per output shape (see "Tools and scorers").
 - `coercion.*` is folded into outputs (G4, G5), and `extends` became `fork_of` (G9).
 - `dont_miss`, a target kind in the old schema (`src/chatddx/repo/entities/case/pydantic.py:22`) and in
   `docs/clinical-input.md`, isn't in `targets.json`. No case had one.
@@ -106,9 +112,9 @@ created, validated, updated, skipped, missing, needs repair, forked or kept. It 
   inventory whose `[source.<name>]` table locates them, such as `sample-world/inventory.toml`. `--source` names the
   source (`sample`), which the cases are keyed by. A path that holds none of the sample's cases is refused before
   anything is written. `--facts` names the facts files, the data directory's `facts.toml` by default.
-- **Planning.** `chatddx.seed.plan_factors` is pure. It plans 38 records: 12 recipes (6 configurations × 2 models),
-  12 reasoning chunks, 5 sampling chunks, 7 outputs, a prompt and an expectation schema. It skips 4 reasoning chunks
-  the facts refuse for gpt-oss.
+- **Planning.** `chatddx.seed.plan_factors` is pure. It plans 46 records: 14 recipes (7 configurations × 2 models),
+  12 reasoning chunks, 5 sampling chunks, 7 outputs, a prompt, a tool, a toolset, an expectation schema and 4
+  scorers. It skips 4 reasoning chunks the facts refuse for gpt-oss.
 - **Chunks and recipes.** Each record becomes a thread named after it and owned by the archive. Recipes are
   compiled, and their compilations are recorded. A `from_facts` chunk is written from each model's facts, so the
   recipes using it come once per model, named `plan (Qwen/Qwen3-8B-AWQ)`. A refused combination is skipped and
@@ -119,17 +125,18 @@ created, validated, updated, skipped, missing, needs repair, forked or kept. It 
   unchanged and gets a new edit when changed, so nothing is duplicated. A vignette that is missing or has changed at
   the source is reported, and a changed one needs a repair (`docs/catalog.md`, "Families and repairs").
 - **Sharing.** USER becomes a collaborator on every archive thread and family.
-- **`--giftbag`.** USER also gets their own fork of every chunk, skeleton and expectation thread, so the catalog's
-  variations and proposals follow the archive when it moves. Expectation schemas stay the archive's. Existing forks
-  are kept (`src/chatddx/seed/write.py:_gifted`).
+- **`--giftbag`.** USER also gets their own fork of every chunk, tool, skeleton and expectation thread, so the
+  catalog's variations and proposals follow the archive when it moves. Expectation schemas and scorers stay the
+  archive's. Existing forks are kept (`src/chatddx/seed/write.py:_gifted`).
 - **Lints.** Every component that got a thread or a family this run, validated or not, is linted
   (`src/chatddx/seed/write.py:_Seeder.lint`): `src/chatddx/factors/lint.py:lint`, with the catalog's languages and
   the facts' `reasons`, and `src/chatddx/facts/lint.py:lint`, with the facts the plan was made with (`Plan.facts`).
   A missing case, or one that needs repair, isn't linted. Each finding is a line, `[lint warning] expectation
   Dutchfall11w: expectation.invalid: at the root: 'diagnosis' is a required property`, naming every record that
   shares the digest, and a last line counts them: `[lint] 0 findings in 230 components` for the sample. The
-  findings are printed, not stored, and don't stop the seeding. Today only the expectation schema and expectation
-  lints have anything to check. The vLLM, facts and language lints will apply once trials and judges are seeded.
+  findings are printed, not stored, and don't stop the seeding. Today the expectation schema, expectation and
+  scorer lints have something to check: without `CHATDDX_REVISION`, each scorer gets `scorer.revision`, so the
+  sample's count is 4 there. The vLLM, facts and language lints will apply once trials and judges are seeded.
 - **Compiler.** Compilations record the running code as their compiler (`src/chatddx/core/rig.py:rig`): the version
   from the package, and the revision from `CHATDDX_REVISION` when it's set.
 
@@ -140,7 +147,9 @@ The old checkout's vignettes were checked in a scratch database:
   `casesfromedn1` needed repair. That matches G13's survey;
 - against 504792c, the head of `new-datamodel` on 2026-10-05, 228 were validated: `Dutchfall1w` needs repair too;
 - through `--world sample-world/inventory.toml`, on a database seeded from the 7893656 checkout, all 236 were
-  validated and every fork kept.
+  validated and every fork kept;
+- once the tools and scorers were added, the same database got the tool, the toolset, 4 scorers and the 2 `plan-web`
+  skeletons created, with the tool, toolset and skeletons forked for alice, and a re-run validated everything.
 
 Tests: `src/chatddx/store/test/test_seed.py`.
 
@@ -149,6 +158,39 @@ Still open:
 - `wipe-data`, which tier 2 rules out as a DELETE; deletion is a `deleted` entry.
 - Tags and collaborators are only ever added on a re-run, never removed.
 - The seeded chunks have no language, so a trial's request language is unknown (G18).
+
+## Tools and scorers
+Decision 3 is settled (see "Decided"):
+- **Code.** A `tool` or `scorer` record without a `code` pins the running chatddx, the `Code` compilations record as
+  their compiler (`src/chatddx/seed/plan.py:plan_factors`). `src/chatddx/core/rig.py:entry` finds an entry point's
+  function, and runs only the running chatddx: other pinned code is refused, not run unpinned. Planning refuses an
+  entry point that names nothing, and a view whose metric the scorer's code doesn't know (`Metrics.names`). Since the
+  code is part of a tool's and a scorer's digest, a new version or `CHATDDX_REVISION` makes new ones, and the
+  toolset and `plan-web` skeletons with them.
+- **Scorer interface, version 1** (`src/chatddx/scorers/scorer.py`). An entry point is a `ScoreFunction`: it takes a
+  view's `metric`, the items its output selector picks (`None` without an answer), the items its expectation
+  selector picks, and the scorer's params under the view's. It returns `Scored(value, detail)`, what a `ScoreItem`
+  keeps. `score(scorer, run, answer, data)` applies every view; `function(scorer)` finds and checks the entry point.
+- **The pattern scorers** (`src/chatddx/scorers/patterns.py`): the old matcher and `reciprocal_rank`,
+  `first_mention` and `mentions`, unchanged in what they find, behind `score`, a `Metrics` of the three. A target is
+  the expectation selector's one item: a target object with a `pattern`, a pattern, or `false` (nothing expected).
+  No target, or one that doesn't read, gives no value, with the reason in the detail. A null output item names
+  nothing, so a plan's `acute_warning: null` is no warning. The old aggregates are in `aggregate.py`.
+- **The sample's scorers.** The old scorers each read a named view of whichever output had it. Here selectors bind a
+  scorer to a shape, so there are four, with the old view names as catalog labels (`Catalog.label`):
+  - `plan`: `differential` (`reciprocal_rank`), `warning` and `disposition` (`mentions`);
+  - `diagnoses`: `differential`;
+  - `free-text`: `text` (`first_mention`, the whole text) and `differential` (lines);
+  - `raw`: `text`. No sample configuration uses `output.raw`, as in the old inventory.
+  The old `critical` view had no scorer, so it has no view.
+- **The tool.** `chatddx.tools.web_search` is the old tool on `urllib`, with the old record's name, description and
+  parameters, in `toolset.web` with its guidance. It sends the model's query to DuckDuckGo, a third party, so the
+  clearance hard block must cover it (`docs/clearance.md`, "Tools") when the runner runs tools.
+- **init-data** writes the labels, gives USER a fork of the tool as the old giftbag did (scorers stay the
+  archive's), and lints the scorers on landing.
+- **Tests**: `src/chatddx/scorers/test/`, `src/chatddx/tools/test/`, and `src/chatddx/store/test/test_seed.py`. One
+  test builds an answer of each sample configuration's shape and checks that every view of the scorer reading it
+  picks something.
 
 ## The fake vLLM
 `src/chatddx/fake_vllm/` is the old fake (`src/chatddx/dev/fake_vllm.py` at 7893656), ported to vLLM 0.24 and to
@@ -210,15 +252,15 @@ Not faked yet:
 | llm | 2 | `ModelArtifact`; its facts in `facts.toml` (G1) | deferred, except the facts |
 | serving, stack | 5, 5 | `LocalEngine` + World inventory | deferred |
 | client | 2 | `Code` on `RunStarted`, written per run | dropped |
-| tool, toolset | 1, 1 | `tool` + `chunk.toolset` (G8) | the loop, clearance, tool code |
+| tool, toolset | 1, 1 | `tool` + `chunk.toolset` (G8), code in `chatddx.tools` | the loop, clearance |
 | instruction | 2 | `chunk.instructions` + `chunk.prompt` (G3) | |
-| output | 4 | `chunk.output`; views go to scorers (G4, G6, G7) | scorers |
+| output | 4 | `chunk.output`; views go to scorers (G4, G6, G7) | |
 | coercion | 5 | `chunk.output` contract (G4, G5) | |
 | reasoning | 9 | `chunk.reasoning`, written from the facts (G1, G2) | |
 | sampling | 5 | `chunk.sampling`, `recommended` written from the facts (G1) | |
-| configuration | 7 | `Recipe` → skeleton thread + `Compilation` (G9) | `plan-web` (G8) |
+| configuration | 7 | `Recipe` → skeleton thread + `Compilation` (G9) | |
 | case | 99 | `case` + family (tags, language) + `expectation` (G11–G14) | free-text expectations |
-| scorer | 4 | `scorer` | deferred |
+| scorer | 4 | views of 4 `scorer`s, one per output shape, code in `chatddx.scorers` | aggregates, scorings |
 
 ## Gaps
 Each gap was tagged [maybe fix remastered]: the sample data needed something remastered lacked.
@@ -252,8 +294,9 @@ Each gap was tagged [maybe fix remastered]: the sample data needed something rem
 - **G8. Tools.** Fixed in shape (`docs/factors.md`, "Tool", "Toolset", "Tool rounds"; `docs/ledger.md`, "Turn and
   ToolRun"; `docs/clearance.md`, "Tools"). Still open:
   - the loop itself, and where tools run, are the runner's;
-  - `web_search`'s code (the old `chatddx.runtime.tools.web_search`) has no home, so `toolset.web`,
-    `tool.web_search` and `plan-web` aren't in the sample (see "Start with this", 3);
+  - `plan-web` can't call its tool on vLLM 0.24: a native contract with tools sends `tool_choice: auto` beside a
+    `response_format`, which then constrains the whole answer (`docs/vllm.md`, item 10). `vllm.native_tools_uncallable`
+    will flag it once it's paired with a vLLM engine, and the fake vLLM answers it by the schema, calling nothing;
   - `schema.ref_unverified` doesn't look at toolset tools' parameters;
   - gpt-oss with `required` (`docs/facts.md`);
   - a turn after a response that already called the answer tool isn't rejected.
@@ -333,13 +376,16 @@ The deferred work. Settle "Start with this" first.
   (`docs/facts.md`).
 
 ### Scorers
-- Scoring code: the pattern matcher, `reciprocal_rank`, `first_mention` and `mentions`. The old code is at 7893656
-  in `src/chatddx/scoring/scorers/patterns.py`, with `metrics.py`, `score.py` and tests in `src/chatddx/scoring/`.
-- Free-text parsing beyond `lines@1` (G6).
-- Aggregation (`mean`, `stderr`).
-- A check that views agree with the output schema (old `prove`): reachability is done (G6); item types are open.
-- One scorer per output shape (`plan`, `diagnoses`, `free-text`, `raw`), with the old view names as labels.
-- Scorings (old D9).
+The scorers are seeded (see "Tools and scorers"). Still open:
+- parsing a response into the answer a scorer reads: the JSON content, the answer tool's arguments, or the text.
+  `docs/factors.md` puts it in the scorer's code, which version 1 doesn't do yet;
+- free-text parsing beyond `lines@1` (G6);
+- the old scorers' aggregates (`metrics = ["mean", "stderr"]`): the functions are ported
+  (`src/chatddx/scorers/aggregate.py`), but no factor says which apply. Summing up over runs is analysis, which
+  doesn't change a score;
+- views with a judge: `score` refuses them until judges can run;
+- a check that views agree with the output schema (old `prove`): reachability is done (G6); item types are open;
+- scorings (old D9).
 
 ### Free-text expectations
 Decided: Olof's comments on the cases will be the foundation for a free-text expectation that judges score. The
@@ -360,7 +406,7 @@ sample stays on 7893656 until this starts.
   - an expectation schema for free text beside `targets.json`, whose `additionalProperties: false` leaves no room.
     Open: one text, or the comment and the "Chatddx:" answer kept apart;
   - a judge-purpose prompt with `completion` and `expectation`, and maybe `vignette`; a judge, which needs an
-    engine; and a scorer whose view names the judge. So it waits on engines (decision 2) and scorers (decision 3);
+    engine; and a scorer whose view names the judge. So it waits on engines (decision 2) and a way to run judges;
   - a language for the notes. They're `sv`, while 79 of the cases are `en`, so a judge would read Swedish notes
     about an English answer (G18);
   - somewhere for clinicians to write them other than the vignette files. Expectations are written in the portal

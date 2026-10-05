@@ -931,3 +931,13 @@ Schema plays no part in a component's digest, so adding it back changes no diges
 - ADD to "Lints", after "run on demand, and no component stores their findings.": "`chatddx init-data` runs
   them over every component it seeds and prints the findings, which it doesn't store either
   (`src/chatddx/seed/write.py:_Seeder.lint`)."
+- REMOVE the smaller issue "**The scorer interface is unspecified.**", and ADD to "Scorer": "Version 1 of the
+  interface: the entry point takes a view's `metric`, the items its output selector picks (`None` when the run has no
+  answer), the items its expectation selector picks, and the scorer's `params` under the view's, and returns a value
+  (or none) and a detail, as a `ScoreItem` keeps them (`src/chatddx/scorers/scorer.py:ScoreFunction`,
+  `src/chatddx/scorers/scorer.py:score`). Code that lists the metrics it knows (`Metrics.names`) lets a view's
+  `metric` be checked when the scorer is made (`src/chatddx/scorers/scorer.py:function`). Views with a judge, and
+  parsing a response into the answer, aren't covered yet."
+- ADD to "Tool" and "Scorer": "Only the running chatddx can be run: `src/chatddx/core/rig.py:entry` finds an entry
+  point's function and refuses a pin that isn't the running code. The sample's tools and scorers pin it as
+  compilations record their compiler (`src/chatddx/seed/plan.py:plan_factors`)."
