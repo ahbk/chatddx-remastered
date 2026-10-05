@@ -241,7 +241,9 @@ def test_entries(conn: Connection) -> None:
     bob = People(conn).add("bob", "Bob")
     trial = catalog.create(ids["trial"], alice.id)
     subject = Subject(thread=trial.thread)
-    assert catalog.about(subject) == About()
+    assert catalog.about(subject) == About(owner=alice.id)
+    handed = catalog.create(ids["engine"], alice.id, owner=bob.id)
+    assert catalog.about(Subject(thread=handed.thread)) == About(owner=bob.id)
     for entry in (
         Entry(field=EntryField.NAME, value="baseline"),
         Entry(field=EntryField.NAME, value="gemma baseline"),
@@ -249,7 +251,7 @@ def test_entries(conn: Connection) -> None:
         Entry(field=EntryField.TAG, value="gemma"),
         Entry(field=EntryField.TAG, value="draft"),
         Entry(field=EntryField.TAG, value="draft", present=False),
-        Entry(field=EntryField.OWNER, person=alice.id),
+        Entry(field=EntryField.OWNER, person=bob.id),
         Entry(field=EntryField.COLLABORATOR, person=bob.id),
         Entry(field=EntryField.DELETED),
     ):
@@ -258,7 +260,7 @@ def test_entries(conn: Connection) -> None:
         name="gemma baseline",
         description="first try",
         tags=frozenset({"gemma"}),
-        owner=alice.id,
+        owner=bob.id,
         collaborators=frozenset({bob.id}),
         deleted=True,
     )
@@ -296,10 +298,8 @@ def test_names_are_optional_and_removable(conn: Connection) -> None:
     named = catalog.create(ids["trial"], alice.id, name="baseline")
     subject = Subject(thread=named.thread)
     assert catalog.about(subject).name == "baseline"
-    assert (
-        catalog.about(Subject(thread=catalog.create(ids["engine"], alice.id).thread))
-        == About()
-    )
+    unnamed = catalog.create(ids["engine"], alice.id)
+    assert catalog.about(Subject(thread=unnamed.thread)).name is None
     with pytest.raises(ValidationError):
         _ = catalog.create(ids["trial"], alice.id, name="")
     catalog.note(subject, Entry(field=EntryField.NAME, present=False), alice.id)

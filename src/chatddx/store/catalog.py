@@ -103,8 +103,10 @@ class Catalog:
         compilation: str | None = None,
         forked_from: int | None = None,
         name: str | None = None,
+        owner: int | None = None,
     ) -> Edit:
         named = None if name is None else Entry(field=EntryField.NAME, value=name)
+        owned = Entry(field=EntryField.OWNER, person=by if owner is None else owner)
         with self._conn.transaction():
             row = self._conn.execute(
                 "SELECT kind FROM factor.component WHERE digest = %s", (digest,)
@@ -124,6 +126,7 @@ class Catalog:
             ).fetchone()
             assert row is not None
             edit = self.edit(row[0], digest, by, compilation=compilation)
+            self.note(Subject(thread=edit.thread), owned, by)
             if named is not None:
                 self.note(Subject(thread=edit.thread), named, by)
             return edit

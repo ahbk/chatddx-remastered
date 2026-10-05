@@ -166,17 +166,12 @@ class _Seeder:
                 continue
             head = self.catalog.head(thread)
             about = self.catalog.about(Subject(thread=thread))
-            fork = self.catalog.create(
+            _ = self.catalog.create(
                 head.digest,
                 user.id,
                 compilation=head.compilation,
                 forked_from=head.id,
                 name=about.name,
-            )
-            self.catalog.note(
-                Subject(thread=fork.thread),
-                Entry(field=EntryField.OWNER, person=user.id),
-                user.id,
             )
             self.lines.append(f"[giftbag {kind}] {name}: forked {_short(head.digest)}")
 
