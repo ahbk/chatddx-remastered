@@ -9,34 +9,58 @@ the research is trying to find out. So we start from a flexible set of factors b
 refine it as we learn.
 
 Factors are the building blocks of the chatddx rig: an environment that can be rebuilt exactly, and shown to be the
-same, for scientific rigor. This document describes each factor as it exists today and how factors combine.
+same, for scientific rigor. This document describes each factor as it exists today and how factors combine. Most of
+it is about pinned factors, the ones stored as components (see "What a factor is").
 
 Code paths are relative to `src/chatddx/factors/` unless they start with `src/` or `docs/`. Principal authors are
 the roles in `src/chatddx/core/identity.py:Role`.
 
 ## What a factor is
 
-A factor is a *component*: an immutable set of parameters identified by a hash of its content, its *digest*.
-Changing a parameter gives a new component with a new digest; nothing is edited in place. Components refer to each
-other by digest, so a trial's digest pins everything the trial depends on.
+A *factor* is anything that can change an output or its score: what the research varies, holds fixed, or has to
+account for.
 
-The intent is that whatever can change an output or its score is a factor, and nothing else is. Two things don't
-fit that rule today (see "Open design issues"):
-- canary sets are factors, although they change neither outputs nor scores;
-- execution settings can change outputs on engines that aren't batch invariant, yet they are not a factor.
+A *component* is how most factors are stored: an immutable set of parameters identified by a hash of its content,
+its *digest*. Changing a parameter gives a new component with a new digest; nothing is edited in place. Components
+refer to each other by digest, so a trial's digest pins every component the trial depends on.
+
+Being a factor and being a component are separate questions. A factor is held in one of three ways.
+
+1. **Pinned**: chosen in advance and fixed by digest, as a component that a trial or a scoring references. Prompts,
+   sampling, engines, model weights, cases, seeds, expectations and scorers are pinned.
+2. **Recorded**: set or known when a run or a score starts, and written into its start record, which is immutable
+   and sealed with the rest of its log (`docs/ledger.md`):
+   - the execution settings, such as order and concurrency (`RunStarted.execution`, see "Execution");
+   - the version of the rig that sent the requests (`RunStarted.rig`);
+   - the scorer code that actually ran (`ScoreStarted.scorer_code`). Set beside the code the scorer pins
+     (`Scorer.code`), it shows whether what ran is what should have run.
+3. **Observed**: set by nobody, and only detected afterwards. These are the parts of the world outside our control:
+   a remote engine that changes without notice, a tool such as a web search that answers differently from day to
+   day, a vignette edited at its source, GPU arithmetic that isn't deterministic. Fingerprints, returned model
+   names, drift findings and canaries reveal them (`docs/ledger.md`, `docs/findings.md`).
+
+Canary sets are components but not factors. They are *instruments*: fixed probe requests that measure observed
+factors without changing any output. They are components so that the same set can be compared across runs (see
+"Canary sets").
+
+A trial's outputs therefore depend on the trial's pinned factors and on its run's recorded and observed factors.
+Two runs of the same trial are interchangeable only when those agree too (see "Open design issues").
 
 ### Not factors
-- Records of what happened (runs, scores, calls, compilations): `docs/ledger.md`.
+- Records of what happened (runs, scores, calls, compilations): `docs/ledger.md`. They hold the recorded factors
+  and the evidence of the observed ones, but they aren't factors themselves.
 - People, roles, authentication and authorization: `docs/identity.md`.
 - Names, labels, languages, tags, descriptions, owners, collaborators and version history: `docs/catalog.md`.
 - Sensitivity and vetting: `docs/clearance.md`.
 - Knowledge about models (reasoning levels, recommended sampling, output caveats, specs): the model facts
   (`src/chatddx/facts/facts.py`). Facts help write chunks and check them (see "Lints"), but no digest depends on
   them.
-- Objects that live inside components or records without being components: recipes, views, canaries and execution
-  settings.
+- Instruments: canary sets.
 
-## How factors work
+## How components work
+
+Some objects live inside components or records without being components themselves: recipes (in compilation
+records), views (in scorers), canaries (in canary sets) and execution settings (in run records).
 
 ### Identity
 A component's identity is its *canonical form*: JSON in which
@@ -108,6 +132,12 @@ foreign key (`docs/store.md`).
 
 | Term | Meaning |
 | --- | --- |
+| Factor | Anything that can change an output or its score. |
+| Pinned, recorded, observed | The three ways a factor is held: fixed in advance by digest, written into a run's or a score's start record, or only detected afterwards. |
+| Component | An immutable set of parameters identified by its digest. Pinned factors are components. |
+| Digest | `sha256:` followed by the hash of a component's canonical form; the component's identity. |
+| Instrument | A component that measures without being a factor: canary sets. |
+| Run | One execution of a trial: its requests, responses and records (`docs/ledger.md`). |
 | Vignette | The clinical text of one case at its source. Sensitive and never stored; known by its source, its id there and its fingerprint. |
 | Case | A vignette plus the appendices sent with it. |
 | Appendix | Extra plain text written for one vignette. |
@@ -123,13 +153,13 @@ foreign key (`docs/store.md`).
 | Text cleanup | Named steps that tidy a vignette before it is sent. |
 | Seed, replicate | A seed fixes the sampler's randomness. Each seed of a trial is one replicate, identified by its position. |
 | Engine | Where requests go: a vLLM server we run, or a remote API. |
-| Trial | One experiment: a skeleton, an engine, cases, text cleanup and seeds. |
+| Trial | The pinned factors of one experiment: a skeleton, an engine, cases, text cleanup and seeds. |
 | Expectation | The reference answer for one case. |
 | View | One comparison a scorer makes between part of an output and part of an expectation. |
 | Judge | An LLM used to grade outputs. |
 | Canary | A fixed, non-sensitive probe request. |
 | Inventory | Files written by ops that say where things are: hosts, engines, model files, vignette sources. |
-| Portal | The web interface where factors are written and runs are watched. |
+| Portal | The web interface where components are written and runs are watched. |
 
 ## Cases
 
@@ -319,7 +349,7 @@ A tool (kind `tool`) is a function the model may call between turns: a name, a d
 parameters, and the code that runs it (`Code`, plus an `entry_point` such as `chatddx_tools.web:search`). Its code
 is pinned like a scorer's, because what it returns is what the model reads next: a new implementation is a new
 tool, so a new skeleton and a new trial. What a tool returned is still recorded per run (`docs/ledger.md`), since a
-tool such as a web search can answer differently from day to day.
+tool such as a web search can answer differently from day to day: an observed factor.
 
 ### Toolset
 - principal author: Researchers
@@ -377,7 +407,8 @@ With a toolset, the body lists the toolset's tools, in order, as functions. A `n
 listed last, with `tool_choice: required`: every turn calls a tool, and calling the answer tool ends the item.
 
 The recipe is kept only in the compilation record, next to the compiler's version (`docs/ledger.md:Compilation`).
-Trials reference the skeleton, not the recipe, so the compiler's code is not a factor.
+Trials reference the skeleton, not the recipe, so the compiler's code is not a separate factor: whatever it did
+is frozen in the skeleton.
 
 ### Skeleton
 - principal author: none; normally produced by `compile_request`
@@ -482,8 +513,8 @@ in every engine that uses it, and finding the engines that share a closure means
 - defined in: `engine.py:RemoteEngine`
 
 A remote engine (kind `engine.remote`) is an API we don't control. It declares only the API, the `base_url` and the
-requested model; its chat template is not pinned. Of what it returns, only the model name is checked today
-(`docs/ledger.md:Run`).
+requested model; its chat template is not pinned. What the API does on a given day is an observed factor. Of
+what it returns, only the model name is checked today (`docs/ledger.md:Run`).
 
 Canary probes at the start and end of a run apply to any engine and are planned per run
 (`docs/ledger.md:RunStarted`), so they are not part of the engine.
@@ -495,17 +526,24 @@ Canary probes at the start and end of a run apply to any engine and are planned 
 - defined in: `trial.py:Trial`
 
 A trial (kind `trial`) is one scientific intent: a generation skeleton, an engine, the cases, the text-cleanup
-steps (`cleanup`) and the seeds. Cases and seeds are listed without duplicates.
+steps (`cleanup`) and the seeds. Cases and seeds are listed without duplicates. A trial pins the factors chosen in
+advance; each run of it adds recorded and observed ones (see "What a factor is").
 
 The seeds are explicit. The portal can propose distinct random 31-bit seeds (`suggest_seeds`), which users are free
 to change. Each seed defines one replicate, identified by its position. With greedy sampling no seed is sent, but
 the seeds still count toward the trial's digest (see "Open design issues").
 
 ### Execution
-- defined in: `trial.py:Execution`
+- defined in: `trial.py:Execution`, recorded in `docs/ledger.md:RunStarted`
 
-Execution settings say how a run issues its requests. They are not a factor: each run records its own
-(`docs/ledger.md:RunStarted`), so running a trial again makes a new run of the same trial.
+Execution settings say how a run issues its requests. They are a recorded factor, not a component: each run writes
+its own into its start record, and they are not part of the trial's digest. Running a trial again with other
+settings is a new run of the same trial.
+
+Order and concurrency change outputs only on engines that aren't batch invariant, where they affect how requests
+are batched and so the arithmetic. Timeout and retries decide whether an item gets an answer at all. Keeping these
+settings out of the trial means changing them doesn't make a new trial, which suits batch-invariant engines. On
+other engines, runs with different settings aren't interchangeable (see "Open design issues").
 - `order`: `case_major@1` (the default: every replicate of a case before the next case), `replicate_major@1`
   (every case once per replicate), or `shuffled@1`, which needs a `shuffle_seed` and orders the items by a hash of
   that seed, the case and the replicate.
@@ -601,15 +639,18 @@ judges a scoring uses are the ones its scorer's views name.
 
 A canary set (kind `canary_set`) is a list of fixed, non-sensitive probe requests. Each canary holds literal
 messages, body keys (no runtime keys) and an optional seed. A run names the canary set it uses
-(`docs/ledger.md:RunStarted`). Canary sets are components so that canary drift can be detected by comparing the
-same set across runs; that comparison isn't implemented yet.
+(`docs/ledger.md:RunStarted`).
+
+A canary set is an instrument, not a factor: it changes no output and no score, and it is there to detect observed
+factors, such as an engine that changed between runs. It is a component so that the same set can be compared
+across runs; that comparison isn't implemented yet.
 
 ## Lints
 - defined in: `lint.py:lint`
 
 Lints warn about settings that are valid but risky. They are plain functions over a registry, run on demand, and no
 component stores their findings. Keeping them out of the components means knowledge that changes between vLLM
-releases can change without touching any factor. `docs/findings.md:Factors` explains each code.
+releases can change without changing any digest. `docs/findings.md:Factors` explains each code.
 
 `lint(registry, digests, facts=, languages=)` checks each listed component according to its kind.
 
@@ -664,10 +705,15 @@ Other findings in this package come from the functions that observe them: `case.
 
 ## Open design issues
 
-### What counts as a factor
-Canary sets are components, although they change neither outputs nor scores. Execution settings change outputs on
-engines that aren't batch invariant, yet they are recorded per run instead of being a factor. The definition and
-these exceptions should agree.
+### Runs of the same trial aren't interchangeable
+A trial's digest covers its pinned factors only. Its outputs also depend on its run's recorded and observed
+factors: execution settings on an engine that isn't batch invariant, a remote engine that changed between runs, a
+tool that answered differently. Seeds within a run are replicates; runs of the same trial are a second source of
+variation, and it has no name yet.
+
+Nothing aggregates scores today, but anything that compares or pools runs by the trial's digest alone would mix
+conditions without noticing. It needs to group by the recorded factors as well, and to check the evidence of the
+observed ones (prompt-token fingerprints, returned models, canaries) before pooling.
 
 ### How judge slots are filled
 Nothing says what text the `completion` and `expectation` slots receive: the raw content or a view's selection,
@@ -740,5 +786,18 @@ default. Whether vLLM 0.24's `FlexibleArgumentParser` accepts abbreviations is u
 - **Four cleanup steps exist.** Vignettes may also need non-breaking spaces turned into spaces, zero-width
   characters removed, Unicode line breaks turned into newlines, or trailing whitespace stripped.
 - **`Hardware` has no GPU count,** so engines that split a model across GPUs can't be told apart by their hardware.
+
+## Potential design improvements
+
+### Execution settings as a component
+Today `Execution` is a value inside each run's start record (`RunStarted.execution`): recorded, sealed with the
+run's log, and compared by value. It has no digest, so the catalog can't name a set of settings (for example
+"sequential" or "8-way"), the portal can't offer them for picking, and finding the runs that used the same settings
+means comparing values across run records.
+
+Making it a component, a new kind such as `execution` that `RunStarted` references by digest, would give it a name,
+a catalog thread and a foreign key like the pinned factors. It would still stay out of the trial's digest, so it
+would change how execution settings are stored, not what a trial means. The cost is a new kind (with the catalog's
+thread kinds and their migration) and a change to the run record.
 
 ## Proposed amendments
