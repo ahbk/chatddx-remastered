@@ -26,8 +26,8 @@ refer to each other by digest, so a trial's digest pins every component the tria
 
 Being a factor and being a component are separate questions. A factor is held in one of three ways.
 
-1. **Pinned**: chosen in advance and fixed by digest, as a component that a trial or a scoring references. Prompts,
-   sampling, engines, model weights, cases, seeds, expectations and scorers are pinned.
+1. **Pinned**: chosen in advance and fixed by digest: a trial or a scoring, and every component it references.
+   Prompts, sampling, engines, model weights, cases, seeds, expectations and scorers are pinned.
 2. **Recorded**: set or known when a run or a score starts, and written into its start record, which is immutable
    and sealed with the rest of its log (`docs/ledger.md`):
    - the execution settings, such as order and concurrency (`RunStarted.execution`, see "Execution");
@@ -136,7 +136,7 @@ foreign key (`docs/store.md`).
 | --- | --- |
 | Factor | Anything that can change an output or its score. |
 | Pinned, recorded, observed | The three ways a factor is held: fixed in advance by digest, written into a run's or a score's start record, or only detected afterwards. |
-| Component | An immutable set of parameters identified by its digest. Pinned factors are components. |
+| Component | An immutable set of parameters identified by its digest. Pinned factors are held in components. |
 | Digest | `sha256:` followed by the hash of a component's canonical form. Components are told apart and referred to by it. |
 | Instrument | A component that measures without being a factor: canary sets. |
 | Run | One execution of a trial: its requests, responses and records (`docs/ledger.md`). |
@@ -160,7 +160,7 @@ foreign key (`docs/store.md`).
 | View | One comparison a scorer makes between part of an output and part of an expectation. |
 | Judge | An LLM used to grade outputs. |
 | Canary | A fixed, non-sensitive probe request. |
-| Inventory | Files written by ops that say where things are: hosts, engines, model files, vignette sources. |
+| Inventory | Files written by ops that say where things are. Today they locate vignette sources; engines, model files and chat templates are to follow. |
 | Portal | The web interface where components are written and runs are watched. |
 
 ## Cases
@@ -170,17 +170,19 @@ foreign key (`docs/store.md`).
 - defined in: `cases.py:Case`
 
 A case (kind `case`) is a vignette plus the appendices to send with it, in order. `cases.py:Vignette` names the
-vignette by the source it comes from, its id there, and the fingerprint of its raw bytes as fetched. Sources are
-declared in the inventory and hand over vignettes as UTF-8 text (see "Preparing a case"). `Source.cases()`
+vignette by the source it comes from, its id there, and the fingerprint of its raw bytes as fetched. The source
+gives the id; for a directory of files it is the file's name without its suffix. Sources are declared in the
+inventory and hand over vignettes as UTF-8 text (see "Preparing a case"). `Source.cases()`
 (`src/chatddx/inventory/sources.py`) builds one case, without appendices, for each vignette a source lists.
 
 The vignette itself is sensitive by default, unstructured, and never edited or stored: only its fingerprint is. A
 case's digest covers the vignette and the appendix list, so the same vignette with different appendices is a
 different case. Expectations are keyed by the case's digest, which lets appendices change the correct answer.
 
-When a vignette changes at its source, its fingerprint changes. That needs a new case, new appendices bound to the
-new fingerprint, and new expectations. Whether a person or an automatic step rebinds them is open; the catalog has
-the tools for it (`docs/catalog.md`).
+When a vignette changes at its source, its fingerprint changes, and when it is renamed there, its id does. Either
+way that needs a new case, new appendices bound to the new vignette, and new expectations; the catalog tells a
+renamed vignette (same fingerprint, new id) from a changed one. Whether a person or an automatic step rebinds them
+is open; the catalog has the tools for it (`docs/catalog.md`).
 
 Text cleanup is not part of the case. The trial chooses it (see "Trial").
 
@@ -565,6 +567,8 @@ Order and concurrency change outputs only on engines that aren't batch invariant
 are batched and so the arithmetic. Timeout and retries decide whether an item gets an answer at all. Keeping these
 settings out of the trial means changing them doesn't make a new trial, which suits batch-invariant engines. On
 other engines, runs with different settings aren't interchangeable (see "Open design issues").
+
+The settings are:
 - `order`: `case_major@1` (the default: every replicate of a case before the next case), `replicate_major@1`
   (every case once per replicate), or `shuffled@1`, which needs a `shuffle_seed` and orders the items by a hash of
   that seed, the case and the replicate.
@@ -648,10 +652,11 @@ duplicates, and a fill rule. A judge skeleton must contain the `completion` slot
 `vignette` and `appendices`.
 
 The view decides what the judge sees, and the judge decides how it is written out.
-`Judge.fills(view, answer, expectation)` fills `completion` with what the view's output selector picks from the
-answer, and `expectation` with what its expectation selector picks from the expectation's data. The answer is the
-model's output as the scorer parsed it. The judge's `fill` rule (`scoring.py:FillOp`) turns those selections into
-text, and, as with text cleanup, its name pins one behavior. There is one rule today, `text@1`, the default:
+`Judge.fills(view, answer, expectation)`, for a view that names this judge, fills `completion` with what the view's
+output selector picks from the answer, and `expectation` with what its expectation selector picks from the
+expectation's data. The answer is the model's output as the scorer parsed it. The judge's `fill` rule
+(`scoring.py:FillOp`) turns those selections into text, and, as with text cleanup, its name pins one behavior. There
+is one rule today, `text@1`, the default:
 - a single string goes in as it is, without quotes or escapes;
 - a list of strings, whether picked as one list or as several strings, goes in one string per line, and nothing
   picked gives an empty text;
@@ -764,9 +769,9 @@ A local engine pins what it is but not where it is: it has no URL, and its model
 pinned by hash only. A runner needs a mapping from engine digest to URL, and the start-up script needs the paths of
 the model files and the chat template on its host. Nothing defines these yet. Being locations, they belong in the
 inventory, not in the catalog; today the inventory locates only vignette sources (`src/chatddx/inventory/`). One
-engine may be served by several identical hosts, and one host serves different engines over time, so the mapping can't
-be part of the engine. The runner can check the mapping before sending, because a local engine's served model
-name is its digest and `/v1/models` lists it.
+engine may be served by several identical hosts, and one host serves different engines over time, so the mapping
+can't be part of the engine. The runner can check the mapping before sending, because a local engine's served
+model name is its digest and `/v1/models` lists it.
 
 A remote engine's `base_url`, by contrast, is part of its digest, so moving the same API to a new host makes a new
 engine. Either way `Call` (`src/chatddx/ledger/ledger.py`) records no URL, so the ledger can't show which endpoint
@@ -850,7 +855,7 @@ A passthrough refuses a fixed list of keys and lets everything else through. Two
 ### Reference kinds in components' JSON Schemas
 `RefTo` could put the kinds a reference may point to on its field in the JSON Schema pydantic writes for a
 component (as an `x-ref` keyword, say). A portal form could then offer a picker of the right kind for every
-reference, straight from the schema. It was there until nothing used it; the JSON Schema plays no part in a
-component's digest, so adding it back changes no digest.
+reference, straight from the schema. `RefTo` used to do this, and was stopped because nothing read it. The JSON
+Schema plays no part in a component's digest, so adding it back changes no digest.
 
 ## Proposed amendments

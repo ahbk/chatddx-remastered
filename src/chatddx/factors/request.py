@@ -164,7 +164,7 @@ def _canonical_sampling(data: object) -> object:
     return {k: v for k, v in fields.items() if k not in GREEDY_DROPS}
 
 
-# Chunks: the typed slots the UI authors.
+# Chunks: the parts of a request the portal authors.
 
 
 class Instructions(Component):
