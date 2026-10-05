@@ -184,6 +184,17 @@ def test_run_and_score_checks(reg: Registry) -> None:
         judge_calls=(JudgeCall(judge=ids["judge"], seed_index=0, call=call("j")),),
     )
     assert check_score(score(ok), run, reg) == []
+    assert [(f.code, f.message) for f in check_score(score(ok), open_run, reg)] == [
+        ("score.run_unfinished", "the run hasn't finished")
+    ]
+    late = Run(
+        stages=(started, open_run.finish(NOW + timedelta(seconds=1))),
+        items=items,
+        canaries=canaries,
+    )
+    assert [(f.code, f.message) for f in check_score(score(ok), late, reg)] == [
+        ("score.run_unfinished", "the score started before the run finished")
+    ]
     with pytest.raises(StructuralError, match="seed index 1 out of range"):
         _ = check_score(
             score(
@@ -346,6 +357,8 @@ def test_judge_calls_are_checked_against_the_score_execution(reg: Registry) -> N
             for k in keys
         ),
     )
+
+    run = Run(stages=(*run.stages, run.finish(NOW)), items=run.items)
 
     def judged(replicate: int, start: int, end: int, attempts: int = 1) -> ScoreItem:
         call = Call(
@@ -574,7 +587,8 @@ def test_score_views_are_checked_against_the_output_schema(reg: Registry) -> Non
     )
     unreachable = reg.add(Scoring(scorer=scorer, expectations=scoring.expectations))
     run_id, score_id = uuid4(), uuid4()
-    run = Run(stages=(RunStarted(run=run_id, at=NOW, rig=RIG, trial=ids["trial"]),))
+    opened = Run(stages=(RunStarted(run=run_id, at=NOW, rig=RIG, trial=ids["trial"]),))
+    run = Run(stages=(opened.started, opened.finish(NOW)))
     score = Score(
         stages=(
             ScoreStarted(

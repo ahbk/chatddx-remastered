@@ -628,6 +628,16 @@ def check_score(score: Score, run: Run, registry: Registry) -> list[Finding]:
                 subject=str(started.score),
             )
         )
+    if (ended := run.finished) is None or ended.at > started.at:
+        findings.append(
+            Finding(
+                code="score.run_unfinished",
+                message="the run hasn't finished"
+                if ended is None
+                else "the score started before the run finished",
+                subject=str(started.score),
+            )
+        )
     findings.extend(_sealed(score, str(started.score)))
     expected = {(k, v) for k in run_keys for v in range(len(scorer.views))}
     if score.finished is not None and (missing := expected - set(scored)):

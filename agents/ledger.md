@@ -51,6 +51,7 @@ Each check compares two of these, or one of them with the pinned factors:
 | Pinned factors and conduct | `judge.incomplete` |
 | Pinned factors and observations | `attestation.model`, `case.drift`, `tools.unanswered` |
 | Pinned factors with each other | `view.unreachable` (a scorer's view and the run's skeleton) |
+| A score and the run it grades | `score.run_unfinished` |
 | Observations that should be there | `attestation.prompt_tokens` |
 | Observations of two runs | `attestation.prompt_tokens_drift` |
 | Rows and their seal | `ledger.seal` |
@@ -328,6 +329,8 @@ It warns when
 - the scorer code that ran isn't the code the scorer pins (`score.scorer_code`): the distribution and the version
   must match, and the revision too when the scorer pins one;
 - the rows no longer match the seal (`ledger.seal`);
+- the run hadn't finished when the score started, or hasn't finished at all (`score.run_unfinished`). The scorer
+  may then have graded only part of the run. Whether the run's own seal holds is `check_run`'s to say;
 - the judge calls don't follow the score's execution settings, as for a run (`execution.retries`,
   `execution.order`, `execution.concurrency`). A run item counts as sent when its first judge call starts; items
   without judge calls are left out of the order.
@@ -352,6 +355,7 @@ of the ledger's findings are warnings.
 | `judge.incomplete` | `check_score` | item key | A scored item's judge was called with fewer seeds than the judge has. |
 | `score.incomplete` | `check_score` | none | A finished score lacks items for some pairs of run item and view. |
 | `score.scorer_code` | `check_score` | score id | The scorer code that ran isn't the code the scorer pins. |
+| `score.run_unfinished` | `check_score` | score id | The run hasn't finished, or finished after the score started. |
 
 ## Terms
 
@@ -386,7 +390,6 @@ Some records state what should happen and others what did, but nothing compares 
   `ToolRun` doesn't say which code ran, so nothing like `score.scorer_code` is possible for tools.
 - **Only run items are attested.** Canary calls and judge calls get no model check and no prompt-token check.
 - **`system_fingerprint` is kept but never compared** between calls or runs.
-- **A score may grade an unfinished run.** `check_score` doesn't ask for the run to be finished or its seal to hold.
 - **Missing expectations aren't flagged.** `check_score` doesn't warn when a run item's case has no expectation in
   the scoring.
 - **The finished row is outside the seal.** Its time and findings could change without `ledger.seal` noticing.

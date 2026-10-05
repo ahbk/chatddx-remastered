@@ -97,11 +97,20 @@ def test_digest_is_stable_and_order_independent(reg: Registry) -> None:
     assert json.loads(a.canonical)["v"] == 1
 
 
-def test_copies_compute_their_own_digest() -> None:
+def test_copies_are_built_anew() -> None:
     original = Sampling(temperature=0.5)
     _ = original.digest
     copy = original.model_copy(update={"temperature": 0.9})
     assert copy.digest == Sampling(temperature=0.9).digest != original.digest
+    greedy = Sampling(temperature=0.5, top_p=0.9).model_copy(update={"temperature": 0})
+    assert greedy == Sampling(temperature=0)
+    with pytest.raises(ValidationError):
+        _ = Trial(
+            skeleton="sha256:" + SHA,
+            engine="sha256:" + SHA,
+            cases=("sha256:" + SHA,),
+            seeds=(1,),
+        ).model_copy(update={"seeds": (1, 1)})
 
 
 def test_defaults_are_omitted_from_canonical_form() -> None:

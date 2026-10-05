@@ -111,3 +111,5 @@ the vignette read at the source differs from the case's fingerprint (`prepare_ca
   `ScoreStarted.execution` (`src/chatddx/ledger/ledger.py:check_score`).
 - CHANGE `attestation.model`: "the engine returned a different model name than declared …" → "… or a response gave
   no model name; calls without a response are skipped" (`src/chatddx/ledger/ledger.py:check_run`).
+- ADD to "Ledger": `score.run_unfinished`: the run hasn't finished, or finished after the score started, so the
+  scorer may have graded only part of it (`src/chatddx/ledger/ledger.py:check_score`).
