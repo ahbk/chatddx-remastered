@@ -4,7 +4,16 @@ from typing import Annotated, Literal
 
 from pydantic import AfterValidator, Field, HttpUrl, field_validator
 
-from .base import Component, Digest, Finding, Frozen, RefTo, Sha256Hex, sorted_keys
+from .base import (
+    Api,
+    Component,
+    Digest,
+    Finding,
+    Frozen,
+    RefTo,
+    Sha256Hex,
+    sorted_keys,
+)
 
 # Flags the start-up script derives from the manifest itself; argv may not set them.
 OWNED_FLAGS = frozenset(
@@ -23,6 +32,39 @@ def flag_names(argv: tuple[str, ...]) -> frozenset[str]:
             name, dot, rest = arg.split("=", 1)[0].partition(".")
             names.add(name.replace("_", "-") + dot + rest)
     return frozenset(names)
+
+
+# vLLM's parser expands an unambiguous prefix of a flag to the whole flag.
+def _abbreviations(
+    argv: tuple[str, ...], flags: frozenset[str]
+) -> dict[str, list[str]]:
+    found: dict[str, list[str]] = {}
+    for name in flag_names(argv) - {"--"}:
+        base = name.partition(".")[0]
+        if expanded := sorted(f for f in flags if f != base and f.startswith(base)):
+            found[name] = expanded
+    return found
+
+
+_NEGATIVE = re.compile(r"-\d")
+
+
+# `vllm serve` takes the model as its one bare argument, which the start-up script gives,
+# so another bare argument stops vLLM from starting. One that follows a flag written
+# without "=" may be that flag's value; telling them apart needs vLLM's list of flags.
+def _bare_arguments(argv: tuple[str, ...]) -> list[str]:
+    bare: list[str] = []
+    value = False
+    for i, arg in enumerate(argv):
+        if arg == "--":
+            return bare + list(argv[i + 1 :])
+        if arg.startswith("-") and not _NEGATIVE.match(arg):
+            value = "=" not in arg
+        elif value:
+            value = False
+        else:
+            bare.append(arg)
+    return bare
 
 
 class FileDigest(Frozen):
@@ -56,17 +98,18 @@ class Hardware(Frozen):
 
 
 class Runtime(Frozen):
-    engine: Literal["vllm"] = "vllm"
+    server: Literal["vllm"] = "vllm"
     version: str
     closure: str
 
 
 class LocalEngine(Component):
     kind: Literal["engine.local"] = "engine.local"
+    api: Api = "chat.completions"
     hardware: Hardware
     runtime: Runtime
     model: ModelRef
-    chat_template: FileDigest
+    chat_template: Sha256Hex
     argv: tuple[str, ...] = ()
     env: Annotated[dict[str, str], AfterValidator(sorted_keys)] = Field(
         default_factory=dict
@@ -83,6 +126,16 @@ class LocalEngine(Component):
                 f"argv may not use {sorted(unpinned)}: its arguments belong in argv, "
                 + "where the digest pins them"
             )
+        if short := _abbreviations(argv, OWNED_FLAGS | UNPINNED_FLAGS):
+            listed = ", ".join(
+                f"{a} ({' or '.join(f)})" for a, f in sorted(short.items())
+            )
+            raise ValueError(f"argv may not abbreviate flags it may not use: {listed}")
+        if bare := _bare_arguments(argv):
+            raise ValueError(
+                f"argv may not have bare arguments {bare}: vLLM takes the model as its "
+                + "only bare argument, and the start-up script gives it"
+            )
         return argv
 
     @property
@@ -92,7 +145,7 @@ class LocalEngine(Component):
 
 class RemoteEngine(Component):
     kind: Literal["engine.remote"] = "engine.remote"
-    api: Literal["openai.chat"] = "openai.chat"
+    api: Api = "chat.completions"
     base_url: HttpUrl
     model: str
 
@@ -107,7 +160,7 @@ _READS_DATE = re.compile(r"strftime_now|date_string|\bnow\s*\(")
 
 def check_chat_template(engine: LocalEngine, template: bytes) -> list[Finding]:
     findings: list[Finding] = []
-    if hashlib.sha256(template).hexdigest() != engine.chat_template.sha256:
+    if hashlib.sha256(template).hexdigest() != engine.chat_template:
         findings.append(
             Finding(
                 code="engine.chat_template",

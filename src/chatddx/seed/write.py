@@ -3,7 +3,7 @@ from collections.abc import Iterable
 from chatddx.core.catalog import Entry, EntryField, Subject
 from chatddx.core.identity import Person
 from chatddx.factors.base import Fingerprint
-from chatddx.factors.cases import CaseInput, SourceCase
+from chatddx.factors.cases import Case, Vignette
 from chatddx.factors.scoring import Expectation
 from chatddx.inventory.sources import Source
 from chatddx.ledger.ledger import Compilation
@@ -112,13 +112,15 @@ class _Seeder:
         except LookupError:
             self.lines.append(f"[archive case] {id}: missing at source {source.name!r}")
             return
-        case = CaseInput(
-            case=SourceCase(source=source.name, id=id), vignette=Fingerprint.of(raw)
+        case = Case(
+            vignette=Vignette(
+                source=source.name, id=id, fingerprint=Fingerprint.of(raw)
+            )
         )
         registry = self.plan.registry
         digest = registry.add(case)
         expectation = registry.add(
-            Expectation(case=digest, json_schema=schema, data=sample.targets)
+            Expectation(case=digest, expectation_schema=schema, data=sample.targets)
         )
         _ = self.store.add(registry, [digest, expectation])
         known = self.catalog.family(digest) is not None

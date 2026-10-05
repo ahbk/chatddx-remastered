@@ -7,7 +7,7 @@ from pydantic import JsonValue, ValidationError
 
 from chatddx.factors.base import Fingerprint, StructuralError, resolve
 from chatddx.factors.bundle import Registry
-from chatddx.factors.cases import CaseInput
+from chatddx.factors.cases import Case
 from chatddx.factors.engine import LocalEngine
 from chatddx.factors.request import Output, Tool, ToolOutput, Toolset, compile_request
 from chatddx.factors.scoring import Scorer, Scoring, View
@@ -64,7 +64,7 @@ def test_run_and_score_checks(reg: Registry) -> None:
             prompt_tokens=prompt_tokens,
         )
 
-    vignette = resolve(reg.get, ids["case"], CaseInput).vignette
+    vignette = resolve(reg.get, ids["case"], Case).vignette.fingerprint
 
     def item(replicate: int, c: Call, observed: Fingerprint = vignette) -> RunItem:
         return RunItem(
@@ -78,7 +78,7 @@ def test_run_and_score_checks(reg: Registry) -> None:
         run=run_id, at=NOW, rig=RIG, trial=ids["trial"], canaries=ids["canaries"]
     )
     items = (item(0, call(engine.served_model_name)), item(1, call("other")))
-    canaries = (CanaryCall(run=run_id, phase="start", probe=0, call=call("c")),)
+    canaries = (CanaryCall(run=run_id, phase="start", canary=0, call=call("c")),)
     open_run = Run(stages=(started,), items=items, canaries=canaries)
     run = Run(stages=(started, open_run.finish(NOW)), items=items, canaries=canaries)
     assert [f.code for f in check_run(run, reg)] == ["attestation.model"]
@@ -109,7 +109,7 @@ def test_run_and_score_checks(reg: Registry) -> None:
     with pytest.raises(StructuralError, match="outside the trial"):
         _ = check_run(Run(stages=(started,), items=(*items, item(2, call("m")))), reg)
     with pytest.raises(StructuralError, match="not planned"):
-        bad_canary = CanaryCall(run=run_id, phase="start", probe=1, call=call("c"))
+        bad_canary = CanaryCall(run=run_id, phase="start", canary=1, call=call("c"))
         _ = check_run(Run(stages=(started,), canaries=(bad_canary,)), reg)
     with pytest.raises(ValidationError, match="different logs"):
         _ = Run(
@@ -177,7 +177,7 @@ def test_seal_survives_a_storage_roundtrip() -> None:
         for r in range(2)
     )
     canaries = tuple(
-        CanaryCall(run=run_id, phase=p, probe=0, call=c) for p in ("start", "end")
+        CanaryCall(run=run_id, phase=p, canary=0, call=c) for p in ("start", "end")
     )
     run = Run(stages=(started,), items=items, canaries=canaries)
     assert started.at == NOW and started.at.utcoffset() == timedelta(0)
@@ -233,7 +233,10 @@ def test_tool_rounds_are_checked(reg: Registry) -> None:
         )
     )
     recipe = generation_recipe(reg).model_copy(
-        update={"output": answer, "tools": reg.add(Toolset(tools=(web,), max_rounds=2))}
+        update={
+            "output": answer,
+            "toolset": reg.add(Toolset(tools=(web,), max_rounds=2)),
+        }
     )
     skeleton = reg.add(compile_request(recipe, reg.get))
     trial = reg.add(
@@ -241,7 +244,7 @@ def test_tool_rounds_are_checked(reg: Registry) -> None:
     )
     run_id = uuid4()
     started = RunStarted(run=run_id, at=NOW, rig=RIG, trial=trial)
-    vignette = resolve(reg.get, ids["case"], CaseInput).vignette
+    vignette = resolve(reg.get, ids["case"], Case).vignette.fingerprint
 
     def call(*names: str, model: str = engine.served_model_name) -> Call:
         calls: list[JsonValue] = [
@@ -319,11 +322,12 @@ def test_tool_rounds_are_checked(reg: Registry) -> None:
 def test_score_views_are_checked_against_the_output_schema(reg: Registry) -> None:
     ids = world(reg)
     scoring = resolve(reg.get, ids["scoring"], Scoring)
-    consumes = resolve(reg.get, scoring.scorer, Scorer).consumes
+    expectation_schema = resolve(reg.get, scoring.scorer, Scorer).expectation_schema
     scorer = reg.add(
         Scorer(
             code=RIG,
-            consumes=consumes,
+            entry_point="chatddx_scoring.match:score",
+            expectation_schema=expectation_schema,
             views=(
                 View(output="$.ddx[*]", metric="m"),
                 View(output="$.ddx.first", metric="m"),

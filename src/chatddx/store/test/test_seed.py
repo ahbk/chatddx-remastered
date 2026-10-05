@@ -68,7 +68,7 @@ def test_init_data_seeds_the_archive(conn: Connection) -> None:
         frozenset({"ddx"}),
         True,
     )
-    [case] = [c for c in vignettes().cases() if c.case.id == "DutchFall10w"]
+    [case] = [c for c in vignettes().cases() if c.vignette.id == "DutchFall10w"]
     family = catalog.family(case.digest)
     assert family is not None
     assert catalog.about(Subject(family=family)).language == "en"

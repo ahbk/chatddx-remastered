@@ -11,7 +11,8 @@ from pydantic import JsonValue
 # (`.name`, `['name']`), indexes (`[0]`, `[-1]`), wildcards (`.*`, `[*]`), and filters
 # that test a relative path for existence (`[?@.critical]`) or compare it with a literal
 # (`[?@.critical == true]`, `!=`). Within the subset, every RFC 9535 implementation
-# selects the same nodes, in the same order.
+# selects the same nodes. RFC 9535 leaves the order of an object's members open; this
+# keeps the document's order.
 
 
 @dataclass(frozen=True)

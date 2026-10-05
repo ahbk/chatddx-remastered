@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import override
 
 from chatddx.factors.base import Fingerprint, Frozen
-from chatddx.factors.cases import CaseInput, SourceCase
+from chatddx.factors.cases import Case, Vignette
 
 
 class Source(Frozen, ABC):
@@ -16,11 +16,12 @@ class Source(Frozen, ABC):
     @abstractmethod
     def fetch(self, id: str) -> bytes: ...
 
-    def cases(self) -> list[CaseInput]:
+    def cases(self) -> list[Case]:
         return [
-            CaseInput(
-                case=SourceCase(source=self.name, id=id),
-                vignette=Fingerprint.of(self.fetch(id)),
+            Case(
+                vignette=Vignette(
+                    source=self.name, id=id, fingerprint=Fingerprint.of(self.fetch(id))
+                )
             )
             for id in self.ids()
         ]

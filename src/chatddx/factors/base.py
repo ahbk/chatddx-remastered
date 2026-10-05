@@ -21,7 +21,6 @@ from pydantic import (
     AfterValidator,
     BaseModel,
     ConfigDict,
-    GetJsonSchemaHandler,
     JsonValue,
     SerializationInfo,
     SerializerFunctionWrapHandler,
@@ -29,12 +28,11 @@ from pydantic import (
     model_serializer,
     model_validator,
 )
-from pydantic.json_schema import JsonSchemaValue
-from pydantic_core import CoreSchema
 
 Digest = Annotated[str, StringConstraints(pattern=r"^sha256:[0-9a-f]{64}$")]
 Sha256Hex = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 JsonPointer = Annotated[str, StringConstraints(pattern=r"^(/([^~/]|~[01])*)*$")]
+Api = Literal["chat.completions"]
 
 
 class StructuralError(ValueError):
@@ -51,6 +49,12 @@ def canonical_bytes(doc: JsonValue) -> bytes:
 
 def sorted_keys[V](mapping: dict[str, V]) -> dict[str, V]:
     return dict(sorted(mapping.items()))
+
+
+def distinct[T](values: tuple[T, ...]) -> tuple[T, ...]:
+    if len(set(values)) != len(values):
+        raise ValueError("duplicates are not allowed")
+    return values
 
 
 # A settings mapping's keys name options whose order means nothing, so equivalent
@@ -91,13 +95,6 @@ class RefTo:
 
     def __init__(self, *kinds: str) -> None:
         object.__setattr__(self, "kinds", kinds)
-
-    def __get_pydantic_json_schema__(
-        self, core_schema: CoreSchema, handler: GetJsonSchemaHandler
-    ) -> JsonSchemaValue:
-        schema = handler(core_schema)
-        schema["x-ref"] = list(self.kinds)
-        return schema
 
 
 @dataclass(frozen=True)

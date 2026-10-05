@@ -53,10 +53,10 @@ CREATE TABLE ledger.canary_call (
     run uuid NOT NULL,
     stage text NOT NULL DEFAULT 'started' CHECK (stage = 'started'),
     phase text NOT NULL,
-    probe integer NOT NULL,
+    canary integer NOT NULL,
     payload text NOT NULL,
     doc jsonb NOT NULL,
-    PRIMARY KEY (run, phase, probe),
+    PRIMARY KEY (run, phase, canary),
     FOREIGN KEY (run, stage) REFERENCES ledger.run_stage
 );
 

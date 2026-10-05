@@ -7,7 +7,7 @@ from collections.abc import Callable, Iterable
 from pydantic import JsonValue
 
 from chatddx.factors.base import Component
-from chatddx.factors.cases import Appendix, CaseInput
+from chatddx.factors.cases import Appendix, Case
 from chatddx.factors.engine import LocalEngine, ModelArtifact, RemoteEngine
 from chatddx.factors.request import (
     FewShot,
@@ -165,8 +165,8 @@ def describe(component: Component, title: Title) -> str:
             return snippet(text)
         case Expectation(case=case):
             return f"expectation for {title(case)}"
-        case CaseInput(case=case, appendices=appendices):
-            described = f"{case.source}/{case.id}"
+        case Case(vignette=vignette, appendices=appendices):
+            described = f"{vignette.source}/{vignette.id}"
             if appendices:
                 described += (
                     f" with {_count(len(appendices), 'appendix', 'appendices')}"
@@ -175,12 +175,12 @@ def describe(component: Component, title: Title) -> str:
         case ModelArtifact(repo=repo):
             return repo
         case LocalEngine(model=model, runtime=runtime):
-            return f"{title(model)} on {runtime.engine} {runtime.version}"
+            return f"{title(model)} on {runtime.server} {runtime.version}"
         case RemoteEngine(model=model, base_url=url):
             return f"{model} at {url.host}"
         case ExpectationSchema(json_schema=schema):
             return _schema(schema) or f"expectation schema {short(component.digest)}"
-        case CanarySet(probes=probes):
-            return _count(len(probes), "canary", "canaries")
+        case CanarySet(canaries=canaries):
+            return _count(len(canaries), "canary", "canaries")
         case _:
             return f"{component.kind_name} {short(component.digest)}"

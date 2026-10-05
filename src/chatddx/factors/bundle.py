@@ -61,12 +61,15 @@ class Registry:
         problems: list[str] = []
         for d in self if digests is None else digests:
             component = self.get(d)
+            refs: list[str] = []
             for site in component.refs():
                 if site.digest not in self:
-                    problems.append(f"{d}{site.path}: {site.digest} is missing")
+                    refs.append(f"{d}{site.path}: {site.digest} is missing")
                 elif (k := self.get(site.digest).kind_name) not in site.kinds:
-                    problems.append(f"{d}{site.path}: {k} is not one of {site.kinds}")
-            if not problems:
+                    refs.append(f"{d}{site.path}: {k} is not one of {site.kinds}")
+            problems.extend(refs)
+            # cross_check resolves the component's own references, so they must hold.
+            if not refs:
                 problems.extend(f"{d}: {p}" for p in component.cross_check(self.get))
         if problems:
             raise StructuralError("\n".join(problems))

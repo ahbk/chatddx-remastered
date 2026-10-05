@@ -6,7 +6,7 @@ from chatddx.inventory.sources import DirectorySource, MemorySource
 from pydantic import ValidationError
 
 from chatddx.factors.base import Fingerprint
-from chatddx.factors.cases import CaseInput, SourceCase
+from chatddx.factors.cases import Case, Vignette
 
 
 def vignettes(root: Path) -> Path:
@@ -52,13 +52,19 @@ def test_directory_sources_list_fetch_and_make_cases(tmp_path: Path) -> None:
         with pytest.raises(LookupError, match="outside"):
             _ = source.fetch(id)
     assert source.cases() == [
-        CaseInput(
-            case=SourceCase(source="sample", id="Dutchfall11w"),
-            vignette=Fingerprint.of(b"A 72-year-old man.\n"),
+        Case(
+            vignette=Vignette(
+                source="sample",
+                id="Dutchfall11w",
+                fingerprint=Fingerprint.of(b"A 72-year-old man.\n"),
+            ),
         ),
-        CaseInput(
-            case=SourceCase(source="sample", id="casesfromedn1"),
-            vignette=Fingerprint.of("60-årig kvinna.".encode()),
+        Case(
+            vignette=Vignette(
+                source="sample",
+                id="casesfromedn1",
+                fingerprint=Fingerprint.of("60-årig kvinna.".encode()),
+            ),
         ),
     ]
 

@@ -9,7 +9,7 @@ from chatddx.core.catalog import THREAD_KINDS, About, Entry, EntryField, Subject
 from chatddx.core.identity import Person
 from chatddx.factors.base import Component, StructuralError, iter_refs, resolve
 from chatddx.factors.bundle import Registry
-from chatddx.factors.cases import Appendix, CaseInput, SourceCase
+from chatddx.factors.cases import Appendix, Case, Vignette
 from chatddx.factors.lint import lint
 from chatddx.factors.request import (
     Insert,
@@ -396,11 +396,11 @@ def test_families(conn: Connection) -> None:
     family = catalog.adopt(ids["case"], alice.id)
     assert catalog.adopt(ids["case"], alice.id) == family
     assert catalog.family(ids["case"]) == family
-    case = resolve(reg.get, ids["case"], CaseInput)
+    case = resolve(reg.get, ids["case"], Case)
     [binding] = catalog.bindings(family)
-    assert (binding.case, binding.vignette) == (case.case, case.vignette)
+    assert binding.vignette == case.vignette
 
-    bare = reg.add(CaseInput(case=case.case, vignette=case.vignette))
+    bare = reg.add(Case(vignette=case.vignette))
     _ = store.add(reg, [bare])
     assert catalog.adopt(bare, alice.id) == family
     catalog.note(
@@ -410,15 +410,17 @@ def test_families(conn: Connection) -> None:
     )
     assert catalog.about(Subject(family=family)).name == "chest pain"
 
-    source = case.case.source
-    changed = reg.add(CaseInput(case=case.case, vignette=fp("edited at the source")))
-    renamed = reg.add(
-        CaseInput(
-            case=SourceCase(source=source, id="c1-renamed"), vignette=case.vignette
+    vignette = case.vignette
+    changed = reg.add(
+        Case(
+            vignette=vignette.model_copy(
+                update={"fingerprint": fp("edited at the source")}
+            )
         )
     )
+    renamed = reg.add(Case(vignette=vignette.model_copy(update={"id": "c1-renamed"})))
     other = reg.add(
-        CaseInput(case=SourceCase(source=source, id="c2"), vignette=fp("x"))
+        Case(vignette=Vignette(source=vignette.source, id="c2", fingerprint=fp("x")))
     )
     _ = store.add(reg, [changed, renamed, other])
     with pytest.raises(ValueError, match="new content"):
@@ -436,11 +438,9 @@ def test_families(conn: Connection) -> None:
 
 def test_behind_looks_through_cases(conn: Connection) -> None:
     catalog, store, reg, ids, alice = stored_world(conn)
-    case = resolve(reg.get, ids["case"], CaseInput)
+    case = resolve(reg.get, ids["case"], Case)
     [appendix] = case.appendices
-    edited = reg.add(
-        Appendix(case=case.case, vignette=case.vignette, text="Troponin 120 ng/L.")
-    )
+    edited = reg.add(Appendix(vignette=case.vignette, text="Troponin 120 ng/L."))
     _ = store.add(reg, [edited])
     trial = catalog.create(ids["trial"], alice.id)
     expectation = resolve(reg.get, ids["scoring"], Scoring).expectations[0]
@@ -459,9 +459,9 @@ def test_behind_looks_through_cases(conn: Connection) -> None:
 
 def test_renamed_vignettes_are_repaired(conn: Connection) -> None:
     catalog, store, reg, ids, alice = stored_world(conn)
-    case = resolve(reg.get, ids["case"], CaseInput)
+    case = resolve(reg.get, ids["case"], Case)
     [appendix] = case.appendices
-    source = case.case.source
+    source, fingerprint = case.vignette.source, case.vignette.fingerprint
     family = catalog.adopt(ids["case"], alice.id)
     name = Entry(field=EntryField.NAME, value="chest pain")
     catalog.note(Subject(family=family), name, alice.id)
@@ -470,26 +470,26 @@ def test_renamed_vignettes_are_repaired(conn: Connection) -> None:
     expected = catalog.create(expectation, alice.id)
     appended = catalog.create(appendix, alice.id)
 
-    assert catalog.survey(source, {"c1": case.vignette}) == Survey(unchanged=(family,))
-    survey = catalog.survey(source, {"c1-renamed": case.vignette, "c9": fp("new")})
+    assert catalog.survey(source, {"c1": fingerprint}) == Survey(unchanged=(family,))
+    survey = catalog.survey(source, {"c1-renamed": fingerprint, "c9": fp("new")})
     assert (survey.renamed, survey.new) == (((family, "c1", "c1-renamed"),), ("c9",))
     assert catalog.survey(source, {}).gone == (family,)
 
     repair = catalog.repair(family, alice.id, id="c1-renamed")
-    renamed = SourceCase(source=source, id="c1-renamed")
-    assert (repair.binding.case, repair.binding.vignette) == (renamed, case.vignette)
-    rebound = resolve(store.get, repair.cases[ids["case"]], CaseInput)
-    assert (rebound.case, rebound.vignette) == (renamed, case.vignette)
+    renamed = case.vignette.model_copy(update={"id": "c1-renamed"})
+    assert repair.binding.vignette == renamed
+    rebound = resolve(store.get, repair.cases[ids["case"]], Case)
+    assert rebound.vignette == renamed
     assert rebound.appendices == (repair.appendices[appendix],)
     new_appendix = resolve(store.get, repair.appendices[appendix], Appendix)
-    assert (new_appendix.case, new_appendix.text) == (renamed, "Troponin 80 ng/L.")
+    assert (new_appendix.vignette, new_appendix.text) == (renamed, "Troponin 80 ng/L.")
     assert catalog.head(appended.thread).digest == repair.appendices[appendix]
     rekeyed = resolve(store.get, catalog.head(expected.thread).digest, Expectation)
     assert rekeyed.case == repair.cases[ids["case"]]
     assert {e.thread for e in repair.edits} == {appended.thread, expected.thread}
     assert catalog.family(repair.cases[ids["case"]]) == catalog.family(ids["case"])
     assert catalog.about(Subject(family=family)).name == "chest pain"
-    assert catalog.survey(source, {"c1-renamed": case.vignette}).unchanged == (family,)
+    assert catalog.survey(source, {"c1-renamed": fingerprint}).unchanged == (family,)
     assert [(b.path, b.digest, b.binding) for b in catalog.behind(trial.thread)] == [
         ("/cases/0", ids["case"], repair.binding),
         ("/cases/0/appendices/0", appendix, None),
@@ -499,8 +499,8 @@ def test_renamed_vignettes_are_repaired(conn: Connection) -> None:
 
 def test_changed_vignettes_are_repaired(conn: Connection) -> None:
     catalog, store, reg, ids, alice = stored_world(conn)
-    case = resolve(reg.get, ids["case"], CaseInput)
-    source = case.case.source
+    case = resolve(reg.get, ids["case"], Case)
+    source = case.vignette.source
     family = catalog.adopt(ids["case"], alice.id)
     expectation = resolve(reg.get, ids["scoring"], Scoring).expectations[0]
     expected = catalog.create(expectation, alice.id)
@@ -508,15 +508,15 @@ def test_changed_vignettes_are_repaired(conn: Connection) -> None:
     survey = catalog.survey(source, {"c1": edited})
     assert survey == Survey(changed=((family, "c1", edited),))
 
-    with pytest.raises(ValueError, match="one of the id or the vignette"):
+    with pytest.raises(ValueError, match="one of the id or the fingerprint"):
         _ = catalog.repair(family, alice.id)
-    with pytest.raises(ValueError, match="one of the id or the vignette"):
-        _ = catalog.repair(family, alice.id, id="c2", vignette=edited)
-    with pytest.raises(ValueError, match="one of the id or the vignette"):
+    with pytest.raises(ValueError, match="one of the id or the fingerprint"):
+        _ = catalog.repair(family, alice.id, id="c2", fingerprint=edited)
+    with pytest.raises(ValueError, match="one of the id or the fingerprint"):
         _ = catalog.repair(family, alice.id, id="c1")
-    repair = catalog.repair(family, alice.id, vignette=edited)
-    rebound = resolve(store.get, repair.cases[ids["case"]], CaseInput)
-    assert (rebound.case, rebound.vignette) == (case.case, edited)
+    repair = catalog.repair(family, alice.id, fingerprint=edited)
+    rebound = resolve(store.get, repair.cases[ids["case"]], Case)
+    assert rebound.vignette == case.vignette.model_copy(update={"fingerprint": edited})
     assert catalog.head(expected.thread).digest == expectation
     assert repair.edits == ()
     assert [

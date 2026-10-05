@@ -37,7 +37,7 @@ TABLES: dict[str, type[Component]] = {
     "passthrough": Passthrough,
     "translations": Translations,
     "tool": Tool,
-    "tools": Toolset,
+    "toolset": Toolset,
     "expectation_schema": ExpectationSchema,
 }
 # A recipe's references, by field; each names a record of the table of the same name.
@@ -50,7 +50,7 @@ RECIPE_PARTS = (
     "reasoning",
     "passthrough",
     "translations",
-    "tools",
+    "toolset",
 )
 SAMPLE = Path(__file__).parent.parent / "data" / "sample"
 
@@ -172,7 +172,7 @@ def plan_factors(
             tags = _tags(body.pop("tags", []))
             description = body.pop("description", None)
             fork_of = body.pop("fork_of", None)
-            if table == "tools" and isinstance(tools := body.get("tools"), list):
+            if table == "toolset" and isinstance(tools := body.get("tools"), list):
                 body["tools"] = [plan.named("tool", str(t)).digest for t in tools]
             variants: Variants = {}
             for model in models if "from_facts" in body else [None]:

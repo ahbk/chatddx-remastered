@@ -1,3 +1,5 @@
+import json
+from collections.abc import Sequence
 from typing import Annotated, Literal, override
 
 from pydantic import AfterValidator, Field, JsonValue
@@ -10,10 +12,12 @@ from .base import (
     RefTo,
     Resolver,
     Settings,
+    StructuralError,
+    distinct,
 )
-from .cases import CaseInputRef
+from .cases import CaseRef
 from .engine import EngineRef
-from .request import Skeleton, SkeletonRef
+from .request import EntryPoint, Skeleton, SkeletonRef, SlotName
 from .select import SplitOp, check_selector, select, split
 
 
@@ -27,19 +31,35 @@ ExpectationSchemaRef = Annotated[Digest, RefTo("expectation_schema")]
 
 class Expectation(Component):
     kind: Literal["expectation"] = "expectation"
-    case: CaseInputRef
-    json_schema: ExpectationSchemaRef
+    case: CaseRef
+    expectation_schema: ExpectationSchemaRef
     data: JsonValue
 
 
 ExpectationRef = Annotated[Digest, RefTo("expectation")]
+
+# How a judge's slots are written out, one name per behavior as with CleanupOp (cases.py).
+FillOp = Literal["text@1"]
+
+
+def fill_text(op: FillOp, items: Sequence[JsonValue]) -> str:
+    assert op == "text@1"
+    value: JsonValue = items[0] if len(items) == 1 else list(items)
+    match value:
+        case str():
+            return value
+        case list() if all(isinstance(v, str) for v in value):
+            return "\n".join(str(v) for v in value)
+        case _:
+            return json.dumps(value, indent=2, ensure_ascii=False)
 
 
 class Judge(Component):
     kind: Literal["judge"] = "judge"
     skeleton: SkeletonRef
     engine: EngineRef
-    seeds: tuple[int, ...] = Field(min_length=1)
+    seeds: Annotated[tuple[int, ...], AfterValidator(distinct)] = Field(min_length=1)
+    fill: FillOp = "text@1"
 
     @override
     def cross_check(self, get: Resolver) -> list[str]:
@@ -48,6 +68,16 @@ class Judge(Component):
         if skeleton.purpose != "judge":
             return [f"judge uses a {skeleton.purpose} skeleton"]
         return []
+
+    def fills(
+        self, view: "View", answer: JsonValue, expectation: JsonValue
+    ) -> dict[SlotName, str]:
+        if view.judge != self.digest:
+            raise StructuralError(f"the view is judged by {view.judge}, not this judge")
+        return {
+            "completion": fill_text(self.fill, view.output_items(answer)),
+            "expectation": fill_text(self.fill, view.expectation_items(expectation)),
+        }
 
 
 JudgeRef = Annotated[Digest, RefTo("judge")]
@@ -76,7 +106,8 @@ class View(Frozen):
 class Scorer(Component):
     kind: Literal["scorer"] = "scorer"
     code: Code
-    consumes: ExpectationSchemaRef
+    entry_point: EntryPoint
+    expectation_schema: ExpectationSchemaRef
     views: tuple[View, ...] = Field(min_length=1)
     resources: tuple[str, ...] = ()
     params: Settings = Field(default_factory=dict)
@@ -103,7 +134,7 @@ class Scoring(Component):
         for ref in self.expectations:
             e = get(ref)
             assert isinstance(e, Expectation)
-            if e.json_schema != scorer.consumes:
+            if e.expectation_schema != scorer.expectation_schema:
                 problems.append(f"expectation {ref} is not in the scorer's schema")
             if e.case in cases:
                 problems.append(f"case {e.case} has more than one expectation")

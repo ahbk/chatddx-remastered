@@ -70,3 +70,27 @@ vLLM is used for running local models within our control. A fake vLLM is under p
 Fake vLLM based on 0.24.0 should pin all of them
 
 ## Proposed amendments
+
+- ADD to item 8: Flag names may also be abbreviated. `FlexibleArgumentParser` keeps argparse's default
+  `allow_abbrev` (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/utils/argparse_utils.py#L128-L134), so an
+  unambiguous prefix stands for the whole flag, and for a flag given twice the last one wins: `--served-model x`
+  after `--served-model-name <digest>` serves the model as `x`, and `--revis r` sets `--revision`. An ambiguous
+  prefix is refused: `--chat-templ` could be `--chat-template` or `--chat-template-content-format`.
+  `LocalEngine.argv` refuses prefixes of the flags it may not use (`src/chatddx/factors/engine.py:_abbreviations`).
+
+- ADD as item 11: `vllm serve` takes one optional bare argument, the model (`model_tag`, `nargs="?"`,
+  https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/cli_args.py#L347-L352), which then
+  replaces `--model` (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/cli/serve.py#L52-L53).
+  A `--model` option is moved to the front as that argument
+  (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/utils/argparse_utils.py#L251-L283), so any other bare
+  argument, including everything after `--`, fails with `unrecognized arguments`
+  (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/utils/argparse_utils.py#L429) and the server doesn't
+  start. `LocalEngine.argv` refuses bare arguments that can't be a flag's value
+  (`src/chatddx/factors/engine.py:_bare_arguments`).
+
+- ADD as item 12: A chat-completion request accepts keys beyond the OpenAI API
+  (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/chat_completion/protocol.py#L193),
+  four of which go around other settings: `chat_template` replaces the server's chat template for the request
+  (#L317), `structured_outputs` constrains the output beside `response_format` (#L344), `return_prompt_text` puts
+  the templated prompt in the response (#L385), and `prompt_logprobs` returns logprobs for the prompt's tokens
+  (#L266). A passthrough chunk may not set them (`src/chatddx/factors/request.py:BYPASS_KEYS`).

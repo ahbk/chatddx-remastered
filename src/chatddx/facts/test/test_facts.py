@@ -28,6 +28,7 @@ from chatddx.facts.facts import (
     Refused,
     Writes,
 )
+from chatddx.facts.lint import lint as lint_facts, reasons
 
 SAMPLE = Path(chatddx.__file__).parent / "data" / "sample" / "facts.toml"
 QWEN = "Qwen/Qwen3-8B-AWQ"
@@ -116,7 +117,7 @@ def test_facts_check_pairs(facts: Facts) -> None:
             )
         )
 
-    user = Message(role="user", content=(Slot(slot="case"),))
+    user = Message(role="user", content=(Slot(slot="vignette"),))
     response_format: dict[str, JsonValue] = {
         "type": "json_schema",
         "json_schema": {"name": "output", "schema": {"type": "object"}},
@@ -129,7 +130,8 @@ def test_facts_check_pairs(facts: Facts) -> None:
         trial = reg.add(
             Trial(skeleton=skeleton, engine=engine, cases=(ids["case"],), seeds=(1,))
         )
-        return {f.code: f.level for f in lint(reg, [trial], facts=facts)}
+        found = lint(reg, [trial], reasons=reasons(facts, reg))
+        return {f.code: f.level for f in found + lint_facts(reg, facts, [trial])}
 
     native = skeleton(NativeOutput(), response_format=response_format)
     qwen = engine(QWEN)
@@ -166,11 +168,9 @@ def test_facts_check_pairs(facts: Facts) -> None:
     trial = reg.add(
         Trial(skeleton=native, engine=qwen, cases=(ids["case"],), seeds=(1,))
     )
-    assert [
-        (f.code, f.message)
-        for f in lint(reg, [trial], facts=refusing)
-        if f.code.startswith("facts.")
-    ] == [("facts.output_refused", "no grammar")]
+    assert [(f.code, f.message) for f in lint_facts(reg, refusing, [trial])] == [
+        ("facts.output_refused", "no grammar")
+    ]
 
     unknown = engine("someone/unknown")
     assert findings(skeleton(TextOutput()), unknown) == {"facts.missing": "info"}

@@ -15,7 +15,7 @@
 # the output's guidance becoming the system message. instruction.bare is the same prompt with an output that
 # brings no guidance (output.raw).
 [prompt.case]
-segments = [{ slot = "case" }, { slot = "appendices" }]
+segments = [{ slot = "vignette" }, { slot = "appendices" }]
 
 [output.management-plan]
 description = "The management plan, as the medical-assistant agents ask for it."
@@ -40,7 +40,8 @@ Answer with a JSON object that matches this JSON Schema, and nothing else:
 [output.management-plan-prompted]
 description = "The management plan, with its schema shown and nothing enforcing it."
 fork_of = "management-plan-shown"
-contract = { kind = "text", json_schema_path = "schemas/management_plan_v1.json" }
+contract = { kind = "text" }
+json_schema_path = "schemas/management_plan_v1.json"
 guidance = [
   """Fill in the management plan for the case.
 
