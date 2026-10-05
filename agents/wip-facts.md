@@ -1,6 +1,6 @@
 # Facts: work in progress
 
-Superseded by `agents/facts.md`, which covers the current state and what's still open; kept for its history.
+Superseded by `docs/facts.md`, which covers the current state and what's still open; kept for its history.
 
 Material for a future `docs/facts.md`. "Decided" means the user said so; "Take" is the agent's recommendation and
 still open. Code: `src/chatddx/facts/facts.py`, tests and a ported sample in `src/chatddx/facts/test/`.

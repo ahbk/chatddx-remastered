@@ -5,8 +5,10 @@ from pathlib import Path
 
 from pydantic import JsonValue, ValidationError
 
+from chatddx.core.rig import entry
 from chatddx.factors.base import Code, Component
 from chatddx.factors.bundle import Registry
+from chatddx.factors.engine import LocalEngine, ModelArtifact, RemoteEngine
 from chatddx.factors.request import (
     Compilation,
     FewShot,
@@ -22,8 +24,9 @@ from chatddx.factors.request import (
     Translations,
     compile_request,
 )
-from chatddx.factors.scoring import ExpectationSchema
+from chatddx.factors.scoring import ExpectationSchema, Scorer
 from chatddx.facts.facts import INTENTS, Effort, Facts, Refused
+from chatddx.scorers.scorer import function
 
 # The sample's tables, in the order they're planned: a table may reference only those before it.
 TABLES: dict[str, type[Component]] = {
@@ -38,6 +41,16 @@ TABLES: dict[str, type[Component]] = {
     "tool": Tool,
     "toolset": Toolset,
     "expectation_schema": ExpectationSchema,
+    "scorer": Scorer,
+    "model": ModelArtifact,
+    "local_engine": LocalEngine,
+    "remote_engine": RemoteEngine,
+}
+# References outside recipes, by table and field: each names records of another table.
+REFERENCES: dict[str, dict[str, str]] = {
+    "toolset": {"tools": "tool"},
+    "scorer": {"expectation_schema": "expectation_schema"},
+    "local_engine": {"model": "model"},
 }
 # A recipe's references, by field; each names a record of the table of the same name.
 RECIPE_PARTS = (
@@ -64,11 +77,14 @@ class Planned:
     description: str | None = None
     fork_of: str | None = None
     compilation: str | None = None
+    # a scorer's view labels, by position
+    labels: tuple[str | None, ...] = ()
 
 
 @dataclass
 class Plan:
     registry: Registry
+    facts: Facts
     records: list[Planned] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)
 
@@ -132,6 +148,30 @@ def _component(
             raise ValueError(f"{table} records can't come from facts")
 
 
+def _labels(table: str, body: dict[str, JsonValue]) -> tuple[str | None, ...]:
+    views = body.get("views")
+    if table != "scorer" or not isinstance(views, list):
+        return ()
+    labels: list[str | None] = []
+    for view in views:
+        label = view.pop("label", None) if isinstance(view, dict) else None
+        if label is not None and not isinstance(label, str):
+            raise ValueError(f"a view's label must be a string, not {label!r}")
+        labels.append(label)
+    return tuple(labels)
+
+
+def _check_runs(component: Component) -> None:
+    match component:
+        case Tool():
+            if not callable(entry(component.code, component.entry_point)):
+                raise TypeError(f"{component.entry_point} isn't a function")
+        case Scorer():
+            _ = function(component)
+        case _:
+            pass
+
+
 def _tags(value: JsonValue) -> tuple[str, ...]:
     if not isinstance(value, list) or not all(isinstance(t, str) for t in value):
         raise ValueError(f"tags must be a list of strings, not {value!r}")
@@ -146,7 +186,7 @@ def plan_factors(
     if stray := set(data) - set(TABLES) - {"recipe"}:
         raise ValueError(f"{path}: unknown tables {sorted(stray)}")
     root = root or path.parent
-    plan = Plan(Registry())
+    plan = Plan(Registry(), facts)
     planned: dict[tuple[str, str], Variants] = {}
     models = sorted(facts.models)
 
@@ -164,15 +204,30 @@ def plan_factors(
         found = variants.get(model) or variants.get(None)
         return None if found is None else found.name
 
-    for table in TABLES:
+    for table, kind in TABLES.items():
         for name, raw in data.get(table, {}).items():
             body = _with_files(raw, root)
             assert isinstance(body, dict)
             tags = _tags(body.pop("tags", []))
-            description = body.pop("description", None)
+            # A tool's description is a field, what the model reads; it's the entry too.
+            if "description" in kind.model_fields:
+                description = body.get("description")
+            else:
+                description = body.pop("description", None)
             fork_of = body.pop("fork_of", None)
-            if table == "toolset" and isinstance(tools := body.get("tools"), list):
-                body["tools"] = [plan.named("tool", str(t)).digest for t in tools]
+            for key, target in REFERENCES.get(table, {}).items():
+                match body.get(key):
+                    case str() as named:
+                        body[key] = plan.named(target, named).digest
+                    case list() as names:
+                        body[key] = [plan.named(target, str(n)).digest for n in names]
+                    case _:
+                        pass
+            # Tools and scorers pin the code that runs them: the running chatddx, which
+            # compilations record as their compiler, unless they name other code.
+            if table in ("tool", "scorer") and "code" not in body:
+                body["code"] = compiler.model_dump(mode="json")
+            labels = _labels(table, body)
             variants: Variants = {}
             for model in models if "from_facts" in body else [None]:
                 try:
@@ -182,6 +237,11 @@ def plan_factors(
                     continue
                 except ValidationError as e:
                     raise ValueError(f"{table}.{name}: {e}") from None
+                if getattr(component, "code", None) == compiler:
+                    try:
+                        _check_runs(component)
+                    except (LookupError, TypeError) as e:
+                        raise ValueError(f"{table}.{name}: {e}") from None
                 variants[model] = Planned(
                     table=table,
                     name=_named(name, model),
@@ -190,6 +250,7 @@ def plan_factors(
                     tags=tags,
                     description=None if description is None else str(description),
                     fork_of=base(table, fork_of, model),
+                    labels=labels,
                 )
             add(table, name, variants)
 

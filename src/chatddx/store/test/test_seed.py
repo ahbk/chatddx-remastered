@@ -1,4 +1,6 @@
 from collections import Counter
+from collections.abc import Iterator
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -6,7 +8,9 @@ import pytest
 from chatddx.catalog import Subject
 from chatddx.cli import main
 from chatddx.core.rig import rig
+from chatddx.factors.base import Fingerprint
 from chatddx.facts.facts import Facts
+from chatddx.inventory.inventory import Inventory
 from chatddx.inventory.sources import MemorySource
 from chatddx.seed import Plan, load_cases, plan_factors, seed
 from chatddx.seed.plan import SAMPLE
@@ -15,6 +19,21 @@ from chatddx.store.store import Connection
 from chatddx.store.test.conftest import connect
 
 CASES = load_cases(SAMPLE / "cases.toml")
+REVISION = "f" * 40
+# The fake engines say what they are: no commit, no Nix closure.
+FAKES = [
+    *(
+        f"[lint warning] model {name}: model.revision: revision 'fake' is not a "
+        + "commit and can move"
+        for name in ("qwen3-8b-awq@fake", "gpt-oss-20b@fake")
+    ),
+    *(
+        f"[lint warning] engine.local {name}: engine.closure: closure 'chatddx "
+        + "fake-vllm' is not a Nix store path"
+        for name in ("qwen3-8b-awq@fake", "gpt-oss-20b@fake")
+    ),
+]
+SAMPLE_WORLD = Path(__file__).parents[4] / "sample-world" / "inventory.toml"
 
 
 def sample_plan(factors: Path = SAMPLE / "factors.toml") -> Plan:
@@ -30,11 +49,19 @@ def vignettes(**changed: bytes) -> MemorySource:
 def tally(lines: list[str]) -> Counter[str]:
     def what(line: str) -> str:
         prefix = line[1 : line.index("]")].split(" ")[0]
-        if prefix in ("skipped", "share"):
+        if prefix in ("skipped", "share", "lint"):
             return prefix
         return f"{prefix} {line.split(': ', 1)[1].split(' ')[0]}"
 
     return Counter(what(line) for line in lines)
+
+
+# Its own patch, so it's undone last, after the database fixtures that read DB_NAME.
+@pytest.fixture(autouse=True)
+def revision() -> Iterator[None]:
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv("CHATDDX_REVISION", REVISION)
+        yield
 
 
 def test_init_data_seeds_the_archive(conn: Connection) -> None:
@@ -43,13 +70,23 @@ def test_init_data_seeds_the_archive(conn: Connection) -> None:
     lines = seed(conn, plan, CASES, vignettes(), alice)
     threads = len(plan.records) + len(CASES)
     assert tally(lines) == Counter(
-        {"archive created": threads + len(CASES), "skipped": 4, "share": 1}
+        {
+            "archive created": threads + len(CASES),
+            "skipped": 4,
+            "share": 1,
+            "lint": len(FAKES) + 1,
+        }
     )
     shared = threads + len(CASES)
     assert (
-        lines[-1]
+        lines[-len(FAKES) - 2]
         == f"[share] {shared} of {shared} archive threads and families with alice"
     )
+    components = len({r.digest for r in plan.records}) + 2 * len(CASES)
+    assert lines[-len(FAKES) - 1 :] == [
+        *FAKES,
+        f"[lint] {len(FAKES)} findings in {components} components",
+    ]
 
     catalog = Catalog(conn)
     archive = People(conn).find("archive")
@@ -72,10 +109,41 @@ def test_init_data_seeds_the_archive(conn: Connection) -> None:
     assert family is not None
     assert catalog.about(Subject(family=family)).language == "en"
     assert catalog.title_of(case.digest) == "DutchFall10w"
+    scorer = plan.named("scorer", "plan")
+    assert catalog.labels(scorer.digest) == {
+        ("view", 0): "differential",
+        ("view", 1): "warning",
+        ("view", 2): "disposition",
+    }
+    [tool] = catalog.find("tool", "web_search", owner=archive.id)
+    assert catalog.about(Subject(thread=tool)).description == (
+        "Search the web for up-to-date information"
+    )
 
     again = seed(conn, sample_plan(), CASES, vignettes(), alice)
     assert {v for v in tally(again) if v.startswith("archive")} == {"archive validated"}
-    assert again[-1].startswith("[share] 0 of ")
+    assert again[-len(FAKES) - 2].startswith("[share] 0 of ")
+
+
+def test_init_data_lints_what_it_lands(
+    conn: Connection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("CHATDDX_REVISION")
+    alice = People(conn).add("alice", "Alice")
+    plan = sample_plan()
+    unlike = replace(CASES["Dutchfall11w"], targets={"warning": {"pattern": "shock"}})
+    lines = seed(conn, plan, {**CASES, "Dutchfall11w": unlike}, vignettes(), alice)
+    components = len({r.digest for r in plan.records}) + 2 * len(CASES)
+    assert [line for line in lines if line.startswith("[lint")] == [
+        *(
+            f"[lint warning] scorer {name}: scorer.revision: scorer code has no revision"
+            for name in ("plan", "diagnoses", "free-text", "raw")
+        ),
+        *FAKES,
+        "[lint warning] expectation Dutchfall11w: expectation.invalid: at the root: "
+        + "'diagnosis' is a required property",
+        f"[lint] {5 + len(FAKES)} findings in {components} components",
+    ]
 
 
 def test_init_data_updates_and_gives_forks(conn: Connection, tmp_path: Path) -> None:
@@ -105,16 +173,21 @@ def test_init_data_updates_and_gives_forks(conn: Connection, tmp_path: Path) -> 
             (
                 "[archive chunk.output] management-plan:",
                 "[archive skeleton] plan (",
+                "[archive skeleton] plan-web (",
             )
         )
     ]
-    assert len([line for line in lines if "updated" in line]) == 3
+    assert len([line for line in lines if "updated" in line]) == 5
     assert any(
         line.startswith("[archive case] DutchFall10w: needs repair") for line in lines
     )
     forked = [line for line in lines if line.startswith("[giftbag")]
     assert forked and all(line.split(": ")[1].startswith("forked") for line in forked)
-    assert not any(line.startswith("[giftbag expectation_schema") for line in forked)
+    assert not any(
+        line.startswith(("[giftbag expectation_schema", "[giftbag scorer"))
+        for line in forked
+    )
+    assert any(line.startswith("[giftbag tool] web_search: forked") for line in forked)
 
     catalog = Catalog(conn)
     archive = People(conn).find("archive")
@@ -180,3 +253,30 @@ def test_init_data_command(
     for neither_or_both in ([], ["--world", str(world), "--vignettes", str(cases)]):
         with pytest.raises(SystemExit):
             main(["init-data", "alice", *neither_or_both])
+
+    main(["init-data", "alice", "--world", str(SAMPLE_WORLD)])
+    sample = Inventory.load(SAMPLE_WORLD)
+    assert [
+        line
+        for line in capsys.readouterr().out.splitlines()
+        if line.startswith("[world endpoint]")
+    ] == [
+        f"[world endpoint] {name}: {e.url} serves engine.local {name} "
+        + e.engine.removeprefix("sha256:")[:6]
+        for name, e in sample.endpoints.items()
+    ]
+
+
+def test_the_sample_world_holds_the_vignettes_at_7893656() -> None:
+    source = Inventory.load(SAMPLE_WORLD).source("sample")
+    assert source.sensitive
+    assert source.ids() == sorted(CASES)
+    for id in source.ids():
+        _ = source.fetch(id).decode()
+    listing = "".join(
+        f"{c.vignette.id} {c.vignette.fingerprint.hex}\n" for c in source.cases()
+    )
+    assert (
+        Fingerprint.of(listing.encode()).hex
+        == "ce41d6b218347d2b792c86160969f937c6926c8bff255b8644c7159402d7028c"
+    )

@@ -3,7 +3,9 @@ from collections.abc import Iterable
 from chatddx.catalog import Entry, EntryField, Subject
 from chatddx.factors.base import Fingerprint
 from chatddx.factors.cases import Case, Vignette
+from chatddx.factors.lint import lint
 from chatddx.factors.scoring import Expectation
+from chatddx.facts.lint import lint as lint_facts, reasons
 from chatddx.identity import Person
 from chatddx.inventory.sources import Source
 from chatddx.store.catalog import Catalog
@@ -15,13 +17,14 @@ from .plan import Plan, Planned, SampleCase
 ARCHIVE = "archive"
 
 
-# Kinds a giftbag forks for its owner: what the old giftbag held (slices,
-# configurations and cases' targets). Expectation schemas stay the archive's.
+# Kinds a giftbag forks for its owner: what the old giftbag held (slices with their
+# tools, configurations and cases' targets). Expectation schemas and scorers stay the
+# archive's.
 def _gifted(kind: str) -> bool:
-    return kind.startswith("chunk.") or kind in ("skeleton", "expectation")
+    return kind.startswith("chunk.") or kind in ("tool", "skeleton", "expectation")
 
 
-def _short(digest: str) -> str:
+def short(digest: str) -> str:
     return digest.removeprefix("sha256:")[:6]
 
 
@@ -33,7 +36,11 @@ class _Seeder:
         self.archive: Person = archive
         self.threads: dict[tuple[str, str], int] = {}
         self.families: list[int] = []
+        self.landed: dict[str, list[str]] = {}
         self.lines: list[str] = []
+
+    def land(self, digest: str, what: str) -> None:
+        self.landed.setdefault(digest, []).append(what)
 
     def note(self, subject: Subject, entry: Entry) -> None:
         self.catalog.note(subject, entry, self.archive.id)
@@ -97,8 +104,13 @@ class _Seeder:
             fork_of=None if r.fork_of is None else self.threads[(r.kind, r.fork_of)],
         )
         self.threads[(r.kind, r.name)] = thread
+        self.land(r.digest, f"{r.kind} {r.name}")
         self.sync(Subject(thread=thread), r.tags, r.description)
-        self.lines.append(f"[archive {r.kind}] {r.name}: {verb} {_short(r.digest)}")
+        labelled = self.catalog.labels(r.digest) if r.labels else {}
+        for position, label in enumerate(r.labels):
+            if label is not None and labelled.get(("view", position)) != label:
+                self.catalog.label(r.digest, "view", position, label, self.archive.id)
+        self.lines.append(f"[archive {r.kind}] {r.name}: {verb} {short(r.digest)}")
 
     def case(self, source: Source, id: str, sample: SampleCase, schema: str) -> None:
         try:
@@ -124,9 +136,10 @@ class _Seeder:
             self.lines.append(f"[archive case] {id}: needs repair: {e}")
             return
         self.families.append(family)
+        self.land(digest, f"case {id}")
         self.sync(Subject(family=family), sample.tags, None, sample.language, name=id)
         verb = "validated" if known else "created"
-        self.lines.append(f"[archive case] {id}: {verb} {_short(digest)}")
+        self.lines.append(f"[archive case] {id}: {verb} {short(digest)}")
         found = [
             t
             for t in self.catalog.expectations_of(digest)
@@ -134,8 +147,26 @@ class _Seeder:
         ]
         thread, verb = self.put("expectation", expectation, found, None)
         self.threads[("expectation", id)] = thread
+        self.land(expectation, f"expectation {id}")
         self.sync(Subject(thread=thread))
-        self.lines.append(f"[archive expectation] {id}: {verb} {_short(expectation)}")
+        self.lines.append(f"[archive expectation] {id}: {verb} {short(expectation)}")
+
+    def lint(self) -> None:
+        registry, facts, digests = self.plan.registry, self.plan.facts, [*self.landed]
+        findings = lint(
+            registry,
+            digests,
+            languages=self.catalog.language_of,
+            reasons=reasons(facts, registry),
+        )
+        findings += lint_facts(registry, facts, digests)
+        for f in findings:
+            what = ", ".join(self.landed.get(f.subject or "") or [str(f.subject)])
+            self.lines.append(f"[lint {f.level}] {what}: {f.code}: {f.message}")
+        n = len(findings)
+        self.lines.append(
+            f"[lint] {n} finding{'' if n == 1 else 's'} in {len(digests)} components"
+        )
 
     def share(self, user: Person) -> None:
         subjects = [Subject(thread=t) for t in self.threads.values()]
@@ -171,7 +202,7 @@ class _Seeder:
                 forked_from=head.id,
                 name=about.name,
             )
-            self.lines.append(f"[giftbag {kind}] {name}: forked {_short(head.digest)}")
+            self.lines.append(f"[giftbag {kind}] {name}: forked {short(head.digest)}")
 
 
 def seed(
@@ -201,4 +232,5 @@ def seed(
         seeder.share(user)
         if giftbag:
             seeder.giftbag(user)
+        seeder.lint()
         return seeder.lines

@@ -1,0 +1,2 @@
+# Vignettes are fingerprinted over their raw bytes, and some of the sample's have CRLF line endings.
+/sample-world/vignettes/** -text

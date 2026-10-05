@@ -61,8 +61,7 @@ Two runs of the same trial are interchangeable only when those agree too (see "O
 - Knowledge about models (reasoning levels, recommended sampling, output caveats, specs): the model facts
   (`src/chatddx/facts/facts.py`). Facts help write chunks and check them (`src/chatddx/facts/lint.py`), but no
   digest depends on them.
-- Instruments: canary sets.
-- Provenance: compilations.
+- Instruments and Provenance: canary sets and compilations are components, but not factors.
 
 ## How components work
 
@@ -388,6 +387,10 @@ is pinned like a scorer's, because what it returns is what the model reads next:
 tool, so a new skeleton and a new trial. What a tool returned is still recorded per run (`docs/ledger.md`), since a
 tool such as a web search can answer differently from day to day: an observed factor.
 
+Only the running chatddx can be run: `src/chatddx/core/rig.py:entry` finds an entry point's function and refuses
+a pin that isn't the running code. The sample's tools and scorers pin it as compilations record their compiler
+(`src/chatddx/seed/plan.py:plan_factors`).
+
 ### Toolset
 - principal author: Researchers
 - defined in: `request.py:Toolset`
@@ -670,6 +673,19 @@ A scorer (kind `scorer`) pins scoring code written by developers. It declares:
 
 Views and resources are referred to by position; their labels live in the catalog.
 
+Version 1 of the interface: the entry point takes a view's `metric`, the items its output selector picks (`None`
+when the run has no answer), the items its expectation selector picks, and the scorer's `params` under the view's,
+and returns a value (or none) and a detail, as a `ScoreItem` keeps them
+(`src/chatddx/scorers/scorer.py:ScoreFunction`, `src/chatddx/scorers/scorer.py:score`).
+
+Code that lists the metrics it knows (`Metrics.names`) lets a view's `metric` be checked when the scorer is made
+(`src/chatddx/scorers/scorer.py:function`). Views with a judge, and parsing a response into the answer, aren't
+covered yet.
+
+Only the running chatddx can be run: `src/chatddx/core/rig.py:entry` finds an entry point's function and refuses
+a pin that isn't the running code. The sample's tools and scorers pin it as compilations record their compiler
+(`src/chatddx/seed/plan.py:plan_factors`).
+
 ### View
 - defined in: `scoring.py:View`
 
@@ -754,10 +770,11 @@ across runs; that comparison isn't implemented yet.
 - defined in: `lint.py:lint`
 
 Lints warn about settings that are valid but risky. They are plain functions over a registry, run on demand, and no
-component stores their findings. Keeping them out of the components means knowledge that changes between vLLM
-releases can change without changing any digest.
+component stores their findings. `chatddx init-data` runs them over every component it seeds and prints the
+findings, which it doesn't store either (`src/chatddx/seed/write.py:_Seeder.lint`).
 
-`lint(registry, digests, languages=, reasons=)` checks each listed component according to its kind.
+Keeping them out of the components means knowledge that changes between vLLM releases can change without changing
+any digest.
 
 **Model artifacts, local engines and scorers**
 - `model.revision`: the revision isn't a 40-character commit, so it can move.
@@ -825,14 +842,15 @@ observed ones (prompt-token fingerprints, returned models, canaries) before pool
 No seed is sent with greedy sampling, but a trial's seeds still count toward its digest, so two otherwise identical
 greedy trials differ only in digest. Likewise, the seeds of a greedy judge all send the same request.
 
-### The inventory doesn't locate local engines yet, and runs don't record where calls went
-A local engine pins what it is but not where it is: it has no URL, and its model files and chat template are
-pinned by hash only. A runner needs a mapping from engine digest to URL, and the start-up script needs the paths of
-the model files and the chat template on its host. Nothing defines these yet. Being locations, they belong in the
-inventory, not in the catalog; today the inventory locates only vignette sources (`src/chatddx/inventory/`). One
-engine may be served by several identical hosts, and one host serves different engines over time, so the mapping
-can't be part of the engine. The runner can check the mapping before sending, because a local engine's served
-model name is its digest and `/v1/models` lists it.
+### Runs don't record where calls went
+- CHANGE the heading "The inventory doesn't locate local engines yet, and runs don't record where calls went" →
+  "", and its first paragraph → "
+A local engine pins what it is but not where it is. Where it is lives in the inventory: an endpoint binds an
+engine by digest to a URL, with its capacity and credential, and names the host that runs it; a host says where it
+keeps the model files and chat templates its engines pin, keyed by model artifact digest and template hash
+(`src/chatddx/inventory/inventory.py`). `src/chatddx/inventory/serving.py:start_up` joins them into what the
+start-up script runs, and `confirm` checks that the endpoint's `/v1/models` lists the engine's served name before
+anything is sent.
 
 A remote engine's `base_url`, by contrast, is part of its digest, so moving the same API to a new host makes a new
 engine. Either way `Call` (`src/chatddx/ledger/call.py`) records no URL, so the ledger can't show which endpoint
@@ -847,9 +865,6 @@ received case-derived content, which clearance may need.
   `--enforce-eager google/gemma`, passes the argv check, and vLLM then refuses to start. Likewise lints read flags
   by their full names, so an abbreviated flag such as `--reasoning-pars qwen3` works in vLLM but escapes the lints
   that look for `--reasoning-parser`.
-- **The scorer interface is unspecified.** A scorer's entry point says where its code is, not what that code must
-  do: which arguments it takes and what it returns. Only that code gives `View.metric` a meaning, and nothing checks
-  that it knows the name.
 - **The model name is chosen in several places.** `render` needs the engine's digest for a local engine and
   `model` for a remote one. `src/chatddx/ledger/run.py` makes that choice, and so must every runner; it
   belongs on the engine, as one method.

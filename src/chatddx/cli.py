@@ -8,11 +8,13 @@ import psycopg
 from chatddx.core import settings
 from chatddx.core.rig import rig
 from chatddx.facts.facts import Facts
+from chatddx.fake_vllm.server import run
 from chatddx.identity import Role
 from chatddx.inventory.inventory import Inventory
 from chatddx.inventory.sources import DirectorySource
 from chatddx.seed import load_cases, plan_factors, seed
 from chatddx.seed.plan import SAMPLE
+from chatddx.seed.world import endpoints
 from chatddx.store.migrate import TOP_TIER, migrate, pending
 from chatddx.store.people import People
 
@@ -55,19 +57,20 @@ def _init_data(args: argparse.Namespace) -> None:
     facts = Facts.load(*(args.facts or [sample / "facts.toml"]))
     plan = plan_factors(sample / "factors.toml", facts, rig())
     cases = load_cases(sample / "cases.toml")
-    if args.world is not None:
-        source = Inventory.load(args.world).source(args.source)
+    world = None if args.world is None else Inventory.load(args.world)
+    if world is not None:
+        source = world.source(args.source)
     elif args.vignettes.is_dir():
         source = DirectorySource(name=args.source, path=args.vignettes.resolve())
     else:
         raise SystemExit(
             f"--vignettes {args.vignettes}: give a directory of <id>.txt files, such as "
-            + "the old chatddx checkout's src/chatddx/data/cases"
+            + "sample-world/vignettes"
         )
     if not set(cases) & set(source.ids()):
         raise SystemExit(
             f"none of the sample's {len(cases)} cases is in source {args.source!r}; "
-            + "is it the directory of the old chatddx checkout's vignettes?"
+            + "the sample World has them: --world sample-world/inventory.toml"
         )
     with psycopg.connect(settings.database()) as conn:
         user = People(conn).find(args.user)
@@ -76,8 +79,14 @@ def _init_data(args: argparse.Namespace) -> None:
                 f"no person with login {args.user!r}: add them with `chatddx person add`"
             )
         lines = seed(conn, plan, cases, source, user, giftbag=args.giftbag)
+    if world is not None:
+        lines += endpoints(world, plan)
     for line in lines:
         print(line)
+
+
+def _fake_vllm(args: argparse.Namespace) -> None:
+    run(args.model, args.argv, delay=args.delay, runaway=args.runaway)
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -148,6 +157,28 @@ def main(argv: Sequence[str] | None = None) -> None:
         help="model facts to write per-model chunks from (the sample's facts.toml)",
     )
     init.set_defaults(run=_init_data)
+
+    fake = commands.add_parser(
+        "fake-vllm",
+        help="serve a fake vLLM 0.24 for a model, set up by vllm serve's own flags",
+    )
+    _ = fake.add_argument(
+        "--delay", type=float, default=0.03, help="seconds between streamed tokens"
+    )
+    _ = fake.add_argument(
+        "--runaway",
+        action="store_true",
+        help="go on with newlines till max_tokens or the context runs out, after a "
+        + "text answer or before a document's closing brace, as gpt-oss does at times",
+    )
+    _ = fake.add_argument("model", help="the model, as vllm serve takes it")
+    _ = fake.add_argument(
+        "argv",
+        nargs=argparse.REMAINDER,
+        help="vllm serve's flags, such as --served-model-name, --reasoning-parser, "
+        + "--enable-auto-tool-choice, --tool-call-parser, --host and --port",
+    )
+    fake.set_defaults(run=_fake_vllm)
 
     args = parser.parse_args(argv)
     args.run(args)
