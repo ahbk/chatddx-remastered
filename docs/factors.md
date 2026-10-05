@@ -31,8 +31,9 @@ Being a factor and being a component are separate questions. A factor is held in
    Prompts, sampling, engines, model weights, cases, seeds, expectations and scorers are pinned.
 2. **Recorded**: set or known when a run or a score starts, and written into its start record, which is immutable
    and sealed with the rest of its log (`docs/ledger.md`):
-   - the execution settings, such as order and concurrency (`RunStarted.execution`, see "Execution");
-   - the version of the rig that sent the requests (`RunStarted.rig`);
+   - the execution settings, such as order and concurrency (`RunStarted.execution`, `ScoreStarted.execution`, see
+     "Execution").
+   - the version of the rig that sent the requests (`RunStarted.rig`).
    - the scorer code that actually ran (`ScoreStarted.scorer_code`). Set beside the code the scorer pins
      (`Scorer.code`), it shows whether what ran is what should have run, and `check_score` warns when they differ
      (`docs/ledger.md`, "Score").
@@ -592,11 +593,12 @@ defines one replicate, identified by its position. With greedy sampling no seed 
 toward the trial's digest (see "Open design issues").
 
 ### Execution
-- defined in: `trial.py:Execution`, recorded in `docs/ledger.md:RunStarted`
+- defined in: `trial.py:Execution`, recorded in `docs/ledger.md:RunStarted` and `docs/ledger.md:ScoreStarted`
 
-Execution settings say how a run issues its requests. They are a recorded factor, not a component: each run writes
-its own into its start record, and they are not part of the trial's digest. Running a trial again with other
-settings is a new run of the same trial. The settings are:
+Execution settings say how a run issues its requests, or how a score issues its judge requests.
+They are a recorded factor, not a component: each run writes its own into its start record,
+and they are not part of the trial's digest. Running a trial again with other settings is a new run of the same
+trial. The settings are:
 - `order`, the order in which a run sends its items:
   - `case_major@1` (the default: every replicate of a case before the next case, cases in digest order)
   - `replicate_major@1` (every case once per replicate, cases in digest order)
@@ -615,9 +617,9 @@ requests are batched and so the arithmetic). See "Runs of the same trial aren't 
 Timeout and retries decide only whether a request gets an answer at all, and does not *affect output* beyond that,
 regardless of batch invariance.
 
-A run's calls show whether its settings were followed: `check_run` warns when a call took more attempts than
-`retries` allows, when items were sent out of order, or when more calls were in flight than `concurrency` allows
-(`docs/ledger.md`, "Run"). Timeouts aren't checked.
+A run's calls, and a score's judge calls, show whether the settings were followed: `check_run` and `check_score`
+warn when a call took more attempts than `retries` allows, when items were sent out of order, or when more calls
+were in flight than `concurrency` allows (`docs/ledger.md`, "Run"). Timeouts aren't checked.
 
 ## Scoring
 
@@ -908,12 +910,3 @@ reference, straight from the schema. `RefTo` used to do this, and was stopped be
 Schema plays no part in a component's digest, so adding it back changes no digest.
 
 ## Proposed amendments
-- CHANGE "Execution" for scores (`src/chatddx/ledger/ledger.py:ScoreStarted`, `check_score`): "recorded in
-  `docs/ledger.md:RunStarted`" → "recorded in `docs/ledger.md:RunStarted` and `docs/ledger.md:ScoreStarted`";
-  "Execution settings say how a run issues its requests." → "Execution settings say how a run issues its requests,
-  or how a score issues its judge requests."; and "A run's calls show whether its settings were followed:
-  `check_run` warns …" → "A run's calls, and a score's judge calls, show whether the settings were followed:
-  `check_run` and `check_score` warn …".
-- CHANGE "What a factor is", "Recorded": "the execution settings, such as order and concurrency
-  (`RunStarted.execution`, see "Execution")" → "(`RunStarted.execution`, `ScoreStarted.execution`, see
-  "Execution")".

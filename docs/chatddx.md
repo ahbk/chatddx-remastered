@@ -228,6 +228,7 @@ There is however an intended flow of data behind the pieces, which is described 
   - the Scoring;
   - the rig's code version;
   - the scorer code actually running (scorer_code).
+  - the execution settings of its judge calls
 2. Match each run item to its expectation. The item key's case is looked up among the scoring's expectations, whose case field is the same case reference. The code has no function for this; the scorer code does it.
 3. Get the model's output out of the raw response. Parsing belongs to the scorer (content, tool-call arguments, JSON extraction, best-effort handling when validation fails). Nothing in `factors` does this.
 4. Apply each view. A View points into the parsed output (output, a JSON pointer) and into the expectation (expectation), and names a metric that the scorer's code interprets, with params.
@@ -268,5 +269,3 @@ See `docs/findings.md` for a list of all findings and what they mean.
 **Canary drift are not implemented:** nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
-- CHANGE "Scoring records", step 1: ADD "the execution settings of its judge calls (`execution`)" to what
-  `ScoreStarted` names (`src/chatddx/ledger/ledger.py:ScoreStarted`).
