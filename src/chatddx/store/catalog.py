@@ -436,7 +436,7 @@ class Catalog:
             FROM factor.component c JOIN catalog.binding b
                 ON b.source = c.doc #>> '{vignette,source}'
                 AND b.source_id = c.doc #>> '{vignette,id}'
-                AND b.vignette = c.doc #> '{vignette,fingerprint}'
+                AND b.fingerprint = c.doc #> '{vignette,fingerprint}'
             WHERE c.digest = %s AND c.kind = 'case'
             ORDER BY b.id DESC LIMIT 1
             """,
@@ -447,7 +447,7 @@ class Catalog:
     def bindings(self, family: int) -> list[Binding]:
         rows = self._conn.execute(
             """
-            SELECT id, source, source_id, vignette, by, at
+            SELECT id, source, source_id, fingerprint, by, at
             FROM catalog.binding WHERE family = %s ORDER BY id
             """,
             (family,),
@@ -461,7 +461,7 @@ class Catalog:
             _binding(row[0], row[1:])
             for row in self._conn.execute(
                 """
-                SELECT family, id, source, source_id, vignette, by, at FROM (
+                SELECT family, id, source, source_id, fingerprint, by, at FROM (
                     SELECT DISTINCT ON (family) * FROM catalog.binding
                     ORDER BY family, id DESC
                 ) b
@@ -706,9 +706,9 @@ class Catalog:
     def _bind(self, family: int, vignette: Vignette, by: int) -> Binding:
         row = self._conn.execute(
             """
-            INSERT INTO catalog.binding (family, source, source_id, vignette, by)
+            INSERT INTO catalog.binding (family, source, source_id, fingerprint, by)
             VALUES (%s, %s, %s, %s::jsonb, %s)
-            RETURNING id, source, source_id, vignette, by, at
+            RETURNING id, source, source_id, fingerprint, by, at
             """,
             (
                 family,
@@ -730,7 +730,7 @@ class Catalog:
                 SELECT DISTINCT ON (family) * FROM catalog.binding
                 ORDER BY family, id DESC
             ) b
-            WHERE source = %s AND (source_id = %s OR vignette = %s::jsonb)
+            WHERE source = %s AND (source_id = %s OR fingerprint = %s::jsonb)
                 AND family IS DISTINCT FROM %s::bigint
             ORDER BY family LIMIT 1
             """,

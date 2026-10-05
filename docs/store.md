@@ -205,3 +205,8 @@ tier-2 triggers).
   digest; the latest row wins." ADD to "Tiers", "Tier 0": "`0023-t0-catalog-languages.sql`", and to "Tier 2":
   "`0024-t2-catalog-languages.sql`: language tags in `catalog.language`, a `language` entry only on a family, and
   insert-only triggers for `catalog.language`" (`src/chatddx/store/catalog.py:Catalog.language`).
+- CHANGE in "Layout", schema `catalog`: "`binding (id, family, source, source_id, vignette, by, at)`" →
+  "`binding (id, family, source, source_id, fingerprint, by, at)`". ADD to "Tiers", "Tier 0":
+  "`0025-t0-catalog-binding-fingerprint.sql` (renames `catalog.binding.vignette` to `fingerprint`, which is what it
+  holds)", and to "Tier 2": "`0026-t2-catalog-binding-fingerprint.sql` (`0022`'s binding check, for the renamed
+  column)".

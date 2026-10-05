@@ -27,6 +27,7 @@ def test_migrate_command(
         "would apply 0012-t0-catalog-families",
         "would apply 0015-t0-catalog-based-on",
         "would apply 0023-t0-catalog-languages",
+        "would apply 0025-t0-catalog-binding-fingerprint",
         "applied 0001-t0-tables",
         "applied 0002-t1-grants",
         "applied 0004-t0-identity",
@@ -38,6 +39,7 @@ def test_migrate_command(
         "applied 0012-t0-catalog-families",
         "applied 0015-t0-catalog-based-on",
         "applied 0023-t0-catalog-languages",
+        "applied 0025-t0-catalog-binding-fingerprint",
         "nothing to apply up to tier 1",
         "applied 0003-t2-integrity",
         "applied 0008-t2-identity-checks",
@@ -52,6 +54,7 @@ def test_migrate_command(
         "applied 0021-t2-catalog-tools",
         "applied 0022-t2-catalog-binding-source",
         "applied 0024-t2-catalog-languages",
+        "applied 0026-t2-catalog-binding-fingerprint",
     ]
     with pytest.raises(SystemExit):
         main(["migrate", "--tier", "3"])

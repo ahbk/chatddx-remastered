@@ -568,7 +568,7 @@ def test_changed_vignettes_are_repaired(conn: Connection) -> None:
         repair.cases[ids["case"]],
     )
 
-    for moved_to, id, vignette in (
+    for moved_to, id, fingerprint in (
         (source, "elsewhere", '{"hex": "' + "0" * 64 + '"}'),
         ("elsewhere", "c1", '{"hex": "' + edited.hex + '"}'),
     ):
@@ -578,10 +578,10 @@ def test_changed_vignettes_are_repaired(conn: Connection) -> None:
         ):
             _ = conn.execute(
                 """
-                INSERT INTO catalog.binding (family, source, source_id, vignette, by)
+                INSERT INTO catalog.binding (family, source, source_id, fingerprint, by)
                 VALUES (%s, %s, %s, %s::jsonb, %s)
                 """,
-                (family, moved_to, id, vignette, alice.id),
+                (family, moved_to, id, fingerprint, alice.id),
             )
 
     second = catalog.repair(family, alice.id, id="c1-renamed")
