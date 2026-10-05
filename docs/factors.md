@@ -596,17 +596,7 @@ toward the trial's digest (see "Open design issues").
 
 Execution settings say how a run issues its requests. They are a recorded factor, not a component: each run writes
 its own into its start record, and they are not part of the trial's digest. Running a trial again with other
-settings is a new run of the same trial.
-
-Order and concurrency change outputs only on engines that aren't batch invariant, where they affect how requests
-are batched and so the arithmetic. `Execution.schedule(cases, replicates)` lists the (case, replicate) pairs in
-send order.
-
-Timeout and retries decide whether an item gets an answer at all. Keeping these settings out of the trial means
-changing them doesn't make a new trial, which suits batch-invariant engines. On other engines, runs with different
-settings aren't interchangeable (see "Open design issues").
-
-The settings are:
+settings is a new run of the same trial. The settings are:
 - `order`, the order in which a run sends its items:
   - `case_major@1` (the default: every replicate of a case before the next case, cases in digest order)
   - `replicate_major@1` (every case once per replicate, cases in digest order)
@@ -614,6 +604,16 @@ The settings are:
 - `concurrency` (1 by default)
 - `timeout_s` (optional)
 - `retries` (0 by default)
+
+`Execution.schedule(cases, replicates)` lists the (case, replicate) pairs in send order.
+
+The settings are kept out of the trial so changing them doesn't make a new trial. This suits batch-invariant
+engines, but order and concurrency change outputs on engines that aren't batch invariant (where they affect how
+requests are batched and so the arithmetic). See "Runs of the same trial aren't interchangeable" under
+"Open design issues" for more information.
+
+Timeout and retries decide only whether a request gets an answer at all, and does not *affect output* beyond that,
+regardless of batch invariance.
 
 A run's calls show whether its settings were followed: `check_run` warns when a call took more attempts than
 `retries` allows, when items were sent out of order, or when more calls were in flight than `concurrency` allows
