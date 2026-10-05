@@ -1,5 +1,7 @@
 from pydantic import HttpUrl
 
+from chatddx.catalog import Entry, EntryField, Subject, titles
+from chatddx.catalog.test.memory import Memory
 from chatddx.catalog.titles import (
     Title,
     describe,
@@ -7,7 +9,9 @@ from chatddx.catalog.titles import (
     describe_recipe,
     snippet,
 )
+from chatddx.factors.base import resolve
 from chatddx.factors.bundle import Registry
+from chatddx.factors.cases import Case
 from chatddx.factors.engine import RemoteEngine
 from chatddx.factors.request import (
     Output,
@@ -116,3 +120,45 @@ def test_changes_are_described_by_path_and_value() -> None:
     assert describe_change("/text", "Be brief and kind to the patient.", title) == (
         'text: "Be brief and kind to the patient."'
     )
+
+
+def test_titles_prefer_the_names_of_threads_that_hold_a_digest() -> None:
+    reg = Registry()
+    rows = Memory(reg)
+    cool, greedy = reg.add(Sampling(temperature=0.5)), reg.add(Sampling(temperature=0))
+    assert titles.title_of(rows, cool) == "temperature 0.5"
+    named = rows.start(cool)
+    rows.note(Subject(thread=named.thread), Entry(field=EntryField.NAME, value="cool"))
+    assert titles.title_of(rows, cool) == "cool"
+    _ = rows.save(named.thread, greedy)
+    assert titles.title_of(rows, cool) == "cool (earlier)"
+    assert titles.title_of(rows, greedy) == "cool"
+
+    fork = rows.start(cool, forked_from=named.id)
+    assert titles.title(rows, fork.thread) == "a fork of cool"
+    assert titles.title_of(rows, cool) == "a fork of cool"
+    rows.note(Subject(thread=fork.thread), Entry(field=EntryField.DELETED))
+    assert titles.title_of(rows, cool) == "cool (earlier)"
+
+
+def test_cases_are_titled_by_family_and_appendices() -> None:
+    reg = Registry()
+    ids = world(reg)
+    rows = Memory(reg)
+    vignette = resolve(reg.get, ids["case"], Case).vignette
+    troponin = '"Troponin 80 ng/L."'
+    assert titles.title_of(rows, ids["case"]) == f"registry/c1 with {troponin}"
+    _ = rows.bind(1, vignette)
+    rows.note(Subject(family=1), Entry(field=EntryField.NAME, value="chest pain"))
+    assert titles.title_of(rows, ids["case"]) == f"chest pain with {troponin}"
+    _ = rows.bind(1, vignette.model_copy(update={"id": "c1-renamed"}))
+    assert titles.title_of(rows, ids["case"]) == f"chest pain (earlier) with {troponin}"
+
+
+def test_translations_are_titled_by_their_language() -> None:
+    reg = Registry()
+    rows = Memory(reg)
+    hello = reg.add(Translations(entries={"Hello": "Hej"}))
+    assert titles.title_of(rows, hello) == "translations, 1 text"
+    rows.set_language(hello, "sv")
+    assert titles.title_of(rows, hello) == "sv translations, 1 text"
