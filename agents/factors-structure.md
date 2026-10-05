@@ -614,6 +614,10 @@ RFC 9535 does.
 (`-`, `*`, `•`, `1.` or `1)`, followed by a space) removed. Without a split, a free text is one item. As with text
 cleanup, the name pins the behavior.
 
+Only the output side is split. A model answering under a `text` contract writes one block of free text, which has
+to be broken into items before it can be compared. An expectation is written against its schema, so a list in it is
+already a JSON array, and free-text notes in expectations are for judges to read (see "Judge").
+
 `View.output_items(answer)` and `View.expectation_items(data)` apply the view, so every scorer selects the same way
 (`select.py`).
 
@@ -733,10 +737,6 @@ Nothing aggregates scores today, but anything that compares or pools runs by the
 conditions without noticing. It needs to group by the recorded factors as well, and to check the evidence of the
 observed ones (prompt-token fingerprints, returned models, canaries) before pooling.
 
-### Expectations can't be split
-`View.split` applies to what the output selector picks only. Expectations written as free text can't be split into
-items the same way.
-
 ### Scorer code has no entry point
 A tool's code comes with an `entry_point`, a scorer's doesn't, so nothing says how a runner finds the scoring
 function.
@@ -820,5 +820,12 @@ engine's prompt formatting offline. Lints could read it too, so the "reads the c
 (`engine.chat_template_date`) would run when factors are linted, not only on a host. Engines sharing a template
 would share the component. It would move the template from world input to authored factor, and cost a new kind
 (with the catalog's thread kinds and their migration) and a change to `check_chat_template`.
+
+### Splitting expectations
+If expectations written as free text turn up, a view could split them too. Two ways:
+- a separate `View.expectation_split`, next to `split`. It is additive: with "none" as its default, every existing
+  digest stays the same. Each side gets the split it needs.
+- one `split` for both sides. That changes the meaning of an existing field, so `Scorer.schema_version` would have
+  to go up, and the two sides rarely need the same split.
 
 ## Proposed amendments
