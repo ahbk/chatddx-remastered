@@ -85,6 +85,9 @@ digest; the values inside them keep their order. A model artifact's files are so
 The digest is `sha256:` followed by the SHA-256 of the canonical bytes (`base.py:Component.digest`). Components
 are told apart, and referred to, by their digests.
 
+A copy made with `model_copy(update=…)` is built anew: it is validated, so it follows its kind's rules, and it
+gets its own canonical form and digest.
+
 ### Versions
 Each component type has a schema version (`base.py:Component.schema_version`, 1 for every type today). Adding a
 field with a backward-compatible default needs no new version; changing an existing field's meaning or default
@@ -908,6 +911,3 @@ reference, straight from the schema. `RefTo` used to do this, and was stopped be
 Schema plays no part in a component's digest, so adding it back changes no digest.
 
 ## Proposed amendments
-- ADD to "Canonical form and digest": "A copy made with `model_copy(update=…)` is built anew: it is validated, so it
-  follows its kind's rules, and it gets its own canonical form and digest"
-  (`src/chatddx/factors/base.py:Component.model_copy`).

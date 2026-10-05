@@ -251,7 +251,7 @@ There is however an intended flow of data behind the pieces, which is described 
  - raises for duplicate score items
  - raises for a judge call whose judge isn't its item's view's judge
  - raises if a seed index out of range or one used twice in an item;
- - warns `judge.incomplete` and `score.incomplete`.
+ - warns `judge.incomplete`, `score.incomplete` and `score.run_unfinished`.
 
 The "scored results" are just those ScoreItem rows. What aggregates them isn't named yet.
 
@@ -269,6 +269,3 @@ See `docs/findings.md` for a list of all findings and what they mean.
 **Canary drift are not implemented:** nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
-- ADD to the "Frictionless development" examples, and to "Scoring records" step 8 ("warns …"):
-  `score.run_unfinished`, the run hasn't finished, or finished after the score started
-  (`src/chatddx/ledger/ledger.py:check_score`).
