@@ -94,3 +94,54 @@ Fake vLLM based on 0.24.0 should pin all of them
   (#L317), `structured_outputs` constrains the output beside `response_format` (#L344), `return_prompt_text` puts
   the templated prompt in the response (#L385), and `prompt_logprobs` returns logprobs for the prompt's tokens
   (#L266). A passthrough chunk may not set them (`src/chatddx/factors/request.py:BYPASS_KEYS`).
+
+- CHANGE "A fake vLLM is under planning." → "`chatddx.fake_vllm` is a fake vLLM 0.24, started as
+  `chatddx fake-vllm [--delay S] [--runaway] MODEL [vllm serve's flags]`. It reads `vllm serve`'s own flags, so it
+  can stand in for vLLM on the same command line (`src/chatddx/fake_vllm/served.py:Served.of`), and its tests pin
+  the items below (`src/chatddx/fake_vllm/test/test_fake_vllm.py`)."
+
+- CHANGE item 5, "or `required` or named (needs `--tool-call-parser`)" → "or `required` or named. All three need
+  both flags: the tool parser exists only with both
+  (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/parser/parser_manager.py#L35-L36, built for the request checks at
+  https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/serve/render/serving.py#L235-L241), although the message for `required` and named names only
+  `--tool-call-parser`." `vllm.tools_refused` already asks for both (`src/chatddx/factors/lint.py:_runtime`), and
+  so does the fake (`src/chatddx/fake_vllm/served.py:Served.parses_tools`).
+
+- ADD as item 13: Errors come as `{"error": {"message", "type", "param", "code"}}`
+  (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/engine/protocol.py#L60-L68). A request for a model the server doesn't serve gets 404,
+  `NotFoundError`, param `model`, "The model `X` does not exist."; a request without a model gets the served one
+  (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/models/serving.py#L53-L62).
+
+- ADD as item 14: `GET /v1/models` lists each served name, with `root` the model's path and the server's
+  `max_model_len` (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/models/serving.py#L64-L76). With `--served-model-name <engine digest>`,
+  `id` is the digest and `root` the repo.
+
+- ADD as item 15: Non-streaming responses carry `system_fingerprint`, by default `vllm-<version>-<hash8>` of the
+  server's config, computed once at start (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/engine/serving.py#L87-L98,
+  https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/serve/utils/fingerprint.py#L48). A stream carries it on its last chunk: the finish chunk, or the
+  usage chunk when `include_usage` is on (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/chat_completion/serving.py#L733-L740,
+  https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/chat_completion/serving.py#L776). `--fingerprint-mode none` leaves it out, and `custom`
+  takes `--fingerprint-value`.
+
+- ADD as item 16: A `reasoning_effort` also sets the chat template's `enable_thinking` (true unless it is `none`),
+  when the request's own `chat_template_kwargs` don't set it
+  (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/chat_completion/protocol.py#L492-L498). For Qwen3, `reasoning_effort: none` turns thinking
+  off.
+
+- ADD as item 17: Harmony (gpt-oss) refuses `reasoning_effort: none` with 400
+  (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/serve/render/serving.py#L554-L555), and any effort but `high`, `medium` and `low`
+  (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/parser/harmony_utils.py#L122-L128).
+
+- ADD as item 18: A response that calls tools finishes with `tool_calls` under `auto` and `required`, and with
+  `stop` under a named `tool_choice` (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/chat_completion/serving.py#L700-L706,
+  https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/chat_completion/serving.py#L987-L992).
+
+- ADD as item 19: `--enable-auto-tool-choice` without a registered `--tool-call-parser` stops the server at start
+  (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/api_server.py#L501-L507).
+
+- ADD as item 20: `include_reasoning: false` leaves the reasoning out of the response, when a parser separates it
+  (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/chat_completion/serving.py#L882-L883).
+
+- ADD to item 1: In a stream, `prompt_token_ids` comes in the first chunk only, and each chunk's choice carries its
+  delta's `token_ids` (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/chat_completion/protocol.py#L375-L382,
+  https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/chat_completion/serving.py#L510-L521).

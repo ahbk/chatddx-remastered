@@ -35,13 +35,8 @@ Settle these first.
    (`docs/chatddx.md`) or values the user supplies. An agent in a cloud container can't reach the hosts. Should the
    sample seed engines with values marked as placeholders until then?
 
-### Worth doing early
-- **The fake vLLM.** It's planned (`docs/vllm.md`, AGENTS.md) but not started. The engine and runner work will want
-  to test against it. The old repo has one to start from: `src/chatddx/dev/fake_vllm.py` at 7893656 (660 lines), with
-  canned answers in `src/chatddx/dev/samples/` (`typical`, `rich`, `broken`) and tests in `src/chatddx/dev/tests/`.
-  It serves `/v1/models` and `/v1/chat/completions` for both sample models, streamed or not, as an HTTP server or an
-  httpx transport, with reasoning per model, tool calls, answers shaped by the sent schema, and runaways. It predates
-  the vLLM 0.24 assumptions (`docs/vllm.md`), so it needs checking against them.
+The early work is done: the vignettes are in, `init-data` lints what it lands, and the fake vLLM is ported (see
+"The fake vLLM").
 
 ## Decided
 - Seed now: chunks, recipes (as compiled skeleton threads), cases with their families, an expectation schema and
@@ -154,6 +149,58 @@ Still open:
 - `wipe-data`, which tier 2 rules out as a DELETE; deletion is a `deleted` entry.
 - Tags and collaborators are only ever added on a re-run, never removed.
 - The seeded chunks have no language, so a trial's request language is unknown (G18).
+
+## The fake vLLM
+`src/chatddx/fake_vllm/` is the old fake (`src/chatddx/dev/fake_vllm.py` at 7893656), ported to vLLM 0.24 and to
+how remastered names engines. `chatddx fake-vllm [--delay S] [--runaway] MODEL [vllm serve's flags]` serves it.
+Items are `docs/vllm.md`'s; 13–20 are among its proposed amendments.
+- **`served.py`**: what `vllm serve MODEL` with its flags sets up (`Served.of`). Flags are read as vLLM reads them:
+  `_` for `-`, the last one wins, `--config=FILE` is ignored, and `--config FILE` is refused because the fake can't
+  read YAML. It reads `--served-model-name` (so an engine is served by its digest), `--max-model-len`,
+  `--reasoning-parser`, `--reasoning-config`, `--enable-auto-tool-choice`, `--tool-call-parser`,
+  `--default-chat-template-kwargs`, `--fingerprint-mode`/`--fingerprint-value`, `--host` and `--port`. It won't
+  start where vLLM won't (`--enable-auto-tool-choice` without a parser). How the model behaves comes from its name:
+  Qwen3, gpt-oss (Harmony), Mistral, or none of these.
+- **`chat.py`**: one request in, one response or stream out. `accept` refuses what vLLM 0.24 refuses, with its
+  status, type and message: an unknown model (404), a bad `tool_choice`, tools without a parser (items 5 and 19),
+  Harmony's efforts (item 17), and a thinking budget without reasoning set up (item 7). `respond` decides:
+  - whether the model reasons: Qwen3 unless `enable_thinking` is false, which `reasoning_effort: none` and the
+    server's default kwargs also set (item 16); gpt-oss always; and no model when a grammar holds the answer from
+    its first token without `--reasoning-parser` (item 6);
+  - where the reasoning goes: separated, left out (`include_reasoning: false`), or in the content without a parser;
+  - what it answers: a named tool's call (finishing `stop`); under `required`, each toolset tool once and then the
+    answer tool, which the compiler offers last; under `auto`, each tool once and then text, but nothing called when
+    a `response_format` holds the answer (item 10); a document for a `response_format` or a schema shown in the
+    system message; else three fake diagnoses, rotated by the seed unless the temperature is exactly 0 (items 2, 3),
+    with the clamp logged as vLLM logs it.
+  `completion` and `stream` give `prompt_token_ids` and `token_ids` only when asked (item 1), the served name as
+  `model`, and `system_fingerprint` (item 15). A token is a word, and its id is a CRC of it, so the ids change with
+  the prompt.
+- **`server.py`**: `/v1/chat/completions`, `/v1/models` (item 14), `/version` (`0.24.0+fake`) and `/health`, with a
+  delay between streamed tokens. A client that hangs up mid-stream is heard from the socket and logged.
+- **Tests**: `src/chatddx/fake_vllm/test/`. They pin each behaviour above. They also render every sample skeleton
+  for both sample models, served as the old inventory served them, and check each answer against its contract and
+  schema, and they run a tool round through `next_request`.
+- **Checked against vLLM v0.24.0's source.** This found that item 5 is imprecise: `required` and named tool choices
+  need both tool flags, like `auto`. `docs/vllm.md` has proposed amendments for that and for items 13–20.
+
+Left behind:
+- the httpx transport (`FakeTransport`): remastered has no HTTP client yet, and the runner will choose one;
+- `chatddx samples` and `src/chatddx/dev/samples/` (`typical`, `broken`, `rich`): runs for the old history, which wait
+  for the runner.
+
+Not faked yet:
+- abbreviated flags aren't expanded, and bare arguments aren't refused: the fake can't tell a flag that takes a
+  value from one that doesn't;
+- `n` > 1, `stop`, `logprobs`, `echo`, `structured_outputs`, `chat_template`, `return_prompt_text` and
+  `prompt_logprobs` are ignored, and so are the sampling settings beyond the temperature;
+- a prompt longer than the context, or a `max_tokens` past it, isn't refused;
+- the answer's JSON doesn't vary with the seed;
+- unchecked against vLLM: gpt-oss without any parser answers `analysis…assistantfinal…`, taking Harmony's markers to
+  be special tokens skipped in detokenizing; and Harmony with a tool parser but no reasoning parser still separates
+  the reasoning;
+- nothing yet runs the factors' `vllm.*` lints and the fake on the same cases, which would catch the two drifting
+  apart.
 
 ## Old → new
 
@@ -281,7 +328,7 @@ The deferred work. Settle "Start with this" first.
   - nothing maps an engine digest to a URL, and the World inventory locates only vignette sources;
   - the hosts' served names must become the engine digest;
   - per-endpoint capacity (`max_jobs`), credentials and the API kind have no home.
-- The fake vLLM (see "Worth doing early").
+- The fake vLLM is in (see "The fake vLLM"). A start-up script can run it with vLLM's command line.
 - Model specs (family, size, quantization, context length, licence) are held by the facts, descriptive only
   (`docs/facts.md`).
 
