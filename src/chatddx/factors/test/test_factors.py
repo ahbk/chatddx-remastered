@@ -881,6 +881,28 @@ def test_engine_argv_cannot_override_manifest(reg: Registry) -> None:
     for argv in (["--config", "serve.yaml"], ["--config=serve.yaml"]):
         with pytest.raises(ValidationError, match="config"):
             _ = LocalEngine.model_validate({**engine.model_dump(), "argv": argv})
+    for argv in (["--served-model", "x"], ["--revis=r"], ["--served_model", "x"]):
+        with pytest.raises(ValidationError, match="may not abbreviate"):
+            _ = LocalEngine.model_validate({**engine.model_dump(), "argv": argv})
+    for argv in (
+        ["google/gemma"],
+        ["--max-model-len=8192", "google/gemma"],
+        ["--enforce-eager", "--", "google/gemma"],
+    ):
+        with pytest.raises(ValidationError, match="bare arguments"):
+            _ = LocalEngine.model_validate({**engine.model_dump(), "argv": argv})
+    accepted = (
+        "--max-model-len",
+        "8192",
+        "-tp",
+        "2",
+        "--seed",
+        "-1",
+        "--enforce-eager",
+        "--default-chat-template-kwargs",
+        '{"enable_thinking": false}',
+    )
+    _ = LocalEngine.model_validate({**engine.model_dump(), "argv": accepted})
     assert engine.served_model_name == engine.digest
 
 

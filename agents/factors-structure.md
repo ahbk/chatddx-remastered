@@ -501,6 +501,13 @@ The start-up script owns `--model`, `--served-model-name`, `--chat-template`, `-
 both. Nor may `argv` use `--config`: `--config FILE` pulls arguments from a file the digest doesn't cover, and
 `--config=FILE` is silently ignored (`docs/vllm.md`, item 8). Every argument belongs in `argv`.
 
+Two more rules close the ways around these:
+- `argv` may not abbreviate a flag it may not use. vLLM expands an unambiguous prefix to the whole flag, and the
+  last occurrence of a flag wins, so `--served-model x` would replace the served model name.
+- `argv` may not have bare arguments. `vllm serve` takes the model as its only bare argument, and the start-up
+  script gives it, so another one stops vLLM from starting. A bare argument right after a flag written without `=`
+  may be that flag's value, so it passes.
+
 The served model name is the engine's digest, so every response names the exact engine it came from. Batch
 invariance is declared through `env`, for example `VLLM_BATCH_INVARIANT=1`. Knowledge that changes between vLLM
 versions lives in lints, not in these fields.
@@ -764,17 +771,15 @@ A remote engine's `base_url`, by contrast, is part of its digest, so moving the 
 engine. Either way `Call` (`src/chatddx/ledger/ledger.py`) records no URL, so the ledger can't show which endpoint
 received case-derived content, which clearance may need.
 
-### Owned flags can slip past the argv check
-`LocalEngine.argv` refuses the owned flags by their full names only (`engine.py:flag_names`), so two kinds of
-argument pass anyway: a bare argument such as `("google/gemma",)`, which `vllm serve` reads as the model if `argv`
-follows it, and abbreviations such as `--served-model x` or `--chat-templ t`, which Python's argparse expands by
-default. Whether vLLM 0.24's `FlexibleArgumentParser` accepts abbreviations is unverified.
-
 ### Smaller issues
 - **Canary drift isn't checked.** Nothing compares canary outputs between phases or between runs.
 - **Judge engines are never probed.** Canary probes run on the run's engine only.
 - **Skeleton provenance.** Should a skeleton be accepted only with a compilation record? Hand-written ones, such as
   judge prompts, are possible today.
+- **Flags are checked without vLLM's list of flags.** So a bare argument after a flag that takes no value, as in
+  `--enforce-eager google/gemma`, passes the argv check, and vLLM then refuses to start. Likewise lints read flags
+  by their full names, so an abbreviated flag such as `--reasoning-pars qwen3` works in vLLM but escapes the lints
+  that look for `--reasoning-parser`.
 - **The scorer interface is unspecified.** A scorer's entry point says where its code is, not what that code must
   do: which arguments it takes and what it returns. Only that code gives `View.metric` a meaning, and nothing checks
   that it knows the name.
