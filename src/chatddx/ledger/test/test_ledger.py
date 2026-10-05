@@ -402,12 +402,14 @@ def test_records_refuse_what_cannot_have_happened() -> None:
     later = NOW + timedelta(seconds=1)
     with pytest.raises(ValidationError, match="finished before it started"):
         _ = Call(request=fp("body"), started_at=later, finished_at=NOW)
-    with pytest.raises(ValidationError, match="a result or an error"):
-        _ = ToolRun(id="c0", name="t", started_at=NOW, finished_at=NOW)
-    with pytest.raises(ValidationError, match="a result or an error"):
-        _ = ToolRun(
-            id="c0", name="t", started_at=NOW, finished_at=NOW, result="r", error="e"
+    with pytest.raises(ValidationError, match="result"):
+        _ = ToolRun.model_validate(
+            {"id": "c0", "name": "t", "started_at": NOW, "finished_at": NOW}
         )
+    failed = ToolRun(
+        id="c0", name="t", started_at=NOW, finished_at=NOW, result="r", error="e"
+    )
+    assert json.loads(failed.model_dump_json())["result"] == "r"
     with pytest.raises(ValidationError, match="finite number"):
         _ = ScoreItem(
             score=uuid4(),
@@ -546,6 +548,15 @@ def test_tool_rounds_are_checked(reg: Registry) -> None:
         _ = check(call("web_search"), searched, searched, searched)
     with pytest.raises(StructuralError, match="no tool named 'fetch'"):
         _ = check(call("web_search"), Turn(tools=ran("c0", name="fetch"), call=call()))
+    refused = ToolRun(
+        id="c0",
+        name="fetch",
+        started_at=NOW,
+        finished_at=NOW,
+        result="There is no tool named fetch.",
+        error="unknown tool",
+    )
+    assert check(call("fetch"), Turn(tools=(refused,), call=call("answer"))) == []
     with pytest.raises(StructuralError, match="didn't make"):
         _ = check(call("web_search"), Turn(tools=ran("c9"), call=call("answer")))
 

@@ -129,21 +129,19 @@ def fingerprint_request(
     return Fingerprint.of(canonical_bytes(sorted_keys(body)), key)
 
 
-# One tool the runner ran for a tool call in a response. A call naming no tool of the
-# skeleton is answered with an error.
+# One tool the runner ran for a tool call in a response: `result` is the text the model
+# read back, `error` why the tool failed. A call naming no tool of the skeleton fails.
 class ToolRun(Frozen):
     id: str
     name: str
     started_at: UtcDatetime
     finished_at: UtcDatetime
-    result: str | None = None
+    result: str
     error: str | None = None
 
     @model_validator(mode="after")
-    def _outcome(self) -> "ToolRun":
+    def _times(self) -> "ToolRun":
         _in_order(self.started_at, self.finished_at)
-        if (self.result is None) == (self.error is None):
-            raise ValueError("a tool run has either a result or an error")
         return self
 
 

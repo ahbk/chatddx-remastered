@@ -164,6 +164,8 @@ The package imports only `chatddx.factors`, so the code already leans on factors
 - Decided (F2, option a): `Component.model_copy(update=…)` rebuilds the component through validation.
 - Decided (B10, option b): `check_score` warns `score.run_unfinished` when the run hasn't finished, or finished
   after the score started.
+- Decided (B13, option a): `ToolRun.result` is always the text sent back (required); `error` is an optional reason
+  beside it. Replaces B12's "a result or an error". No stored data, so `RunItem.schema_version` stays 1.
 
 ## Status
 Draft: `agents/ledger.md`.
@@ -184,7 +186,8 @@ Draft: `agents/ledger.md`.
 | F1 | Decided (a). Code and test; `docs/factors.md` amendment. |
 | B10 | Decided (b). Code and tests; draft updated; `docs/findings.md`, `docs/chatddx.md` amendments. |
 | F2 | Decided (a). Code and test (supersedes F1's cache dropping); `docs/factors.md` amendment updated. |
-| B13, B14, B15 | Open, one by one. Listed in the draft's "Open design issues" meanwhile. |
+| B13 | Decided (a). Code and tests; draft updated. |
+| B14, B15 | Open, one by one. Listed in the draft's "Open design issues" meanwhile. |
 | B11 | Moved to factors with the compilation; the proposed `docs/factors.md` "Compilation" section states it. Still open. |
 | C1 | Decided (A). Code: `Compilation` in factors, `factor.compilation` dropped, the catalog's foreign keys retargeted, the seeder adds compilations as components. Doc: the draft drops its Compilation section. Amendments: `docs/factors.md`, `docs/store.md`, `docs/chatddx.md`. |
 | C2 | Decided (a). The draft already avoids "tier"; `docs/chatddx.md` amendment. Also proposed: `docs/store.md` wording for schema `ledger` (only `run_item` and `score_item` are case-derived). |
@@ -249,6 +252,10 @@ Draft: `agents/ledger.md`.
   request.
 - **M7** "Timeout and retries decide whether a request gets an answer at all" is no longer said anywhere; the
   section now only says the settings can change outputs on engines that aren't batch invariant.
+
+## Check of 06b7121
+- **M8** `score.run_unfinished` went into "Scoring records" step 8 but not into the "Frictionless development"
+  examples (`docs/chatddx.md`), which list every other ledger code.
 
 ## Surprises
 - `ruff check src` fails on `src/chatddx/inventory/test/test_inventory.py` (import order) at `e635b97`, before

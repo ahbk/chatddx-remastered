@@ -107,7 +107,7 @@ As with components (`docs/factors.md`, "Errors and findings"), problems come in 
 - An *error* stops the work.
   - A record or log that breaks its own rules can't be built: pydantic raises `ValidationError`. Examples are a log
     whose stages are out of order or whose rows belong to another log, a time that finishes before it starts, and a
-    tool run with both a result and an error.
+    tool run without a result.
   - A problem that takes components to see makes `check_run` or `check_score` raise `StructuralError`. Examples are
     run items the trial doesn't contain, unplanned canary calls, and a score of another run.
 - A *finding* is a warning about something observed that doesn't match what was declared. Findings never stop the
@@ -165,9 +165,10 @@ When the skeleton offers tools and a response calls some, the runner runs them a
 (`docs/factors.md`, "Tool rounds"). Each such round is a `Turn`: the tools run for the previous response's calls, at
 least one, and the next `Call`.
 
-A `ToolRun` holds the id of the tool call it answers, the tool's name, the start and end times, and exactly one of
-- `result`: the text sent back to the model. It is stored as sent, since it shaped the next request;
-- `error`: why the tool gave no result. A call that names no tool of the skeleton is answered with an error.
+A `ToolRun` holds the id of the tool call it answers, the tool's name, the start and end times, and
+- `result`: the text sent back to the model, always. It is stored as sent, since it shaped the next request;
+- `error`: why the tool failed, if it did. The `result` is then what the model was told in its place, which may be
+  shorter than the error. A call that names no tool of the skeleton fails this way.
 
 The arguments aren't repeated: they are in the previous call's response.
 
@@ -393,8 +394,6 @@ Some records state what should happen and others what did, but nothing compares 
 - **Missing expectations aren't flagged.** `check_score` doesn't warn when a run item's case has no expectation in
   the scoring.
 - **The finished row is outside the seal.** Its time and findings could change without `ledger.seal` noticing.
-- **What a failed tool told the model isn't recorded.** A `ToolRun` with an error doesn't hold the text sent back in
-  its place.
 - **`Call` accepts `prompt_token_ids`.** A response is meant to be stored without them, but nothing refuses one that
   still has them.
 - **Calls don't record where they went.** A call has no endpoint, so the ledger can't show which one received
