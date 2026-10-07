@@ -397,3 +397,12 @@ sample models, served as the old inventory served them, and checks each answer a
   gpt-oss engine's `chat_template` pins nothing, and what shapes its prompt is the `openai-harmony` package in the
   runtime closure."
   `src/chatddx/inventory/report.py:_template` reports it (`engine.chat_template_unused`), from o11n's report.
+- ADD, as item 23 under "vLLM 0.24 assumptions": "With `HF_HUB_OFFLINE`, a model given as a Hugging Face ID is
+  resolved to its snapshot with `snapshot_download(repo_id, revision, local_files_only=True)` and no file patterns
+  (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/engine/arg_utils.py#L759-L766,
+  https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/transformers_utils/repo_utils.py#L225-L242); a model given as a directory is read as it is.
+  huggingface_hub keeps the commit's file listing from the download (`<repo>/trees/<commit>.json`), and offline it
+  refuses a snapshot that lacks any listed file the call's patterns select, with `IncompleteSnapshotError`
+  (huggingface_hub `_snapshot_download.py:_raise_if_incomplete_snapshot`). So a snapshot downloaded with
+  `--exclude` doesn't start from its ID." o11n passes the snapshot's directory (Kompismoln/o11n 4450c3b), and
+  `src/chatddx/inventory/report.py:imported` takes it as the host's location for the model.

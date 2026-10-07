@@ -26,6 +26,7 @@ from chatddx.seed import plan_factors
 from chatddx.seed.world import endpoints as endpoints_of
 
 STORE = "/nix/store/" + "s" * 32
+SNAPSHOTS = "/srv/models/huggingface/models--{}/snapshots/{}"
 COMMIT = "4da05a8edb55c6046cce958586c33b61da07bb79"
 TEMPLATE = "{%- for message in messages %}{{ message.content }}{%- endfor %}\n"
 
@@ -73,7 +74,7 @@ def server(**changes: Any) -> dict[str, Any]:
         "model": {
             "id": "Qwen/Qwen3-8B-AWQ",
             "revision": COMMIT,
-            "path": f"/srv/models/huggingface/models--Qwen--Qwen3-8B-AWQ/snapshots/{COMMIT}",
+            "path": SNAPSHOTS.format("Qwen--Qwen3-8B-AWQ", COMMIT),
             "model_type": "qwen3",
             "files": [
                 {"path": "config.json", "size": 1, "sha256": "c" * 64},
@@ -148,7 +149,7 @@ def test_a_server_s_report_becomes_its_model_engine_endpoint_and_host() -> None:
     )
     assert (i.bind, i.location, i.template) == (
         "::",
-        "Qwen/Qwen3-8B-AWQ",
+        SNAPSHOTS.format("Qwen--Qwen3-8B-AWQ", COMMIT),
         f"{STORE}-chat_template.jinja",
     )
     assert str(imported(report(), "qwen3-8b").endpoint.url) == "http://pelle:12009/v1/"
@@ -191,7 +192,7 @@ def test_the_tables_it_prints_seed_the_engine_it_imported_and_start_it_as_served
     assert set(inventory.hosts) == {"pelle", "malborg"}
     startup = start_up(inventory, plan.registry.get, "qwen3-8b@pelle")
     assert startup.argv == (
-        "Qwen/Qwen3-8B-AWQ",
+        SNAPSHOTS.format("Qwen--Qwen3-8B-AWQ", COMMIT),
         "--revision",
         COMMIT,
         "--served-model-name",
@@ -221,14 +222,19 @@ def test_the_tables_it_prints_seed_the_engine_it_imported_and_start_it_as_served
 
 def test_servers_on_one_host_share_its_table_unless_they_bind_apart() -> None:
     other = server(
-        model=server()["model"] | {"id": "Qwen/Qwen3-0.6B"},
+        model=server()["model"]
+        | {
+            "id": "Qwen/Qwen3-0.6B",
+            "path": SNAPSHOTS.format("Qwen--Qwen3-0.6B", COMMIT),
+        },
         chat_template=template("{{ messages }}"),
         port=12010,
     )
     both = report({"qwen3-8b": server(), "small": other})
     world = endpoints_toml([imported(both, "qwen3-8b"), imported(both, "small")])
     assert world.count("[host.pelle]") == 1
-    assert '= "Qwen/Qwen3-0.6B"' in world and '= "Qwen/Qwen3-8B-AWQ"' in world
+    for repo in ("Qwen--Qwen3-0.6B", "Qwen--Qwen3-8B-AWQ"):
+        assert f'= "{SNAPSHOTS.format(repo, COMMIT)}"' in world
     apart = report({"qwen3-8b": server(), "small": other | {"host": "127.0.0.1"}})
     with pytest.raises(ValueError, match="small@pelle binds 127.0.0.1"):
         _ = endpoints_toml([imported(apart, "qwen3-8b"), imported(apart, "small")])

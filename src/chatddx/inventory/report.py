@@ -235,7 +235,7 @@ def imported(
         model=model,
         engine=engine,
         bind=s["host"],
-        location=found["id"],
+        location=found["path"],
         template=template["path"],
         endpoint=endpoint,
         findings=(
