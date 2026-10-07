@@ -12,7 +12,13 @@ from chatddx.facts.facts import Facts
 from chatddx.fake_vllm.server import run
 from chatddx.identity import Role
 from chatddx.inventory.inventory import Inventory
-from chatddx.inventory.report import factors_toml, imported, read, world_toml
+from chatddx.inventory.report import (
+    Imported,
+    factors_toml,
+    imported,
+    read,
+    world_toml,
+)
 from chatddx.inventory.sources import DirectorySource
 from chatddx.seed import load_cases, plan_factors, seed
 from chatddx.seed.plan import SAMPLE
@@ -57,7 +63,7 @@ def _person_password(args: argparse.Namespace) -> None:
 def _init_data(args: argparse.Namespace) -> None:
     sample: Path = args.data
     facts = Facts.load(*(args.facts or [sample / "facts.toml"]))
-    plan = plan_factors(sample / "factors.toml", facts, rig())
+    plan = plan_factors(sample / "factors.toml", facts, rig(), more=args.factors or ())
     cases = load_cases(sample / "cases.toml")
     world = None if args.world is None else Inventory.load(args.world)
     if world is not None:
@@ -88,12 +94,19 @@ def _init_data(args: argparse.Namespace) -> None:
 
 
 def _import_engine(args: argparse.Namespace) -> None:
+    if args.endpoint_host and len(args.reports) > 1:
+        raise SystemExit("import-engine: --endpoint-host takes one report")
     try:
-        report, url_host = read(args.report)
-        imports = [
-            imported(report, server, args.endpoint_host or url_host)
-            for server in args.servers or report["servers"]
-        ]
+        imports: list[Imported] = []
+        for source in args.reports:
+            report, url_host = read(source)
+            imports += [
+                imported(report, server, args.endpoint_host or url_host)
+                for server in report["servers"]
+                if not args.server or server in args.server
+            ]
+        if missing := sorted(set(args.server or ()) - {i.server for i in imports}):
+            raise LookupError(f"no report has a server {', '.join(missing)}")
         world = world_toml(imports)
     except (OSError, LookupError, ValueError) as e:
         raise SystemExit(f"import-engine: {e}") from None
@@ -175,6 +188,13 @@ def main(argv: Sequence[str] | None = None) -> None:
         + "(the sample data in the package)",
     )
     _ = init.add_argument(
+        "--factors",
+        type=Path,
+        action="append",
+        help="more factors to seed with the data's, such as a World's imported engines "
+        + "(world/factors.toml)",
+    )
+    _ = init.add_argument(
         "--facts",
         type=Path,
         action="append",
@@ -188,17 +208,20 @@ def main(argv: Sequence[str] | None = None) -> None:
         + "o11n.vllm report describes",
     )
     _ = imp.add_argument(
-        "report",
-        help="the report's URL, such as http://pelle.kompismoln.se:12008/, a file, or "
+        "reports",
+        nargs="+",
+        help="each host's report: its URL, such as http://pelle.km:12008/, a file, or "
         + "- for stdin",
     )
     _ = imp.add_argument(
-        "servers", nargs="*", help="the servers to import, by name (default: all)"
+        "--server",
+        action="append",
+        help="a server to import, by name (default: every server of every report)",
     )
     _ = imp.add_argument(
         "--endpoint-host",
-        help="the host in the endpoints' URLs (default: the report URL's, or else the "
-        + "host's name)",
+        help="the host in the endpoints' URLs, for one report (default: the report "
+        + "URL's, or else the host's name)",
     )
     imp.set_defaults(run=_import_engine)
 

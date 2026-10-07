@@ -28,31 +28,30 @@ The hosts run vLLM through o11n's `o11n.vllm` (Kompismoln/o11n, `nixos/vllm.nix`
 container, and its report endpoint (`o11n.vllm.report`, `nixos/vllm-report.py`) gives what an import needs. That
 replaced the planned `import-engine` run on a host, which would have read `nvidia-smi` and `/proc` itself.
 
-1. **Settled by o11n and org** (the user's, through o11n ab87383 and org f05f153):
+1. **Settled by o11n and org** (the user's, through o11n 2a874df and org 6528f10):
    - **Which chat template each engine runs**: the file `chatTemplate` names, now required. vLLM then reads it for
      every request, and the report hashes it and compares it with the model's own. Pelle's is `tokenizer_config.json`'s
-     template (same text, plus a trailing newline). Malborg's is the 5 bytes `null`: `tokenizer_config.json` has no
-     `chat_template` for gpt-oss, whose template is the repo's `chat_template.jinja`. vLLM never reads a gpt-oss
-     template (it renders with Harmony), so this changes nothing served, but the pin documents nothing either.
-   - **What a model's files are**: every file of the Hugging Face snapshot at the pinned commit, each hashed.
-   - **What `Runtime.closure` is**: the per-server runtime root o11n writes (the vLLM package, `which`, `gcc` and
-     `cudatoolkit`, the last two used to compile kernels at run time). Not the system or container toplevel: putting
-     the digest in `servedModelNames` would change it, and so the digest.
-2. **Still the user's:**
-   - **Where the real World inventory lives.** Take: `sample-world/inventory.toml`, beside the fakes, since the old
-     sample data held pelle and malborg and nothing about them is sensitive.
+     template (same text, plus a trailing newline); malborg's is the repo's own `chat_template.jinja`, which vLLM
+     doesn't read for gpt-oss (it renders with Harmony), so its hash pins nothing.
+   - **Malborg's Harmony date**: `VLLM_SYSTEM_START_DATE = "2026-10-07"`, in the engine's env and digest.
+   - **The report endpoints**: enabled on both hosts, at `pelle.km:12008` and `malborg.km:12008`.
+   - **Where the real World lives**: `world/`. `world/factors.toml` holds the imported `[model]` and `[local_engine]`
+     tables, `world/inventory.toml` their `[endpoint]` and `[host]` tables and the sample's vignettes as
+     `[source.sample]`. `init-data --world world/inventory.toml --factors world/factors.toml` seeds the sample with
+     them, and `src/chatddx/store/test/test_seed.py:test_init_data_command` checks that it binds each endpoint.
+2. **Still open:**
+   - **What a model's files are.** The report hashes every file of the snapshot (the agent's choice, not yet the
+     user's). For gpt-oss that includes `original/` and `metal/`, about two more copies of the weights that vLLM
+     doesn't read, so deleting them changes the model's digest. The alternative, only what vLLM reads, needs a list
+     of what that is per model.
    - **Decision 1**, which models `from_facts` writes chunks for. Today it's every model the facts know
-     (`src/chatddx/seed/plan.py:plan_factors`); with real engines the two lists can differ. Take: the seeded engines'
-     models, reporting a model without facts (`docs/facts.md`, "Open design issues").
-   - **Malborg's Harmony date.** vLLM 0.24 writes the current date into every gpt-oss prompt unless
-     `VLLM_SYSTEM_START_DATE` is set (`docs/vllm.md`, proposed item 21). Take: set it in malborg's `environment`, so it
-     lands in the engine's env and digest.
-   - **The report endpoint.** Neither host enables `o11n.vllm.report` yet; it needs `enable`, a `host` other than
-     `127.0.0.1` and an open port.
-3. **Done: `chatddx import-engine REPORT [SERVER …]`** (`src/chatddx/inventory/report.py`). It reads a report from its
-   URL or a file and prints `[model]` and `[local_engine]` tables for `factors.toml`, and `[endpoint]` and `[host]`
-   tables for the World inventory, each named `<server>@<host>`. The digests are the seeder's, and its findings go to
-   stderr. It:
+     (`src/chatddx/seed/plan.py:plan_factors`); the real engines serve the same two models as the fakes, so nothing
+     changes yet. Take: the seeded engines' models, reporting a model without facts (`docs/facts.md`, "Open design
+     issues").
+3. **Done: `chatddx import-engine REPORT … [--server NAME …]`** (`src/chatddx/inventory/report.py`). It reads each
+   host's report from its URL or a file and prints `[model]` and `[local_engine]` tables for `world/factors.toml`, and
+   `[endpoint]` and `[host]` tables for `world/inventory.toml`, each named `<server>@<host>`. The digests are the
+   seeder's, and its findings go to stderr. It:
    - refuses what an engine can't record: a server on several GPUs (`Hardware` has no count), a model that isn't a
      Hugging Face repo at a revision, a part the report couldn't gather, extra arguments setting `--host` or `--port`,
      and whatever `LocalEngine` refuses;
@@ -63,9 +62,12 @@ replaced the planned `import-engine` run on a host, which would have read `nvidi
    - runs the model and engine lints and `check_chat_template` on the reported text, and reports a template vLLM
      doesn't read, a missing `VLLM_SYSTEM_START_DATE` there, a template that isn't the model's own, and a server
      that isn't running, runs other arguments, reports another vLLM version or doesn't answer under the digest.
-4. **Run it against pelle and malborg** and commit its output.
-5. **Seed and check.** `init-data --world …` lands the models and engines, their lints come back clean, and each
-   endpoint reports the engine it serves.
+4. **Imported** (chatddx-remastered 5760e10), and every value checks out: the digests recompute, the lints are clean,
+   and `start_up` gives o11n's command line. But the runtime root was named after its server and built with the host's
+   package set, so the closures differed between the hosts for the same packages and would have moved with every
+   update of o11n's nixpkgs. Fixed in o11n 4c92733 (`vllm-runtime`, from the container's package set). Once it's
+   deployed, **re-import both hosts**: both closures, and so both engine digests, change.
+5. **Seed and check.** `init-data --world world/inventory.toml --factors world/factors.toml` against a database.
 6. **Serve them under their digests.** Put each engine's digest first in its server's `servedModelNames` (responses
    carry the first name), as `import-engine`'s `endpoint.served_name` says. The served names aren't part of the
    digest, so this doesn't change it. Then `confirm` passes.
@@ -160,14 +162,15 @@ them as a World would:
   `docs/clinical-input.md`, isn't in `targets.json`. No case had one.
 
 ### init-data
-`chatddx init-data USER (--vignettes DIR | --world FILE) [--source NAME] [--giftbag] [--data DIR] [--facts PATH …]`
+`chatddx init-data USER (--vignettes DIR | --world FILE) [--source NAME] [--giftbag] [--data DIR] [--factors FILE …] [--facts PATH …]`
 (`src/chatddx/cli.py`) connects as `DB_USER` and seeds in one transaction for the `archive` person, created if
 missing. It shares everything with USER, who must exist (`chatddx person add`). It prints one line per record:
 created, validated, updated, skipped, missing, needs repair, forked or kept. It ends with the lints' findings.
-- **Inputs.** `--data` is what gets seeded, the package's sample data by default. The vignettes come from
-  `--vignettes`, a directory of `<id>.txt` files such as `sample-world/vignettes`, or from `--world`, a World
-  inventory whose `[source.<name>]` table locates them, such as `sample-world/inventory.toml`. `--source` names the
-  source (`sample`), which the cases are keyed by. A path that holds none of the sample's cases is refused before
+- **Inputs.** `--data` is what gets seeded, the package's sample data by default, and `--factors` more factors
+  files planned with its own, such as `world/factors.toml`; a name may be defined only once per table. The
+  vignettes come from `--vignettes`, a directory of `<id>.txt` files such as `sample-world/vignettes`, or from
+  `--world`, a World inventory whose `[source.<name>]` table locates them, such as `sample-world/inventory.toml`.
+  `--source` names the source (`sample`), which the cases are keyed by. A path that holds none of the sample's cases is refused before
   anything is written. `--facts` names the facts files, the data directory's `facts.toml` by default.
 - **Planning.** `chatddx.seed.plan_factors` is pure. It plans 50 records: 14 recipes (7 configurations × 2 models),
   12 reasoning chunks, 5 sampling chunks, 7 outputs, a prompt, a tool, a toolset, an expectation schema, 4

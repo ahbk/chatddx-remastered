@@ -1,5 +1,6 @@
 import json
 import tomllib
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -178,14 +179,33 @@ def _tags(value: JsonValue) -> tuple[str, ...]:
     return tuple(str(t) for t in value)
 
 
-def plan_factors(
-    path: Path, facts: Facts, compiler: Code, root: Path | None = None
-) -> Plan:
+def _load(path: Path, root: Path) -> dict[str, dict[str, JsonValue]]:
     with path.open("rb") as f:
         data = tomllib.load(f)
     if stray := set(data) - set(TABLES) - {"recipe"}:
         raise ValueError(f"{path}: unknown tables {sorted(stray)}")
-    root = root or path.parent
+    return {
+        table: {name: _with_files(raw, root) for name, raw in records.items()}
+        for table, records in data.items()
+    }
+
+
+# `more` are factors files planned with the first, such as a World's imported engines;
+# each resolves its files against its own directory.
+def plan_factors(
+    path: Path,
+    facts: Facts,
+    compiler: Code,
+    root: Path | None = None,
+    more: Sequence[Path] = (),
+) -> Plan:
+    data = _load(path, root or path.parent)
+    for extra in more:
+        for table, records in _load(extra, extra.parent).items():
+            known = data.setdefault(table, {})
+            if twice := sorted(set(known) & set(records)):
+                raise ValueError(f"{extra}: {table} {twice} are named before it too")
+            known.update(records)
     plan = Plan(Registry(), facts)
     planned: dict[tuple[str, str], Variants] = {}
     models = sorted(facts.models)
@@ -206,8 +226,8 @@ def plan_factors(
 
     for table, kind in TABLES.items():
         for name, raw in data.get(table, {}).items():
-            body = _with_files(raw, root)
-            assert isinstance(body, dict)
+            assert isinstance(raw, dict)
+            body = dict(raw)
             tags = _tags(body.pop("tags", []))
             # A tool's description is a field, what the model reads; it's the entry too.
             if "description" in kind.model_fields:
@@ -255,11 +275,12 @@ def plan_factors(
             add(table, name, variants)
 
     for name, raw in data.get("recipe", {}).items():
+        assert isinstance(raw, dict)
         body = dict(raw)
         tags = _tags(body.pop("tags", []))
         description = body.pop("description", None)
         fork_of = body.pop("fork_of", None)
-        parts = {p: planned[(p, body.pop(p))] for p in RECIPE_PARTS if p in body}
+        parts = {p: planned[(p, str(body.pop(p)))] for p in RECIPE_PARTS if p in body}
         per_model = any(None not in v for v in parts.values())
         variants = {}
         for model in models if per_model else [None]:

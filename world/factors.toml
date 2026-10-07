@@ -1,4 +1,6 @@
-# For factors.toml: the models and engines, as their hosts report them.
+# The models and engines pelle and malborg serve, as `chatddx import-engine http://pelle.km:12008/
+# http://malborg.km:12008/` prints them, with its findings as comments. World inventory: world/inventory.toml.
+# Re-import when a host's vLLM configuration changes, since the engines' digests change with it.
 
 # [import warning] qwen3-8b@pelle: endpoint.served_name: the server answers as Qwen/Qwen3-8B-AWQ; put sha256:850f6ecf2e94d92238a3b767eeefe4a5ea0d022dbc1bd8505bfd6368b7929f1b first in its servedModelNames
 [model."qwen3-8b@pelle"]
@@ -63,9 +65,6 @@ argv = [
 ]
 env = { VLLM_USE_FLASHINFER_SAMPLER = "0" }
 
-# For the World inventory: where the engines are served, and where their
-# hosts keep what the engines pin.
-
 [local_engine."gpt-oss-20b@malborg"]
 description = "openai/gpt-oss-20b on malborg, as its o11n.vllm report has it."
 tags = ["malborg"]
@@ -83,37 +82,3 @@ argv = [
   "--reasoning-parser=openai_gptoss"
 ]
 env = { VLLM_SYSTEM_START_DATE = "2026-10-07", VLLM_USE_FLASHINFER_SAMPLER = "0" }
-
-# For the World inventory: where the engines are served, and where their
-# hosts keep what the engines pin.
-
-[endpoint."qwen3-8b@pelle"]
-engine = "sha256:850f6ecf2e94d92238a3b767eeefe4a5ea0d022dbc1bd8505bfd6368b7929f1b"
-url = "http://pelle.km:12009/v1/"
-host = "pelle"
-max_jobs = 1
-
-[endpoint."gpt-oss-20b@malborg"]
-engine = "sha256:e0695700c7df93bef5ebc72541659080f75fea1eeda93b5bd3f69958b2f2321d"
-url = "http://malborg.km:12009/v1/"
-host = "malborg"
-max_jobs = 4
-
-[host.pelle]
-bind = "::"
-
-[host.pelle.models]
-"sha256:269a1b722c13eb6692de5fa3b438796ee70c39f79f4f9f16e3711c10eca844f6" = "Qwen/Qwen3-8B-AWQ"
-
-[host.pelle.templates]
-e132ae041e1217b5e1114eb9dc292484a7f478df945d72fa49ba01b88d8ec01a = "/nix/store/sxqqnn8jqlch6nklh7g2rwfkz29ya33x-chat_template.jinja"
-# For factors.toml: the models and engines, as their hosts report them.
-
-[host.malborg]
-bind = "::"
-
-[host.malborg.models]
-"sha256:c642e88e30cec1fe4b8100758a4e661d49a899024d68067e6be8716db48eeef8" = "openai/gpt-oss-20b"
-
-[host.malborg.templates]
-a4c9919cbbd4acdd51ccffe22da049264b1b73e59055fa58811a99efbd7c8146 = "/nix/store/b2wrirjmiw1zk4ciprdgpvjk12cximh9-chat_template.jinja"

@@ -38,6 +38,7 @@ HOST_ENV = frozenset(
 @dataclass(frozen=True)
 class Imported:
     name: str
+    server: str
     host: str
     model: ModelArtifact
     engine: LocalEngine
@@ -229,6 +230,7 @@ def imported(
     )
     return Imported(
         name=name,
+        server=server,
         host=hostname,
         model=model,
         engine=engine,

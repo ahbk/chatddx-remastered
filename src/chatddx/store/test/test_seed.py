@@ -34,6 +34,7 @@ FAKES = [
     ),
 ]
 SAMPLE_WORLD = Path(__file__).parents[4] / "sample-world" / "inventory.toml"
+WORLD = Path(__file__).parents[4] / "world" / "inventory.toml"
 
 
 def sample_plan(factors: Path = SAMPLE / "factors.toml") -> Plan:
@@ -264,6 +265,20 @@ def test_init_data_command(
         f"[world endpoint] {name}: {e.url} serves engine.local {name} "
         + e.engine.removeprefix("sha256:")[:6]
         for name, e in sample.endpoints.items()
+    ]
+
+    world = ["--world", str(WORLD), "--factors", str(WORLD.parent / "factors.toml")]
+    main(["init-data", "alice", *world])
+    real = Inventory.load(WORLD)
+    out = capsys.readouterr().out.splitlines()
+    for name in real.endpoints:
+        assert any(
+            line.startswith(f"[archive engine.local] {name}: created") for line in out
+        )
+    assert [line for line in out if line.startswith("[world endpoint]")] == [
+        f"[world endpoint] {name}: {e.url} serves engine.local {name} "
+        + e.engine.removeprefix("sha256:")[:6]
+        for name, e in real.endpoints.items()
     ]
 
 

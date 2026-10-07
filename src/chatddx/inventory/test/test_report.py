@@ -205,6 +205,17 @@ def test_the_tables_it_prints_seed_the_engine_it_imported_and_start_it_as_served
     )
     assert startup.env == {"VLLM_USE_FLASHINFER_SAMPLER": "0"}
     assert inventory.endpoint("gpt-oss-20b@malborg").max_jobs == 4
+    sample = tmp_path / "sample.toml"
+    _ = sample.write_text('[prompt.case]\nsegments = [{ slot = "vignette" }]\n')
+    both = plan_factors(sample, Facts(), rig(), more=[factors])
+    assert (
+        both.named("local_engine", "qwen3-8b@pelle").digest == imports[0].engine.digest
+    )
+    with pytest.raises(
+        ValueError,
+        match=r"model \['gpt-oss-20b@malborg', 'qwen3-8b@pelle'\] are named before",
+    ):
+        _ = plan_factors(factors, Facts(), rig(), more=[factors])
 
 
 def test_servers_on_one_host_share_its_table_unless_they_bind_apart() -> None:
@@ -335,5 +346,25 @@ def test_the_command_prints_the_tables_and_its_findings(
         "[import warning] qwen3-8b@pelle: endpoint.served_name: the server answers as "
         + f"Qwen/Qwen3-8B-AWQ; put {digest} first in its servedModelNames\n"
     )
-    with pytest.raises(SystemExit, match="import-engine: the report has no server"):
-        main(["import-engine", str(path), "other"])
+    with pytest.raises(SystemExit, match="import-engine: no report has a server other"):
+        main(["import-engine", str(path), "--server", "other"])
+
+
+def test_the_command_imports_several_hosts_at_once(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    gpt = server(model=server()["model"] | {"id": "openai/gpt-oss-20b"})
+    paths = [tmp_path / "pelle.json", tmp_path / "malborg.json"]
+    _ = paths[0].write_text(json.dumps(report()))
+    _ = paths[1].write_text(json.dumps(report({"gpt-oss-20b": gpt}, "malborg")))
+    main(["import-engine", *map(str, paths)])
+    out = capsys.readouterr().out
+    assert out.count("# For factors.toml") == out.count("# For the World") == 1
+    assert out.index('[local_engine."gpt-oss-20b@malborg"]') < out.index(
+        "# For the World"
+    )
+    assert out.index('[endpoint."qwen3-8b@pelle"]') > out.index("# For the World")
+    main(["import-engine", *map(str, paths), "--server", "gpt-oss-20b"])
+    assert "qwen3-8b@pelle" not in capsys.readouterr().out
+    with pytest.raises(SystemExit, match="--endpoint-host takes one report"):
+        main(["import-engine", *map(str, paths), "--endpoint-host", "pelle.km"])
