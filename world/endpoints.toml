@@ -10,7 +10,7 @@ host = "pelle"
 max_jobs = 1
 
 [endpoint."gpt-oss-20b@malborg"]
-engine = "sha256:9a5ca7151b219fe9be30143fe54823f424425e6e448ee1a44adb998f9d7d3c21"
+engine = "sha256:598792a20d41f348bf661d4587cb7e39d24adc8dc56a7461bf312f5197c20ba2"
 url = "http://malborg.km:12009/v1/"
 host = "malborg"
 max_jobs = 4
@@ -28,7 +28,7 @@ e132ae041e1217b5e1114eb9dc292484a7f478df945d72fa49ba01b88d8ec01a = "/nix/store/s
 bind = "::"
 
 [host.malborg.models]
-"sha256:c642e88e30cec1fe4b8100758a4e661d49a899024d68067e6be8716db48eeef8" = "openai/gpt-oss-20b"
+"sha256:1c249b7c8dfc85748abe853504e35d084adb1ae0cd241713fb8fcbbf5f2f454e" = "openai/gpt-oss-20b"
 
 [host.malborg.templates]
 a4c9919cbbd4acdd51ccffe22da049264b1b73e59055fa58811a99efbd7c8146 = "/nix/store/b2wrirjmiw1zk4ciprdgpvjk12cximh9-chat_template.jinja"
