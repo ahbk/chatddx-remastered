@@ -2,8 +2,8 @@ import json
 import urllib.request
 from typing import Any, cast
 
-from chatddx.factors.base import Digest, Frozen, Resolver
-from chatddx.factors.engine import LocalEngine, RemoteEngine, flag_names
+from chatddx.factors.base import Digest, Frozen, Resolver, resolve
+from chatddx.factors.engine import LocalEngine, ModelArtifact, RemoteEngine, flag_names
 
 from .inventory import Inventory
 
@@ -12,7 +12,7 @@ LISTEN_FLAGS = frozenset({"--host", "--port"})
 
 
 # What the start-up script runs for one endpoint: vllm serve's arguments, the model's
-# location first, in the engine's runtime with its env.
+# location first and then its revision, in the engine's runtime with its env.
 class StartUp(Frozen):
     endpoint: str
     engine: Digest
@@ -55,6 +55,8 @@ def start_up(inventory: Inventory, get: Resolver, name: str) -> StartUp:
         closure=engine.runtime.closure,
         argv=(
             model,
+            "--revision",
+            resolve(get, engine.model, ModelArtifact).revision,
             "--served-model-name",
             engine.served_model_name,
             "--chat-template",

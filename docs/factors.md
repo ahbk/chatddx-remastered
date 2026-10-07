@@ -943,3 +943,6 @@ reference, straight from the schema. `RefTo` used to do this, and was stopped be
 Schema plays no part in a component's digest, so adding it back changes no digest.
 
 ## Proposed amendments
+- CHANGE, under "Local engine", "the raw `argv` and `env` passed to vLLM" → "the raw `argv` passed to vLLM, and its
+  `env` less what the host sets to find the model, the GPU and CUDA (`src/chatddx/inventory/report.py:HOST_ENV`):
+  where an engine runs, not what it is". `chatddx import-engine` drops those keys from what a host reports.

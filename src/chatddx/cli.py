@@ -1,5 +1,6 @@
 import argparse
 import getpass
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from chatddx.facts.facts import Facts
 from chatddx.fake_vllm.server import run
 from chatddx.identity import Role
 from chatddx.inventory.inventory import Inventory
+from chatddx.inventory.report import factors_toml, imported, read, world_toml
 from chatddx.inventory.sources import DirectorySource
 from chatddx.seed import load_cases, plan_factors, seed
 from chatddx.seed.plan import SAMPLE
@@ -85,6 +87,28 @@ def _init_data(args: argparse.Namespace) -> None:
         print(line)
 
 
+def _import_engine(args: argparse.Namespace) -> None:
+    try:
+        report, url_host = read(args.report)
+        imports = [
+            imported(report, server, args.endpoint_host or url_host)
+            for server in args.servers or report["servers"]
+        ]
+        world = world_toml(imports)
+    except (OSError, LookupError, ValueError) as e:
+        raise SystemExit(f"import-engine: {e}") from None
+    for i in imports:
+        for f in i.findings:
+            print(
+                f"[import {f.level}] {i.name}: {f.code}: {f.message}", file=sys.stderr
+            )
+    print("# For factors.toml: the models and engines, as their hosts report them.\n")
+    print(factors_toml(imports))
+    print("# For the World inventory: where the engines are served, and where their")
+    print("# hosts keep what the engines pin.\n")
+    print(world, end="")
+
+
 def _fake_vllm(args: argparse.Namespace) -> None:
     run(args.model, args.argv, delay=args.delay, runaway=args.runaway)
 
@@ -157,6 +181,26 @@ def main(argv: Sequence[str] | None = None) -> None:
         help="model facts to write per-model chunks from (the sample's facts.toml)",
     )
     init.set_defaults(run=_init_data)
+
+    imp = commands.add_parser(
+        "import-engine",
+        help="print the models, engines, endpoints and hosts of the vLLM servers an "
+        + "o11n.vllm report describes",
+    )
+    _ = imp.add_argument(
+        "report",
+        help="the report's URL, such as http://pelle.kompismoln.se:12008/, a file, or "
+        + "- for stdin",
+    )
+    _ = imp.add_argument(
+        "servers", nargs="*", help="the servers to import, by name (default: all)"
+    )
+    _ = imp.add_argument(
+        "--endpoint-host",
+        help="the host in the endpoints' URLs (default: the report URL's, or else the "
+        + "host's name)",
+    )
+    imp.set_defaults(run=_import_engine)
 
     fake = commands.add_parser(
         "fake-vllm",

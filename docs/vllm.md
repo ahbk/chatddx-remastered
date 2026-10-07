@@ -384,3 +384,16 @@ sample models, served as the old inventory served them, and checks each answer a
    ```
 
 ## Proposed amendments
+- ADD, as item 21 under "vLLM 0.24 assumptions": "A gpt-oss chat completion starts with Harmony's system message,
+  which holds the current date unless `VLLM_SYSTEM_START_DATE` is set, so the same request is a different prompt each
+  day (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/parser/harmony_utils.py#L132-L138,
+  called with no date by `build_harmony_preamble`, https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/parser/harmony_utils.py#L332-L339,
+  for every chat request, https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/serve/render/serving.py#L557-L563)."
+  `src/chatddx/inventory/report.py:_template` reports a gpt-oss engine whose env doesn't set it (`engine.harmony_date`).
+- ADD, as item 22 under "vLLM 0.24 assumptions": "A model whose `model_type` is `gpt_oss` is rendered with Harmony and
+  never with its chat template, `--chat-template` included
+  (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/serve/render/serving.py#L234,
+  https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/serve/render/serving.py#L377-L400). So a
+  gpt-oss engine's `chat_template` pins nothing, and what shapes its prompt is the `openai-harmony` package in the
+  runtime closure."
+  `src/chatddx/inventory/report.py:_template` reports it (`engine.chat_template_unused`), from o11n's report.

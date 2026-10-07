@@ -114,6 +114,8 @@ def test_a_start_up_joins_the_engine_with_where_its_host_keeps_things() -> None:
     startup = start_up(inventory, reg.get, "qwen@pelle")
     assert startup.argv == (
         "/models/qwen3",
+        "--revision",
+        "d" * 40,
         "--served-model-name",
         engine,
         "--chat-template",
@@ -173,7 +175,12 @@ def test_the_sample_world_binds_each_fake_engine_the_sample_seeds() -> None:
         engine = plan.registry.get(plan.named("local_engine", name).digest)
         assert endpoint.engine == engine.digest
         startup = start_up(inventory, plan.registry.get, name)
-        assert startup.argv[1:3] == ("--served-model-name", engine.digest)
+        assert startup.argv[1:5] == (
+            "--revision",
+            "fake",
+            "--served-model-name",
+            engine.digest,
+        )
         assert startup.closure == "chatddx fake-vllm"
     assert [
         line.split(": ")[1].split(" serves ")[1] for line in endpoints(inventory, plan)

@@ -18,45 +18,58 @@ The endgame is parity with the old `init-data`. Everything is in but the real en
 the tool and scorers, and the two fake engines with their endpoints (see "Engines and endpoints"). What's left, in
 order:
 
-### 1. Import the real engines on their hosts (decision 4A)
+### 1. Import the real engines from their hosts' reports (decision 4A)
 The old `qwen3-8b-awq@pelle`, `qwen3-8b-awq@malborg` and `gpt-oss-20b@malborg` get seeded from values read on the
 hosts, not guessed. Most of the old data for them was guessed, malborg's vLLM 0.13.0 among it, and a guess in an
-engine lands in its digest, which is its served name and the key of every trial.
+engine lands in its digest, which is its served name and the key of every trial. Today pelle serves `qwen3-8b` and
+malborg `gpt-oss-20b` (Kompismoln/org f05f153, `hosts/*/configuration.nix`); malborg no longer serves Qwen.
 
-1. **Settle first** (the user's):
-   - **Which chat template each engine runs.** The model repo's own (`chat_template.jinja`, or
-     `tokenizer_config.json`'s `chat_template` written to a file) or a file ops keep. It decides what the import
-     hashes, and whether HuggingFace can check it.
-   - **What a model's files are.** The whole model directory, or only what vLLM reads. `ModelArtifact.files` pins
-     them by path.
-   - **What `Runtime.closure` is**: the vLLM package's store path, or the container's system toplevel (a parked
-     question, see "Engines and models").
+The hosts run vLLM through o11n's `o11n.vllm` (Kompismoln/o11n, `nixos/vllm.nix`), each server in a NixOS
+container, and its report endpoint (`o11n.vllm.report`, `nixos/vllm-report.py`) gives what an import needs. That
+replaced the planned `import-engine` run on a host, which would have read `nvidia-smi` and `/proc` itself.
+
+1. **Settled by o11n and org** (the user's, through o11n ab87383 and org f05f153):
+   - **Which chat template each engine runs**: the file `chatTemplate` names, now required. vLLM then reads it for
+     every request, and the report hashes it and compares it with the model's own. Pelle's is `tokenizer_config.json`'s
+     template (same text, plus a trailing newline). Malborg's is the 5 bytes `null`: `tokenizer_config.json` has no
+     `chat_template` for gpt-oss, whose template is the repo's `chat_template.jinja`. vLLM never reads a gpt-oss
+     template (it renders with Harmony), so this changes nothing served, but the pin documents nothing either.
+   - **What a model's files are**: every file of the Hugging Face snapshot at the pinned commit, each hashed.
+   - **What `Runtime.closure` is**: the per-server runtime root o11n writes (the vLLM package, `which`, `gcc` and
+     `cudatoolkit`, the last two used to compile kernels at run time). Not the system or container toplevel: putting
+     the digest in `servedModelNames` would change it, and so the digest.
+2. **Still the user's:**
    - **Where the real World inventory lives.** Take: `sample-world/inventory.toml`, beside the fakes, since the old
      sample data held pelle and malborg and nothing about them is sensitive.
    - **Decision 1**, which models `from_facts` writes chunks for. Today it's every model the facts know
      (`src/chatddx/seed/plan.py:plan_factors`); with real engines the two lists can differ. Take: the seeded engines'
      models, reporting a model without facts (`docs/facts.md`, "Open design issues").
-2. **Write `chatddx import-engine`**, a command run on a host. It's agent work, testable here against a made-up host
-   (a directory of files, a fake `nvidia-smi` on `PATH`, given process data). It:
-   - reads the GPU from `nvidia-smi --query-gpu=name,compute_cap,memory.total,driver_version
-     --format=csv,noheader`; the closure and vLLM version from the running `vllm serve`'s executable, or given; its
-     argv and env from the running process (`/proc/<pid>/cmdline` and `environ`), or given, splitting off what the
-     start-up script owns (the model, `--served-model-name`, `--chat-template`, `--host`, `--port`); the model's
-     files, each hashed under its relative path; the chat template, hashed; the repo and revision, given;
-   - checks what `LocalEngine` refuses (owned flags, `--config`, abbreviations, bare arguments) and runs the lints
-     that apply (`model.revision`, `engine.closure`, `check_chat_template`'s date check);
-   - prints, in this repo's formats, `[model.<name>]` and `[local_engine.<name>]` for `factors.toml`, and
-     `[host.<name>]` (where it keeps the model and template, its bind address) and `[endpoint.<name>]` (the engine's
-     digest, the URL) for the World inventory. The digest is computed by the same code that seeds it, so they agree.
-3. **Run it on pelle and malborg** (the user, or anyone on the hosts) and commit its output.
-4. **Seed and check.** `init-data --world …` lands the models and engines, their lints come back clean, and each
+   - **Malborg's Harmony date.** vLLM 0.24 writes the current date into every gpt-oss prompt unless
+     `VLLM_SYSTEM_START_DATE` is set (`docs/vllm.md`, proposed item 21). Take: set it in malborg's `environment`, so it
+     lands in the engine's env and digest.
+   - **The report endpoint.** Neither host enables `o11n.vllm.report` yet; it needs `enable`, a `host` other than
+     `127.0.0.1` and an open port.
+3. **Done: `chatddx import-engine REPORT [SERVER …]`** (`src/chatddx/inventory/report.py`). It reads a report from its
+   URL or a file and prints `[model]` and `[local_engine]` tables for `factors.toml`, and `[endpoint]` and `[host]`
+   tables for the World inventory, each named `<server>@<host>`. The digests are the seeder's, and its findings go to
+   stderr. It:
+   - refuses what an engine can't record: a server on several GPUs (`Hardware` has no count), a model that isn't a
+     Hugging Face repo at a revision, a part the report couldn't gather, extra arguments setting `--host` or `--port`,
+     and whatever `LocalEngine` refuses;
+   - drops the env o11n sets to find the model, the GPU and CUDA (`HOST_ENV`), and keeps the rest, such as
+     `VLLM_USE_FLASHINFER_SAMPLER`;
+   - takes `max_jobs` from `--max-num-seqs`, the URL's host from the report's URL (or `--endpoint-host`), and keeps
+     the model by repo ID, as o11n passes it with `--revision`. `start_up` now gives `--revision` too;
+   - runs the model and engine lints and `check_chat_template` on the reported text, and reports a template vLLM
+     doesn't read, a missing `VLLM_SYSTEM_START_DATE` there, a template that isn't the model's own, and a server
+     that isn't running, runs other arguments, reports another vLLM version or doesn't answer under the digest.
+4. **Run it against pelle and malborg** and commit its output.
+5. **Seed and check.** `init-data --world …` lands the models and engines, their lints come back clean, and each
    endpoint reports the engine it serves.
-5. **Serve them under their digests.** Until a start-up script reads a manifest the orchestrator writes
-   (`docs/chatddx.md`), each host's vLLM service has to run with the arguments `start_up` gives: the digest as
-   `--served-model-name` and the pinned template. Then `confirm` passes. A `chatddx start-up --world FILE
-   ENDPOINT` command, printing that command line with the engine read from the database, gives ops the exact line
-   for each host's configuration.
-6. **Optionally, check against HuggingFace** (4B as a check, not a source). With `huggingface.co` allowed in the
+6. **Serve them under their digests.** Put each engine's digest first in its server's `servedModelNames` (responses
+   carry the first name), as `import-engine`'s `endpoint.served_name` says. The served names aren't part of the
+   digest, so this doesn't change it. Then `confirm` passes.
+7. **Optionally, check against HuggingFace** (4B as a check, not a source). With `huggingface.co` allowed in the
    environment's network policy, the revisions and the weights' SHA-256s can be compared with the hub's.
 
 ### 2. Then the small parity items
@@ -213,8 +226,8 @@ Decisions 2A and 4D, done:
   against the inventory file.
 - **`src/chatddx/inventory/serving.py`**:
   - `start_up` joins an endpoint with its engine and its host into what the start-up script runs: vLLM's arguments
-    (the model's location, the digest as `--served-model-name`, the template, the host's bind address and the URL's
-    port, then the engine's argv), the closure and the env. It refuses a host that doesn't locate the model or the
+    (the model's location and revision, the digest as `--served-model-name`, the template, the host's bind address
+    and the URL's port, then the engine's argv), the closure and the env. It refuses a host that doesn't locate the model or the
     template, a remote engine, and an engine whose argv sets `--host` or `--port`, which the endpoint decides;
   - `url_of` gives an endpoint's URL, a remote engine's `base_url`;
   - `confirm` checks that the endpoint's `/v1/models` lists the name its engine is served under, the digest of a
@@ -438,7 +451,8 @@ with this"). Still open:
 - Hardware:
   - `gpu_count` is missing (`docs/factors.md`, "Smaller issues");
   - CPU, RAM, location, GPU uuid and machine id have no home.
-- Runtime: is `Runtime.closure` the vLLM package or the container toplevel? The import has to know.
+- Runtime: `Runtime.closure` is o11n's runtime root for the real engines (see "Start with this"), and the fakes'
+  `chatddx fake-vllm`.
 - No split between args in the digest and recorded-only args (`performance`). `max-num-seqs` affects batching. An
   endpoint now decides `--host` and `--port`; the rest of the old `performance` args would land in `argv`.
 - Endpoints:
