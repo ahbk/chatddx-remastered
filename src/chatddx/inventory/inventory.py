@@ -48,21 +48,37 @@ class Inventory(Frozen):
                 raise ValueError(f"endpoint {name!r} names no host {endpoint.host!r}")
         return self
 
+    # `include` names files, relative to this one, whose endpoints and hosts are this
+    # inventory's too, such as what `chatddx import-engine` writes.
     @classmethod
     def load(cls, path: Path) -> Self:
         with path.open("rb") as f:
             data = tomllib.load(f)
-        if stray := set(data) - {"source", "endpoint", "host"}:
+        if stray := set(data) - {"include", "source", "endpoint", "host"}:
             raise ValueError(
-                f"{path}: the inventory has only 'source', 'endpoint' and 'host' "
-                + f"tables, not {sorted(stray)}"
+                f"{path}: the inventory has only 'include', 'source', 'endpoint' and "
+                + f"'host', not {sorted(stray)}"
             )
+        tables = {t: dict(data.get(t, {})) for t in ("source", "endpoint", "host")}
+        for name in data.get("include", []):
+            included = path.parent / name
+            with included.open("rb") as f:
+                more = tomllib.load(f)
+            if stray := set(more) - {"endpoint", "host"}:
+                raise ValueError(
+                    f"{included}: an included inventory has only 'endpoint' and "
+                    + f"'host' tables, not {sorted(stray)}"
+                )
+            for table, records in more.items():
+                if twice := sorted(set(tables[table]) & set(records)):
+                    raise ValueError(f"{included}: {table} {twice} are in {path} too")
+                tables[table] |= records
         return cls.model_validate(
             {
                 "root": path.parent,
-                "sources": data.get("source", {}),
-                "endpoints": data.get("endpoint", {}),
-                "hosts": data.get("host", {}),
+                "sources": tables["source"],
+                "endpoints": tables["endpoint"],
+                "hosts": tables["host"],
             }
         )
 

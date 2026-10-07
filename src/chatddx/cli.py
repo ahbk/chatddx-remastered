@@ -14,10 +14,10 @@ from chatddx.identity import Role
 from chatddx.inventory.inventory import Inventory
 from chatddx.inventory.report import (
     Imported,
+    endpoints_toml,
     factors_toml,
     imported,
     read,
-    world_toml,
 )
 from chatddx.inventory.sources import DirectorySource
 from chatddx.seed import load_cases, plan_factors, seed
@@ -107,7 +107,7 @@ def _import_engine(args: argparse.Namespace) -> None:
             ]
         if missing := sorted(set(args.server or ()) - {i.server for i in imports}):
             raise LookupError(f"no report has a server {', '.join(missing)}")
-        world = world_toml(imports)
+        factors, endpoints = factors_toml(imports), endpoints_toml(imports)
     except (OSError, LookupError, ValueError) as e:
         raise SystemExit(f"import-engine: {e}") from None
     for i in imports:
@@ -115,11 +115,22 @@ def _import_engine(args: argparse.Namespace) -> None:
             print(
                 f"[import {f.level}] {i.name}: {f.code}: {f.message}", file=sys.stderr
             )
-    print("# For factors.toml: the models and engines, as their hosts report them.\n")
-    print(factors_toml(imports))
-    print("# For the World inventory: where the engines are served, and where their")
-    print("# hosts keep what the engines pin.\n")
-    print(world, end="")
+    written = f"# Written by `{' '.join(['chatddx import-engine', *args.reports])}`.\n"
+    _ = args.factors.write_text(
+        written
+        + "# The models and engines its hosts serve; import again rather than edit.\n"
+        + f"# Where they're served: {args.endpoints.name}.\n\n"
+        + factors
+    )
+    _ = args.endpoints.write_text(
+        written
+        + f"# Where the engines in {args.factors.name} are served, and where their hosts\n"
+        + "# keep what they pin; import again rather than edit. A World inventory\n"
+        + "# includes it.\n\n"
+        + endpoints
+    )
+    for i in imports:
+        print(f"[import] {i.name}: engine {i.engine.digest} at {i.endpoint.url}")
 
 
 def _fake_vllm(args: argparse.Namespace) -> None:
@@ -204,8 +215,8 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     imp = commands.add_parser(
         "import-engine",
-        help="print the models, engines, endpoints and hosts of the vLLM servers an "
-        + "o11n.vllm report describes",
+        help="write the models, engines, endpoints and hosts of the vLLM servers "
+        + "o11n.vllm reports describe",
     )
     _ = imp.add_argument(
         "reports",
@@ -222,6 +233,20 @@ def main(argv: Sequence[str] | None = None) -> None:
         "--endpoint-host",
         help="the host in the endpoints' URLs, for one report (default: the report "
         + "URL's, or else the host's name)",
+    )
+    _ = imp.add_argument(
+        "--factors",
+        type=Path,
+        required=True,
+        help="the factors file to write the models and engines to, such as "
+        + "world/factors.toml, for init-data's --factors",
+    )
+    _ = imp.add_argument(
+        "--endpoints",
+        type=Path,
+        required=True,
+        help="the inventory file to write the endpoints and hosts to, such as "
+        + "world/endpoints.toml, for a World inventory's include",
     )
     imp.set_defaults(run=_import_engine)
 

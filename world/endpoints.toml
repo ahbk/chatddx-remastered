@@ -1,0 +1,34 @@
+# Written by `chatddx import-engine http://pelle.km:12008/ http://malborg.km:12008/`.
+# Where the engines in factors.toml are served, and where their hosts
+# keep what they pin; import again rather than edit. A World inventory
+# includes it.
+
+[endpoint."qwen3-8b@pelle"]
+engine = "sha256:a6845f87061ef01720d1e30820b8918c14dc65511f006bcf59a5ce54981b7ca0"
+url = "http://pelle.km:12009/v1/"
+host = "pelle"
+max_jobs = 1
+
+[endpoint."gpt-oss-20b@malborg"]
+engine = "sha256:9a5ca7151b219fe9be30143fe54823f424425e6e448ee1a44adb998f9d7d3c21"
+url = "http://malborg.km:12009/v1/"
+host = "malborg"
+max_jobs = 4
+
+[host.pelle]
+bind = "::"
+
+[host.pelle.models]
+"sha256:269a1b722c13eb6692de5fa3b438796ee70c39f79f4f9f16e3711c10eca844f6" = "Qwen/Qwen3-8B-AWQ"
+
+[host.pelle.templates]
+e132ae041e1217b5e1114eb9dc292484a7f478df945d72fa49ba01b88d8ec01a = "/nix/store/sxqqnn8jqlch6nklh7g2rwfkz29ya33x-chat_template.jinja"
+
+[host.malborg]
+bind = "::"
+
+[host.malborg.models]
+"sha256:c642e88e30cec1fe4b8100758a4e661d49a899024d68067e6be8716db48eeef8" = "openai/gpt-oss-20b"
+
+[host.malborg.templates]
+a4c9919cbbd4acdd51ccffe22da049264b1b73e59055fa58811a99efbd7c8146 = "/nix/store/b2wrirjmiw1zk4ciprdgpvjk12cximh9-chat_template.jinja"

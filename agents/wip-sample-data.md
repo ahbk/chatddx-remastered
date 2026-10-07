@@ -35,23 +35,33 @@ replaced the planned `import-engine` run on a host, which would have read `nvidi
      doesn't read for gpt-oss (it renders with Harmony), so its hash pins nothing.
    - **Malborg's Harmony date**: `VLLM_SYSTEM_START_DATE = "2026-10-07"`, in the engine's env and digest.
    - **The report endpoints**: enabled on both hosts, at `pelle.km:12008` and `malborg.km:12008`.
-   - **Where the real World lives**: `world/`. `world/factors.toml` holds the imported `[model]` and `[local_engine]`
-     tables, `world/inventory.toml` their `[endpoint]` and `[host]` tables and the sample's vignettes as
-     `[source.sample]`. `init-data --world world/inventory.toml --factors world/factors.toml` seeds the sample with
-     them, and `src/chatddx/store/test/test_seed.py:test_init_data_command` checks that it binds each endpoint.
+   - **Where the real World lives**: `world/`. `import-engine` writes `world/factors.toml` (`[model]`,
+     `[local_engine]`) and `world/endpoints.toml` (`[endpoint]`, `[host]`); `world/inventory.toml` is hand-written:
+     the sample's vignettes as `[source.sample]`, and `include = ["endpoints.toml"]`
+     (`src/chatddx/inventory/inventory.py:Inventory.load`). `init-data --world world/inventory.toml --factors
+     world/factors.toml` seeds the sample with them, and `src/chatddx/store/test/test_seed.py:test_init_data_command`
+     checks that it binds each endpoint.
 2. **Still open:**
-   - **What a model's files are.** The report hashes every file of the snapshot (the agent's choice, not yet the
-     user's). For gpt-oss that includes `original/` and `metal/`, about two more copies of the weights that vLLM
-     doesn't read, so deleting them changes the model's digest. The alternative, only what vLLM reads, needs a list
-     of what that is per model.
+   - **What a model's files are.** Take: every file of the snapshot at the pinned commit, as the report hashes them,
+     and a snapshot that holds only what vLLM needs. A list of only what vLLM reads would have to follow vLLM's
+     loaders per version and model, and missing a file means missing a change: `generation_config.json` is easy to
+     leave out, yet with `--generation-config auto` (the default) it sets the sampling of every request that doesn't
+     (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/config/model.py#L1400-L1470). The whole snapshot errs
+     the other way: files vLLM doesn't read are pinned too, so removing one changes the digest. That bites only for
+     gpt-oss, whose repo has `original/` and `metal/`, two more copies of the weights in other formats; vLLM reads
+     only the root's `*.safetensors` listed in its index
+     (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/model_executor/model_loader/default_loader.py#L208-L232).
+     So malborg's cache would be downloaded without them (`hf download openai/gpt-oss-20b --revision <commit>
+     --exclude 'original/*' 'metal/*'`), once, before the digests go into `servedModelNames`, since it changes
+     the model's digest and the engine's.
    - **Decision 1**, which models `from_facts` writes chunks for. Today it's every model the facts know
      (`src/chatddx/seed/plan.py:plan_factors`); the real engines serve the same two models as the fakes, so nothing
      changes yet. Take: the seeded engines' models, reporting a model without facts (`docs/facts.md`, "Open design
      issues").
-3. **Done: `chatddx import-engine REPORT … [--server NAME …]`** (`src/chatddx/inventory/report.py`). It reads each
-   host's report from its URL or a file and prints `[model]` and `[local_engine]` tables for `world/factors.toml`, and
-   `[endpoint]` and `[host]` tables for `world/inventory.toml`, each named `<server>@<host>`. The digests are the
-   seeder's, and its findings go to stderr. It:
+3. **Done: `chatddx import-engine REPORT … [--server NAME …] --factors FILE --endpoints FILE`**
+   (`src/chatddx/inventory/report.py`). It reads each host's report from its URL or a file and writes the
+   `[model]` and `[local_engine]` tables to `--factors` and the `[endpoint]` and `[host]` tables to `--endpoints`,
+   each named `<server>@<host>`. The digests are the seeder's, and its findings go to stderr. It:
    - refuses what an engine can't record: a server on several GPUs (`Hardware` has no count), a model that isn't a
      Hugging Face repo at a revision, a part the report couldn't gather, extra arguments setting `--host` or `--port`,
      and whatever `LocalEngine` refuses;
@@ -65,9 +75,10 @@ replaced the planned `import-engine` run on a host, which would have read `nvidi
 4. **Imported** (chatddx-remastered 5760e10), and every value checks out: the digests recompute, the lints are clean,
    and `start_up` gives o11n's command line. But the runtime root was named after its server and built with the host's
    package set, so the closures differed between the hosts for the same packages and would have moved with every
-   update of o11n's nixpkgs. Fixed in o11n 4c92733 (`vllm-runtime`, from the container's package set). Once it's
-   deployed, **re-import both hosts**: both closures, and so both engine digests, change.
-5. **Seed and check.** `init-data --world world/inventory.toml --factors world/factors.toml` against a database.
+   update of o11n's nixpkgs. Fixed in o11n b84e960 (`vllm-runtime`, from the container's package set) and imported
+   again (973dd61): both hosts now report the same runtime root.
+5. **Seeded and checked.** `init-data alice --world world/inventory.toml --factors world/factors.toml` creates the
+   two models and engines, their lints are clean, and each World endpoint serves the engine it names.
 6. **Serve them under their digests.** Put each engine's digest first in its server's `servedModelNames` (responses
    carry the first name), as `import-engine`'s `endpoint.served_name` says. The served names aren't part of the
    digest, so this doesn't change it. Then `confirm` passes.

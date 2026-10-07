@@ -301,7 +301,7 @@ def factors_toml(imports: Iterable[Imported]) -> str:
     return "\n".join(tables)
 
 
-def world_toml(imports: Iterable[Imported]) -> str:
+def endpoints_toml(imports: Iterable[Imported]) -> str:
     tables: list[str] = []
     hosts: dict[str, HostSpec] = {}
     urls: dict[str, str] = {}

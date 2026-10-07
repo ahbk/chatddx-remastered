@@ -107,6 +107,32 @@ def test_endpoints_and_hosts_are_declared_in_the_inventory(tmp_path: Path) -> No
         _ = Inventory.load(path)
 
 
+def test_an_inventory_includes_the_endpoints_and_hosts_of_other_files(
+    tmp_path: Path,
+) -> None:
+    engine = "sha256:" + "c" * 64
+    _ = (tmp_path / "imported.toml").write_text(
+        f'[endpoint.qwen]\nengine = "{engine}"\nurl = "http://pelle.km:12009/v1/"\n'
+        + 'host = "pelle"\n\n[host.pelle]\nbind = "::"\n'
+    )
+    path = tmp_path / "inventory.toml"
+    _ = path.write_text(
+        'include = ["imported.toml"]\n\n[source.sample]\npath = "vignettes"\n'
+    )
+    inventory = Inventory.load(path)
+    assert (inventory.endpoint("qwen").engine, inventory.hosts["pelle"].bind) == (
+        engine,
+        "::",
+    )
+    assert inventory.root / inventory.sources["sample"].path == tmp_path / "vignettes"
+    _ = path.write_text('include = ["imported.toml"]\n\n[host.pelle]\n')
+    with pytest.raises(ValueError, match=r"host \['pelle'\] are in .*inventory.toml"):
+        _ = Inventory.load(path)
+    _ = (tmp_path / "imported.toml").write_text('[source.other]\npath = "x"\n')
+    with pytest.raises(ValueError, match="has only 'endpoint' and 'host' tables"):
+        _ = Inventory.load(path)
+
+
 def test_a_start_up_joins_the_engine_with_where_its_host_keeps_things() -> None:
     reg = Registry()
     model, engine = local(reg, "--max-model-len", "8192")

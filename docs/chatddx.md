@@ -270,3 +270,7 @@ Each code is described where it's produced: `docs/factors.md`, "Lints"; `docs/le
 **Canary drift are not implemented:** nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
+- CHANGE, in the glossary's "Inventory", "and what hosts keep where are `[host.<name>]` tables" → "and what hosts keep
+  where are `[host.<name>]` tables. `include` names files whose endpoints and hosts the inventory takes too, so what
+  `chatddx import-engine` writes stays apart from what people write" (`src/chatddx/inventory/inventory.py:Inventory.load`,
+  `world/inventory.toml`).

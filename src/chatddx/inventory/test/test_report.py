@@ -16,13 +16,14 @@ from chatddx.inventory.inventory import Inventory
 from chatddx.inventory.report import (
     REPORT,
     Imported,
+    endpoints_toml,
     factors_toml,
     imported,
     read,
-    world_toml,
 )
 from chatddx.inventory.serving import start_up
 from chatddx.seed import plan_factors
+from chatddx.seed.world import endpoints as endpoints_of
 
 STORE = "/nix/store/" + "s" * 32
 COMMIT = "4da05a8edb55c6046cce958586c33b61da07bb79"
@@ -185,7 +186,7 @@ def test_the_tables_it_prints_seed_the_engine_it_imported_and_start_it_as_served
         assert plan.named("local_engine", i.name).digest == i.engine.digest
         assert plan.named("local_engine", i.name).tags == (i.host,)
     world = tmp_path / "inventory.toml"
-    _ = world.write_text(world_toml(imports))
+    _ = world.write_text(endpoints_toml(imports))
     inventory = Inventory.load(world)
     assert set(inventory.hosts) == {"pelle", "malborg"}
     startup = start_up(inventory, plan.registry.get, "qwen3-8b@pelle")
@@ -225,15 +226,15 @@ def test_servers_on_one_host_share_its_table_unless_they_bind_apart() -> None:
         port=12010,
     )
     both = report({"qwen3-8b": server(), "small": other})
-    world = world_toml([imported(both, "qwen3-8b"), imported(both, "small")])
+    world = endpoints_toml([imported(both, "qwen3-8b"), imported(both, "small")])
     assert world.count("[host.pelle]") == 1
     assert '= "Qwen/Qwen3-0.6B"' in world and '= "Qwen/Qwen3-8B-AWQ"' in world
     apart = report({"qwen3-8b": server(), "small": other | {"host": "127.0.0.1"}})
     with pytest.raises(ValueError, match="small@pelle binds 127.0.0.1"):
-        _ = world_toml([imported(apart, "qwen3-8b"), imported(apart, "small")])
+        _ = endpoints_toml([imported(apart, "qwen3-8b"), imported(apart, "small")])
     same = report({"qwen3-8b": server(), "small": other | {"port": 12009}})
     with pytest.raises(ValueError, match="small@pelle and qwen3-8b@pelle are both at"):
-        _ = world_toml([imported(same, "qwen3-8b"), imported(same, "small")])
+        _ = endpoints_toml([imported(same, "qwen3-8b"), imported(same, "small")])
 
 
 def test_it_refuses_what_an_engine_can_t_record() -> None:
@@ -331,40 +332,74 @@ def test_it_reads_a_report_from_its_endpoint_or_a_file(tmp_path: Path) -> None:
         _ = read(str(path))
 
 
-def test_the_command_prints_the_tables_and_its_findings(
+def import_engine(tmp_path: Path, *argv: str) -> tuple[Path, Path]:
+    factors, endpoints = tmp_path / "factors.toml", tmp_path / "endpoints.toml"
+    main(
+        [
+            "import-engine",
+            *argv,
+            "--factors",
+            str(factors),
+            "--endpoints",
+            str(endpoints),
+        ]
+    )
+    return factors, endpoints
+
+
+def test_the_command_writes_the_engines_and_their_endpoints_apart(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     path = tmp_path / "report.json"
     _ = path.write_text(json.dumps(report()))
-    main(["import-engine", str(path), "--endpoint-host", "pelle.km"])
+    factors, endpoints = import_engine(
+        tmp_path, str(path), "--endpoint-host", "pelle.km"
+    )
     out, err = capsys.readouterr()
     digest = imported(report(), "qwen3-8b").engine.digest
-    assert '[model."qwen3-8b@pelle"]' in out
-    assert '[local_engine."qwen3-8b@pelle"]' in out
-    assert f'engine = "{digest}"\nurl = "http://pelle.km:12009/v1/"' in out
+    assert (
+        out
+        == f"[import] qwen3-8b@pelle: engine {digest} at http://pelle.km:12009/v1/\n"
+    )
     assert err == (
         "[import warning] qwen3-8b@pelle: endpoint.served_name: the server answers as "
         + f"Qwen/Qwen3-8B-AWQ; put {digest} first in its servedModelNames\n"
     )
+    assert factors.read_text().startswith(
+        f"# Written by `chatddx import-engine {path}`.\n# The models and engines"
+    )
+    assert "[endpoint." not in factors.read_text()
+    assert "[model." not in endpoints.read_text()
+    world = tmp_path / "inventory.toml"
+    _ = world.write_text('include = ["endpoints.toml"]\n')
+    sample = tmp_path / "sample.toml"
+    _ = sample.write_text('[prompt.case]\nsegments = [{ slot = "vignette" }]\n')
+    plan = plan_factors(sample, Facts(), rig(), more=[factors])
+    assert endpoints_of(Inventory.load(world), plan) == [
+        "[world endpoint] qwen3-8b@pelle: http://pelle.km:12009/v1/ serves "
+        + f"engine.local qwen3-8b@pelle {digest.removeprefix('sha256:')[:6]}"
+    ]
     with pytest.raises(SystemExit, match="import-engine: no report has a server other"):
-        main(["import-engine", str(path), "--server", "other"])
+        _ = import_engine(tmp_path, str(path), "--server", "other")
+    with pytest.raises(SystemExit):
+        main(["import-engine", str(path)])
 
 
 def test_the_command_imports_several_hosts_at_once(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     gpt = server(model=server()["model"] | {"id": "openai/gpt-oss-20b"})
-    paths = [tmp_path / "pelle.json", tmp_path / "malborg.json"]
-    _ = paths[0].write_text(json.dumps(report()))
-    _ = paths[1].write_text(json.dumps(report({"gpt-oss-20b": gpt}, "malborg")))
-    main(["import-engine", *map(str, paths)])
-    out = capsys.readouterr().out
-    assert out.count("# For factors.toml") == out.count("# For the World") == 1
-    assert out.index('[local_engine."gpt-oss-20b@malborg"]') < out.index(
-        "# For the World"
-    )
-    assert out.index('[endpoint."qwen3-8b@pelle"]') > out.index("# For the World")
-    main(["import-engine", *map(str, paths), "--server", "gpt-oss-20b"])
-    assert "qwen3-8b@pelle" not in capsys.readouterr().out
+    paths = [str(tmp_path / "pelle.json"), str(tmp_path / "malborg.json")]
+    _ = Path(paths[0]).write_text(json.dumps(report()))
+    _ = Path(paths[1]).write_text(json.dumps(report({"gpt-oss-20b": gpt}, "malborg")))
+    factors, endpoints = import_engine(tmp_path, *paths)
+    assert [line.split(":")[0] for line in capsys.readouterr().out.splitlines()] == [
+        "[import] qwen3-8b@pelle",
+        "[import] gpt-oss-20b@malborg",
+    ]
+    assert set(Inventory.load(endpoints).hosts) == {"pelle", "malborg"}
+    assert '[local_engine."gpt-oss-20b@malborg"]' in factors.read_text()
+    _ = import_engine(tmp_path, *paths, "--server", "gpt-oss-20b")
+    assert "qwen3-8b@pelle" not in factors.read_text()
     with pytest.raises(SystemExit, match="--endpoint-host takes one report"):
-        main(["import-engine", *map(str, paths), "--endpoint-host", "pelle.km"])
+        _ = import_engine(tmp_path, *paths, "--endpoint-host", "pelle.km")
