@@ -1,8 +1,5 @@
-# The models and engines pelle and malborg serve, as `chatddx import-engine http://pelle.km:12008/
-# http://malborg.km:12008/` prints them, with its findings as comments. World inventory: world/inventory.toml.
-# Re-import when a host's vLLM configuration changes, since the engines' digests change with it.
+# For factors.toml: the models and engines, as their hosts report them.
 
-# [import warning] qwen3-8b@pelle: endpoint.served_name: the server answers as Qwen/Qwen3-8B-AWQ; put sha256:850f6ecf2e94d92238a3b767eeefe4a5ea0d022dbc1bd8505bfd6368b7929f1b first in its servedModelNames
 [model."qwen3-8b@pelle"]
 repo = "Qwen/Qwen3-8B-AWQ"
 revision = "4da05a8edb55c6046cce958586c33b61da07bb79"
@@ -21,8 +18,16 @@ files = [
   { path = "vocab.json", sha256 = "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910" },
 ]
 
-# [import info] gpt-oss-20b@malborg: engine.chat_template_unused: vLLM renders this model with Harmony and doesn't read the chat template, so its hash pins nothing
-# [import warning] gpt-oss-20b@malborg: endpoint.served_name: the server answers as openai/gpt-oss-20b; put sha256:e0695700c7df93bef5ebc72541659080f75fea1eeda93b5bd3f69958b2f2321d first in its servedModelNames
+[local_engine."qwen3-8b@pelle"]
+description = "Qwen/Qwen3-8B-AWQ on pelle, as its o11n.vllm report has it."
+tags = ["pelle"]
+model = "qwen3-8b@pelle"
+hardware = { gpu = "NVIDIA GeForce RTX 3070", compute_capability = [8, 6], vram_mib = 8192, driver = "595.99.02" }
+runtime = { version = "0.24.0", closure = "/nix/store/wc7y3a2yrlz03kj3587pwwz86jcamhhs-vllm-runtime" }
+chat_template = "e132ae041e1217b5e1114eb9dc292484a7f478df945d72fa49ba01b88d8ec01a"
+argv = ["--enforce-eager", "--gpu-memory-utilization=0.95", "--max-model-len=8192", "--max-num-seqs=1", "--enable-prefix-caching", "--tool-call-parser=hermes", "--enable-auto-tool-choice"]
+env = { VLLM_USE_FLASHINFER_SAMPLER = "0" }
+
 [model."gpt-oss-20b@malborg"]
 repo = "openai/gpt-oss-20b"
 revision = "6cee5e81ee83917806bbde320786a8fb61efebee"
@@ -47,38 +52,45 @@ files = [
   { path = "tokenizer_config.json", sha256 = "9279e942392b742d633c7adbb89ebe002c98399db8926a7af5125c726f404070" },
 ]
 
-[local_engine."qwen3-8b@pelle"]
-description = "Qwen/Qwen3-8B-AWQ on pelle, as its o11n.vllm report has it."
-tags = ["pelle"]
-model = "qwen3-8b@pelle"
-hardware = { gpu = "NVIDIA GeForce RTX 3070", compute_capability = [8, 6], vram_mib = 8192, driver = "595.99.02" }
-runtime = { version = "0.24.0", closure = "/nix/store/k17qdi8ip5hgb9vaby34hdc96c4divrl-vllm-qwen3-8b-runtime" }
-chat_template = "e132ae041e1217b5e1114eb9dc292484a7f478df945d72fa49ba01b88d8ec01a"
-argv = [
-  "--enforce-eager",
-  "--gpu-memory-utilization=0.95",
-  "--max-model-len=8192",
-  "--max-num-seqs=1",
-  "--enable-prefix-caching",
-  "--tool-call-parser=hermes",
-  "--enable-auto-tool-choice"
-]
-env = { VLLM_USE_FLASHINFER_SAMPLER = "0" }
-
 [local_engine."gpt-oss-20b@malborg"]
 description = "openai/gpt-oss-20b on malborg, as its o11n.vllm report has it."
 tags = ["malborg"]
 model = "gpt-oss-20b@malborg"
 hardware = { gpu = "NVIDIA GeForce RTX 5090", compute_capability = [12, 0], vram_mib = 32607, driver = "595.99.02" }
-runtime = { version = "0.24.0", closure = "/nix/store/96w93y4nnykv2ycdvnssjb0rc293rqss-vllm-gpt-oss-20b-runtime" }
+runtime = { version = "0.24.0", closure = "/nix/store/wc7y3a2yrlz03kj3587pwwz86jcamhhs-vllm-runtime" }
 chat_template = "a4c9919cbbd4acdd51ccffe22da049264b1b73e59055fa58811a99efbd7c8146"
-argv = [
-  "--gpu-memory-utilization=0.95",
-  "--max-model-len=32768",
-  "--max-num-seqs=4",
-  "--enable-prefix-caching",
-  "--tool-call-parser=openai",
-  "--enable-auto-tool-choice",
-  "--reasoning-parser=openai_gptoss"
-]
+argv = ["--gpu-memory-utilization=0.95", "--max-model-len=32768", "--max-num-seqs=4", "--enable-prefix-caching", "--tool-call-parser=openai", "--enable-auto-tool-choice", "--reasoning-parser=openai_gptoss"]
 env = { VLLM_SYSTEM_START_DATE = "2026-10-07", VLLM_USE_FLASHINFER_SAMPLER = "0" }
+
+# For the World inventory: where the engines are served, and where their
+# hosts keep what the engines pin.
+
+[endpoint."qwen3-8b@pelle"]
+engine = "sha256:a6845f87061ef01720d1e30820b8918c14dc65511f006bcf59a5ce54981b7ca0"
+url = "http://pelle.km:12009/v1/"
+host = "pelle"
+max_jobs = 1
+
+[endpoint."gpt-oss-20b@malborg"]
+engine = "sha256:9a5ca7151b219fe9be30143fe54823f424425e6e448ee1a44adb998f9d7d3c21"
+url = "http://malborg.km:12009/v1/"
+host = "malborg"
+max_jobs = 4
+
+[host.pelle]
+bind = "::"
+
+[host.pelle.models]
+"sha256:269a1b722c13eb6692de5fa3b438796ee70c39f79f4f9f16e3711c10eca844f6" = "Qwen/Qwen3-8B-AWQ"
+
+[host.pelle.templates]
+e132ae041e1217b5e1114eb9dc292484a7f478df945d72fa49ba01b88d8ec01a = "/nix/store/sxqqnn8jqlch6nklh7g2rwfkz29ya33x-chat_template.jinja"
+
+[host.malborg]
+bind = "::"
+
+[host.malborg.models]
+"sha256:c642e88e30cec1fe4b8100758a4e661d49a899024d68067e6be8716db48eeef8" = "openai/gpt-oss-20b"
+
+[host.malborg.templates]
+a4c9919cbbd4acdd51ccffe22da049264b1b73e59055fa58811a99efbd7c8146 = "/nix/store/b2wrirjmiw1zk4ciprdgpvjk12cximh9-chat_template.jinja"
