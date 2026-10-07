@@ -1,0 +1,119 @@
+# For factors.toml: the models and engines, as their hosts report them.
+
+# [import warning] qwen3-8b@pelle: endpoint.served_name: the server answers as Qwen/Qwen3-8B-AWQ; put sha256:850f6ecf2e94d92238a3b767eeefe4a5ea0d022dbc1bd8505bfd6368b7929f1b first in its servedModelNames
+[model."qwen3-8b@pelle"]
+repo = "Qwen/Qwen3-8B-AWQ"
+revision = "4da05a8edb55c6046cce958586c33b61da07bb79"
+files = [
+  { path = ".gitattributes", sha256 = "34448b82c17d60fec9b65b1f093c115ddbaadc04beb1b0140b6bfed2e012a930" },
+  { path = "LICENSE", sha256 = "5de36594c10839788a8c589443a8ef9d8b8d17c65a1b5807206ae037fc36c6bd" },
+  { path = "README.md", sha256 = "5c397e99916138e00686567882ea1308524c95c2962f05d0ef57ebfa0d2c81fb" },
+  { path = "config.json", sha256 = "7457674d8044143cd4159e47deecf28fd6698a9826569094b60d7bead8f351ee" },
+  { path = "generation_config.json", sha256 = "2325da0f15bb848e018c5ae071b7943332e9f871d6b60e2ed22ca97d4cb993d2" },
+  { path = "merges.txt", sha256 = "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5" },
+  { path = "model-00001-of-00002.safetensors", sha256 = "6e112429856bc65e3837a9f38d6f6b71ffdda832cb46299a12f4fa8f6352516e" },
+  { path = "model-00002-of-00002.safetensors", sha256 = "20c2d6366ab85c90786ccdd829cd2b9e7d30ef3b2ebbb998280e7e4014b542ff" },
+  { path = "model.safetensors.index.json", sha256 = "ad18bc45a440aea0a3298ddfd41d01c48eb9afbd94345f6176c4290e1b524175" },
+  { path = "tokenizer.json", sha256 = "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4" },
+  { path = "tokenizer_config.json", sha256 = "d5d09f07b48c3086c508b30d1c9114bd1189145b74e982a265350c923acd8101" },
+  { path = "vocab.json", sha256 = "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910" },
+]
+
+# [import info] gpt-oss-20b@malborg: engine.chat_template_unused: vLLM renders this model with Harmony and doesn't read the chat template, so its hash pins nothing
+# [import warning] gpt-oss-20b@malborg: endpoint.served_name: the server answers as openai/gpt-oss-20b; put sha256:e0695700c7df93bef5ebc72541659080f75fea1eeda93b5bd3f69958b2f2321d first in its servedModelNames
+[model."gpt-oss-20b@malborg"]
+repo = "openai/gpt-oss-20b"
+revision = "6cee5e81ee83917806bbde320786a8fb61efebee"
+files = [
+  { path = ".gitattributes", sha256 = "34448b82c17d60fec9b65b1f093c115ddbaadc04beb1b0140b6bfed2e012a930" },
+  { path = "LICENSE", sha256 = "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd" },
+  { path = "README.md", sha256 = "03c2fcf292549176757b85c911e7dcf527aef3e4241d64b6caec94af3ecf3ac2" },
+  { path = "USAGE_POLICY", sha256 = "d6387ef7985019c45db8d9801e6ac5fd9f98f02b9f1c56f8c5af80c3e8f385d0" },
+  { path = "chat_template.jinja", sha256 = "a4c9919cbbd4acdd51ccffe22da049264b1b73e59055fa58811a99efbd7c8146" },
+  { path = "config.json", sha256 = "3a2a26ded679375b7928ddeca59764df7cea83220c1961035f6d6e232659e9ce" },
+  { path = "generation_config.json", sha256 = "f9970ada892d2d1f72e3ed0a6535ccebadd11897318794ca671d8c7014c957da" },
+  { path = "metal/model.bin", sha256 = "725b7f996b5a226d922f034a731aefc398652f670dcafc2efd78620509a0fef1" },
+  { path = "model-00000-of-00002.safetensors", sha256 = "16d0f997dcfc4462089d536bffe51b4bcea2f872f5c430be09ef8ed392312427" },
+  { path = "model-00001-of-00002.safetensors", sha256 = "4fbe328ab445455d6f58dc73852b85873bd626986310abd91cd4d2ce3245eaea" },
+  { path = "model-00002-of-00002.safetensors", sha256 = "a18106b209e9ab35c3406db4f6f12a927364a058b21e9d1373d682e20674b303" },
+  { path = "model.safetensors.index.json", sha256 = "0e085b977c4c9942f85938828e8c989ed7d5cdabf852e4da6a67c116cd502cd1" },
+  { path = "original/config.json", sha256 = "317522155fc243327ee341857d0c752d0094a0817e0e9aee2890d5ad8e009e04" },
+  { path = "original/dtypes.json", sha256 = "566c9e6aded8957f41f1589cabaf73e39f2d1fcda3351d63efdfb7e9e78d376b" },
+  { path = "original/model.safetensors", sha256 = "3340a61d1a0391e8c5b5d3463d18d4c48129a84bbc04a554c762c99020aa06ed" },
+  { path = "special_tokens_map.json", sha256 = "dd5e191d20c12d2fee1da5bae14ca1db0f5f4215300af691f23cdee97120a293" },
+  { path = "tokenizer.json", sha256 = "0614fe83cadab421296e664e1f48f4261fa8fef6e03e63bb75c20f38e37d07d3" },
+  { path = "tokenizer_config.json", sha256 = "9279e942392b742d633c7adbb89ebe002c98399db8926a7af5125c726f404070" },
+]
+
+[local_engine."qwen3-8b@pelle"]
+description = "Qwen/Qwen3-8B-AWQ on pelle, as its o11n.vllm report has it."
+tags = ["pelle"]
+model = "qwen3-8b@pelle"
+hardware = { gpu = "NVIDIA GeForce RTX 3070", compute_capability = [8, 6], vram_mib = 8192, driver = "595.99.02" }
+runtime = { version = "0.24.0", closure = "/nix/store/k17qdi8ip5hgb9vaby34hdc96c4divrl-vllm-qwen3-8b-runtime" }
+chat_template = "e132ae041e1217b5e1114eb9dc292484a7f478df945d72fa49ba01b88d8ec01a"
+argv = [
+  "--enforce-eager",
+  "--gpu-memory-utilization=0.95",
+  "--max-model-len=8192",
+  "--max-num-seqs=1",
+  "--enable-prefix-caching",
+  "--tool-call-parser=hermes",
+  "--enable-auto-tool-choice"
+]
+env = { VLLM_USE_FLASHINFER_SAMPLER = "0" }
+
+# For the World inventory: where the engines are served, and where their
+# hosts keep what the engines pin.
+
+[local_engine."gpt-oss-20b@malborg"]
+description = "openai/gpt-oss-20b on malborg, as its o11n.vllm report has it."
+tags = ["malborg"]
+model = "gpt-oss-20b@malborg"
+hardware = { gpu = "NVIDIA GeForce RTX 5090", compute_capability = [12, 0], vram_mib = 32607, driver = "595.99.02" }
+runtime = { version = "0.24.0", closure = "/nix/store/96w93y4nnykv2ycdvnssjb0rc293rqss-vllm-gpt-oss-20b-runtime" }
+chat_template = "a4c9919cbbd4acdd51ccffe22da049264b1b73e59055fa58811a99efbd7c8146"
+argv = [
+  "--gpu-memory-utilization=0.95",
+  "--max-model-len=32768",
+  "--max-num-seqs=4",
+  "--enable-prefix-caching",
+  "--tool-call-parser=openai",
+  "--enable-auto-tool-choice",
+  "--reasoning-parser=openai_gptoss"
+]
+env = { VLLM_SYSTEM_START_DATE = "2026-10-07", VLLM_USE_FLASHINFER_SAMPLER = "0" }
+
+# For the World inventory: where the engines are served, and where their
+# hosts keep what the engines pin.
+
+[endpoint."qwen3-8b@pelle"]
+engine = "sha256:850f6ecf2e94d92238a3b767eeefe4a5ea0d022dbc1bd8505bfd6368b7929f1b"
+url = "http://pelle.km:12009/v1/"
+host = "pelle"
+max_jobs = 1
+
+[endpoint."gpt-oss-20b@malborg"]
+engine = "sha256:e0695700c7df93bef5ebc72541659080f75fea1eeda93b5bd3f69958b2f2321d"
+url = "http://malborg.km:12009/v1/"
+host = "malborg"
+max_jobs = 4
+
+[host.pelle]
+bind = "::"
+
+[host.pelle.models]
+"sha256:269a1b722c13eb6692de5fa3b438796ee70c39f79f4f9f16e3711c10eca844f6" = "Qwen/Qwen3-8B-AWQ"
+
+[host.pelle.templates]
+e132ae041e1217b5e1114eb9dc292484a7f478df945d72fa49ba01b88d8ec01a = "/nix/store/sxqqnn8jqlch6nklh7g2rwfkz29ya33x-chat_template.jinja"
+# For factors.toml: the models and engines, as their hosts report them.
+
+[host.malborg]
+bind = "::"
+
+[host.malborg.models]
+"sha256:c642e88e30cec1fe4b8100758a4e661d49a899024d68067e6be8716db48eeef8" = "openai/gpt-oss-20b"
+
+[host.malborg.templates]
+a4c9919cbbd4acdd51ccffe22da049264b1b73e59055fa58811a99efbd7c8146 = "/nix/store/b2wrirjmiw1zk4ciprdgpvjk12cximh9-chat_template.jinja"
