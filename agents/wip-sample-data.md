@@ -41,19 +41,17 @@ replaced the planned `import-engine` run on a host, which would have read `nvidi
      (`src/chatddx/inventory/inventory.py:Inventory.load`). `init-data --world world/inventory.toml --factors
      world/factors.toml` seeds the sample with them, and `src/chatddx/store/test/test_seed.py:test_init_data_command`
      checks that it binds each endpoint.
-2. **Still open:**
-   - **What a model's files are.** Take: every file of the snapshot at the pinned commit, as the report hashes them,
-     and a snapshot that holds only what vLLM needs. A list of only what vLLM reads would have to follow vLLM's
-     loaders per version and model, and missing a file means missing a change: `generation_config.json` is easy to
-     leave out, yet with `--generation-config auto` (the default) it sets the sampling of every request that doesn't
-     (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/config/model.py#L1400-L1470). The whole snapshot errs
-     the other way: files vLLM doesn't read are pinned too, so removing one changes the digest. That bites only for
-     gpt-oss, whose repo has `original/` and `metal/`, two more copies of the weights in other formats; vLLM reads
-     only the root's `*.safetensors` listed in its index
+   - **What a model's files are**: every file of the snapshot at the pinned commit, as the report hashes them, with a
+     snapshot that holds only what vLLM needs. A list of only what vLLM reads would have to follow vLLM's loaders per
+     version and model, and missing a file means missing a change: with `--generation-config auto` (the default)
+     `generation_config.json` sets the sampling of every request that doesn't
+     (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/config/model.py#L1400-L1470). gpt-oss's repo also has
+     `original/` and `metal/`, the weights in other formats, which vLLM never reads: it takes the root's
+     `*.safetensors` listed in the index
      (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/model_executor/model_loader/default_loader.py#L208-L232).
-     So malborg's cache would be downloaded without them (`hf download openai/gpt-oss-20b --revision <commit>
-     --exclude 'original/*' 'metal/*'`), once, before the digests go into `servedModelNames`, since it changes
-     the model's digest and the engine's.
+     Malborg's cache was downloaded again without them (52d728b): the other files' hashes are the same, and the model's
+     digest went from `c642e8` to `1c249b`, the engine's from `9a5ca7` to `598792`.
+2. **Still open:**
    - **Decision 1**, which models `from_facts` writes chunks for. Today it's every model the facts know
      (`src/chatddx/seed/plan.py:plan_factors`); the real engines serve the same two models as the fakes, so nothing
      changes yet. Take: the seeded engines' models, reporting a model without facts (`docs/facts.md`, "Open design
@@ -77,8 +75,9 @@ replaced the planned `import-engine` run on a host, which would have read `nvidi
    package set, so the closures differed between the hosts for the same packages and would have moved with every
    update of o11n's nixpkgs. Fixed in o11n b84e960 (`vllm-runtime`, from the container's package set) and imported
    again (973dd61): both hosts now report the same runtime root.
-5. **Seeded and checked.** `init-data alice --world world/inventory.toml --factors world/factors.toml` creates the
-   two models and engines, their lints are clean, and each World endpoint serves the engine it names.
+5. **Seeded and checked** (52d728b). `init-data alice --world world/inventory.toml --factors world/factors.toml` creates
+   the two models and engines, their lints are clean, and each World endpoint serves the engine it names:
+   `qwen3-8b@pelle` `sha256:a6845f87…`, `gpt-oss-20b@malborg` `sha256:598792a2…`.
 6. **Serve them under their digests.** Put each engine's digest first in its server's `servedModelNames` (responses
    carry the first name), as `import-engine`'s `endpoint.served_name` says. The served names aren't part of the
    digest, so this doesn't change it. Then `confirm` passes.
