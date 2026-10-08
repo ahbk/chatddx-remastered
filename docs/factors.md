@@ -516,8 +516,10 @@ the appendices (by default a blank line before and between, nothing after) and g
 none.
 
 The runtime keys `model`, `messages`, `seed`, `stream`, `n` and `return_token_ids` (`request.py:RUNTIME_KEYS`) may
-not be set by any chunk, skeleton or canary. `render` sets four of them; `stream` and `n` are not sent. The wire
-body itself is only stored by its fingerprint.
+not be set by any chunk, skeleton or canary.
+
+`render` sets four of them, and `n` is not sent. `stream` is the runner's: it streams every request and adds the
+chunks up to the completion it records, while `Call.request` fingerprints the body as `render` made it.
 
 ### Tool rounds
 - defined in: `request.py:tool_calls`, `request.py:next_request`
@@ -620,10 +622,14 @@ details:
 - `order`, the order in which a run/score sends its items:
   - `case_major@1` (the default: every replicate of a case before the next case, cases in digest order)
   - `replicate_major@1` (every case once per replicate, cases in digest order)
-  - `shuffled@1`, which needs a `shuffle_seed` and orders the items by a hash of that seed, the case and the replicate.
+  - `shuffled@1`, orders the items by a hash of `shuffle_seed`, the case and the replicate.
 - `concurrency` (1 by default)
 - `timeout_s` (optional)
 - `retries` (0 by default)
+- `whitespace_limit` (100 by default, or none): a call answering this many tokens of nothing but whitespace in a
+  row is cut short and keeps what came, as a model that runs away would write them till its tokens or its context
+  run out. Like a timeout, it decides what answer gets recorded. `Sampling.max_output_tokens` bounds every answer;
+  the cutoff bounds only a runaway.
 
 `Execution.schedule(cases, replicates)` lists the (case, replicate) pairs in send order.
 
@@ -843,8 +849,6 @@ No seed is sent with greedy sampling, but a trial's seeds still count toward its
 greedy trials differ only in digest. Likewise, the seeds of a greedy judge all send the same request.
 
 ### Runs don't record where calls went
-- CHANGE the heading "The inventory doesn't locate local engines yet, and runs don't record where calls went" →
-  "", and its first paragraph → "
 A local engine pins what it is but not where it is. Where it is lives in the inventory: an endpoint binds an
 engine by digest to a URL, with its capacity and credential, and names the host that runs it; a host says where it
 keeps the model files and chat templates its engines pin, keyed by model artifact digest and template hash
@@ -853,8 +857,10 @@ start-up script runs, and `confirm` checks that the endpoint's `/v1/models` list
 anything is sent.
 
 A remote engine's `base_url`, by contrast, is part of its digest, so moving the same API to a new host makes a new
-engine. Either way `Call` (`src/chatddx/ledger/call.py`) records no URL, so the ledger can't show which endpoint
-received case-derived content, which clearance may need.
+engine.
+
+A run's started row names the endpoint its calls went to, by name and URL, so the ledger shows which endpoint
+received case-derived content.
 
 ### Smaller issues
 - **Canary drift isn't checked.** Nothing compares canary outputs between phases or between runs.
@@ -865,9 +871,6 @@ received case-derived content, which clearance may need.
   `--enforce-eager google/gemma`, passes the argv check, and vLLM then refuses to start. Likewise lints read flags
   by their full names, so an abbreviated flag such as `--reasoning-pars qwen3` works in vLLM but escapes the lints
   that look for `--reasoning-parser`.
-- **The model name is chosen in several places.** `render` needs the engine's digest for a local engine and
-  `model` for a remote one. `src/chatddx/ledger/run.py` makes that choice, and so must every runner; it
-  belongs on the engine, as one method.
 - **Missing expectations aren't flagged.** Neither a scoring nor `check_score` warns when a run's case has no
   expectation, or when a scored item has no expectation behind it.
 - **Judge calls aren't attested.** Their returned model and prompt-token fingerprint aren't checked the way run
@@ -943,18 +946,3 @@ reference, straight from the schema. `RefTo` used to do this, and was stopped be
 Schema plays no part in a component's digest, so adding it back changes no digest.
 
 ## Proposed amendments
-- CHANGE in "Rendering", "`render` sets four of them; `stream` and `n` are not sent." → "`render` sets four of them,
-  and `n` is not sent. `stream` is the runner's: it streams every request and adds the chunks up to the completion it
-  records, while `Call.request` fingerprints the body as `render` made it." (`src/chatddx/runner/send.py:send`,
-  `src/chatddx/runner/wire.py:assemble`)
-- ADD to "Execution", after `retries`: "- `whitespace_limit` (100 by default, or none): a call answering this many
-  tokens of nothing but whitespace in a row is cut short and keeps what came, as a model that runs away would write
-  them till its tokens or its context run out. Like a timeout, it decides what answer gets recorded.
-  `Sampling.max_output_tokens` bounds every answer; the cutoff bounds only a runaway."
-  (`src/chatddx/factors/trial.py:Execution`, `src/chatddx/runner/send.py:send`)
-- REMOVE from "Smaller issues" the item "The model name is chosen in several places": both engines have
-  `served_model_name`, which `check_run`, `confirm` and the runner read (`src/chatddx/factors/engine.py`).
-- CHANGE in "Runs don't record where calls went", "Either way `Call` (`src/chatddx/ledger/call.py`) records no URL, so
-  the ledger can't show which endpoint received case-derived content, which clearance may need." → "A run's started
-  row names the endpoint its calls went to, by name and URL, so the ledger shows which endpoint received case-derived
-  content." (`src/chatddx/ledger/run.py:RunStarted.endpoint`)

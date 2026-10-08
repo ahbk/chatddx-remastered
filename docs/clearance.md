@@ -1,13 +1,19 @@
 # Clearance stub
 
 ## Vetted endpoints
+Until clearance has a database grant, a World inventory's `[cleared]` table says which sensitive sources each
+endpoint may receive case-derived content from. It is read from the inventory's own file, never an included one, so
+importing endpoints again clears nothing. Before a run writes anything, the runner refuses an endpoint serving
+another engine than the trial's, a sensitive source the endpoint isn't cleared for, tools on a sensitive source,
+and an endpoint whose `/v1/models` doesn't list its engine.
 
 ## Sensitive sources
 ### Vignettes
 A vignette source declares whether it is sensitive (`[source.<name>] sensitive`, true by default.
 `src/chatddx/inventory/sources.py:Source.sensitive`.
 
-Nothing enforces it yet: the runner's hard block needs the clearance pipeline (`agents/wip-clearance.md`)."
+The runner enforces it against the inventory's `[cleared]` table (see "Vetted endpoints") until the clearance
+pipeline replaces the table.
 
 ### Completions derived from vignettes
 - Case-derived records are run items and score items (`src/chatddx/ledger/record.py:Record.case_derived`):
@@ -25,13 +31,3 @@ engine. The clearance pipeline has to clear tools by their code (`Tool.code`, `e
 they reach; nothing declares those yet.
 
 ## Proposed amendments
-- ADD under "Vetted endpoints": "Until clearance has a database grant, a World inventory's `[cleared]` table says
-  which sensitive sources each endpoint may receive case-derived content from. It is read from the inventory's own
-  file, never an included one, so importing endpoints again clears nothing. Before a run writes anything, the runner
-  refuses an endpoint serving another engine than the trial's, a sensitive source the endpoint isn't cleared for,
-  tools on a sensitive source, and an endpoint whose `/v1/models` doesn't list its engine."
-  (`src/chatddx/inventory/inventory.py:Inventory.cleared`, `src/chatddx/runner/gate.py:check`,
-  `sample-world/inventory.toml`)
-- CHANGE in "Vignettes", "Nothing enforces it yet: the runner's hard block needs the clearance pipeline" → "The runner
-  enforces it against the inventory's `[cleared]` table (see "Vetted endpoints") until the clearance pipeline
-  replaces the table." (`src/chatddx/runner/gate.py:check`)

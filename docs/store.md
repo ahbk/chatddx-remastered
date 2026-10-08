@@ -52,9 +52,10 @@ Agents use the system cluster at `/var/run/postgresql` (setup in `AGENTS.md`); t
 and its socket `${REPO_ROOT}/dev-db/pgsock`.
 
 ## Tests
-`test/`: a migrated template database per session, a fresh copy per test, dropped afterwards. The admin creates and
-migrates databases; tests use the writer except where they need the admin (tier-0 writes, tier-2 triggers). They
-fail, rather than skip, when Postgres is unreachable.
+`test/`: `src/chatddx/conftest.py`: a migrated template database per session, shared by every package's tests, a
+fresh copy per test, dropped afterwards. The admin creates and migrates databases; tests use the writer except
+where they need the admin (tier-0 writes, tier-2 triggers). They fail, rather than skip, when Postgres is
+unreachable.
 
 ## Known gaps
 - The database doesn't check that a component has all its reference rows, only that the rows it has are right;
@@ -64,7 +65,9 @@ fail, rather than skip, when Postgres is unreachable.
 - `doc` is `jsonb`, which reorders object keys, so a schema's property order survives only in `canonical` and
   `payload`. Components are read from `canonical` (`store.py:Store.get`, `Store.load`); a future ORM or view must not
   rebuild them from `doc`.
-- No async API yet; the runner may want one (psycopg 3 has both).
+- No async API. The runner is synchronous, and wants a connection in autocommit mode so that each row lands as it's
+  written: on a connection that isn't, a statement outside a transaction block (`Catalog.note`, `People.find`)
+  opens a transaction only the caller commits, and `Store.append`'s transactions become savepoints inside it.
 - Per-kind read-only views, for a future ORM, aren't written.
 - A log can be written that can't be read back. `Store.append` checks only keys and foreign keys, and a finished
   row has no foreign key to its started row, so a finished row alone is accepted, and `Store.run` then fails with
@@ -80,10 +83,3 @@ fail, rather than skip, when Postgres is unreachable.
   `docs/factors.md`, "Splitting expectations", already considers a bump of `Scorer.schema_version`.
 
 ## Proposed amendments
-- CHANGE in "Tests", "`test/`: a migrated template database per session" → "`src/chatddx/conftest.py`: a migrated
-  template database per session, shared by every package's tests" (`src/chatddx/conftest.py`)
-- CHANGE in "Known gaps", "No async API yet; the runner may want one (psycopg 3 has both)." → "No async API. The
-  runner is synchronous, and wants a connection in autocommit mode so that each row lands as it's written: on a
-  connection that isn't, a statement outside a transaction block (`Catalog.note`, `People.find`) opens a transaction
-  only the caller commits, and `Store.append`'s transactions become savepoints inside it."
-  (`src/chatddx/runner/run.py:Runner`, `src/chatddx/store/store.py:Store.append`)

@@ -181,9 +181,6 @@ someone else. This is the catalog's owner, which authorization may later use to 
 (`docs/identity.md`). It is a different thing from the roles' sense of owning, as in "clinicians own the vignettes"
 (`docs/chatddx.md`, "Roles mentioned").
 
-A run's owner should be whoever started it. That is a rule for the runner, which doesn't exist yet: nothing writes
-it, and a run's started row records no person (`docs/ledger.md`, "RunStarted").
-
 Every row in the catalog records who wrote it and when (`by`, `at`), but `About` keeps only what holds now: the API
 doesn't show who changed what.
 
@@ -395,7 +392,3 @@ moment can create two families, since nothing makes current bindings unique.
   notice rather than a warning.
 
 ## Proposed amendments
-- CHANGE in "Owners", "A run's owner should be whoever started it. That is a rule for the runner, which doesn't exist
-  yet: nothing writes it, and a run's started row records no person" → "A run's owner is whoever started it: the
-  runner writes the entry right after the run's started row, which itself records no person."
-  (`src/chatddx/runner/run.py:Runner.start`)
