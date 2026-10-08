@@ -182,6 +182,10 @@ def _target(expected: list[JsonValue]) -> str | None | Scored:
             text = pattern
         case {"pattern": str() as pattern}:
             text = pattern
+        case {"text": str()}:
+            return Scored(
+                None, {"reason": "the target has words, for a judge, but no pattern"}
+            )
         case _:
             return Scored(None, {"reason": "the target has no pattern"})
     try:

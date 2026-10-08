@@ -1,0 +1,10 @@
+# The World of pelle and malborg: the sample's vignettes, and the endpoints and hosts of the engines in
+# factors.toml, which `chatddx import-engine http://pelle.km:12008/ http://malborg.km:12008/ --factors
+# world/factors.toml --endpoints world/endpoints.toml` writes. `chatddx init-data USER --world
+# world/inventory.toml --factors world/factors.toml` seeds the sample with those engines and checks that each
+# endpoint serves one it seeded.
+include = ["endpoints.toml"]
+
+[source.sample]
+path = "../sample-world/vignettes"
+sensitive = true

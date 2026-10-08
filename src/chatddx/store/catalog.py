@@ -164,6 +164,22 @@ class Rows:
             for thread, family, run, score, field, value, person, present in rows
         ]
 
+    def subjects_naming(
+        self, person: int, fields: Collection[EntryField]
+    ) -> list[Subject]:
+        rows = self._conn.execute(
+            """
+            SELECT DISTINCT thread, family, run, score FROM catalog.entry
+            WHERE person = %s AND field = ANY(%s)
+            ORDER BY thread, family, run, score
+            """,
+            (person, [str(f) for f in fields]),
+        ).fetchall()
+        return [
+            Subject(thread=thread, family=family, run=run, score=score)
+            for thread, family, run, score in rows
+        ]
+
     def bindings(self, family: int) -> list[Binding]:
         rows = self._conn.execute(
             f"""
@@ -418,6 +434,13 @@ class Catalog:
 
     def about(self, subject: Subject) -> About:
         return read.about(self._rows, subject)
+
+    # The subjects whose entries have ever named a person as owner or collaborator; what
+    # holds now is `about`'s.
+    def involving(self, person: int) -> list[Subject]:
+        return self._rows.subjects_naming(
+            person, (EntryField.OWNER, EntryField.COLLABORATOR)
+        )
 
     def label(
         self, scorer: str, part: Part, position: int, value: str, by: int

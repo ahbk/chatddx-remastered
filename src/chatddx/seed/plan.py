@@ -1,5 +1,6 @@
 import json
 import tomllib
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -25,11 +26,15 @@ from chatddx.factors.request import (
     compile_request,
 )
 from chatddx.factors.scoring import ExpectationSchema, Scorer
-from chatddx.facts.facts import INTENTS, Effort, Facts, Refused
+from chatddx.facts.facts import INTENTS, Effort, Facts, Refused, model_name
 from chatddx.scorers.scorer import function
 
 # The sample's tables, in the order they're planned: a table may reference only those before it.
+# Models and engines come first, so `from_facts` records are written for the models they serve.
 TABLES: dict[str, type[Component]] = {
+    "model": ModelArtifact,
+    "local_engine": LocalEngine,
+    "remote_engine": RemoteEngine,
     "instructions": Instructions,
     "few_shot": FewShot,
     "prompt": Prompt,
@@ -42,10 +47,8 @@ TABLES: dict[str, type[Component]] = {
     "toolset": Toolset,
     "expectation_schema": ExpectationSchema,
     "scorer": Scorer,
-    "model": ModelArtifact,
-    "local_engine": LocalEngine,
-    "remote_engine": RemoteEngine,
 }
+ENGINE_TABLES = ("model", "local_engine", "remote_engine")
 # References outside recipes, by table and field: each names records of another table.
 REFERENCES: dict[str, dict[str, str]] = {
     "toolset": {"tools": "tool"},
@@ -178,17 +181,35 @@ def _tags(value: JsonValue) -> tuple[str, ...]:
     return tuple(str(t) for t in value)
 
 
-def plan_factors(
-    path: Path, facts: Facts, compiler: Code, root: Path | None = None
-) -> Plan:
+def _load(path: Path, root: Path) -> dict[str, dict[str, JsonValue]]:
     with path.open("rb") as f:
         data = tomllib.load(f)
     if stray := set(data) - set(TABLES) - {"recipe"}:
         raise ValueError(f"{path}: unknown tables {sorted(stray)}")
-    root = root or path.parent
+    return {
+        table: {name: _with_files(raw, root) for name, raw in records.items()}
+        for table, records in data.items()
+    }
+
+
+# `more` are factors files planned with the first, such as a World's imported engines;
+# each resolves its files against its own directory.
+def plan_factors(
+    path: Path,
+    facts: Facts,
+    compiler: Code,
+    root: Path | None = None,
+    more: Sequence[Path] = (),
+) -> Plan:
+    data = _load(path, root or path.parent)
+    for extra in more:
+        for table, records in _load(extra, extra.parent).items():
+            known = data.setdefault(table, {})
+            if twice := sorted(set(known) & set(records)):
+                raise ValueError(f"{extra}: {table} {twice} are named before it too")
+            known.update(records)
     plan = Plan(Registry(), facts)
     planned: dict[tuple[str, str], Variants] = {}
-    models = sorted(facts.models)
 
     def add(table: str, name: str, variants: Variants) -> None:
         planned[(table, name)] = variants
@@ -204,10 +225,11 @@ def plan_factors(
         found = variants.get(model) or variants.get(None)
         return None if found is None else found.name
 
-    for table, kind in TABLES.items():
+    def plan_table(table: str, models: list[str]) -> None:
+        kind = TABLES[table]
         for name, raw in data.get(table, {}).items():
-            body = _with_files(raw, root)
-            assert isinstance(body, dict)
+            assert isinstance(raw, dict)
+            body = dict(raw)
             tags = _tags(body.pop("tags", []))
             # A tool's description is a field, what the model reads; it's the entry too.
             if "description" in kind.model_fields:
@@ -254,14 +276,39 @@ def plan_factors(
                 )
             add(table, name, variants)
 
+    for table in ENGINE_TABLES:
+        plan_table(table, [])
+    # A `from_facts` record is written for each model a planned engine serves and the facts
+    # know; the others are reported.
+    served: dict[str, list[str]] = {}
+    for r in plan.records:
+        if r.kind in ("engine.local", "engine.remote"):
+            model = model_name(plan.registry.get(r.digest), plan.registry)
+            if model is not None:
+                served.setdefault(model, []).append(f"{r.kind} {r.name}")
+    models = sorted(set(served) & set(facts.models))
+    for model in sorted(set(served) - set(facts.models)):
+        plan.skipped.append(
+            f"from_facts records for {model}: the facts don't know it, served by "
+            + ", ".join(served[model])
+        )
+    for model in sorted(set(facts.models) - set(served)):
+        plan.skipped.append(
+            f"from_facts records for {model}: no planned engine serves it"
+        )
+    for table in TABLES:
+        if table not in ENGINE_TABLES:
+            plan_table(table, models)
+
     for name, raw in data.get("recipe", {}).items():
+        assert isinstance(raw, dict)
         body = dict(raw)
         tags = _tags(body.pop("tags", []))
         description = body.pop("description", None)
         fork_of = body.pop("fork_of", None)
-        parts = {p: planned[(p, body.pop(p))] for p in RECIPE_PARTS if p in body}
+        parts = {p: planned[(p, str(body.pop(p)))] for p in RECIPE_PARTS if p in body}
         per_model = any(None not in v for v in parts.values())
-        variants = {}
+        variants: Variants = {}
         for model in models if per_model else [None]:
             refs = {p: v.get(model) or v.get(None) for p, v in parts.items()}
             if missing := sorted(p for p, r in refs.items() if r is None):

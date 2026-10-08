@@ -4,7 +4,7 @@ vLLM is used for running local models within our control. `chatddx.fake_vllm` is
 stand in for vLLM on the same command line (`src/chatddx/fake_vllm/served.py:Served.of`), and its tests pin the
 items below (`src/chatddx/fake_vllm/test/`).
 
-## vLLM 0.24 assumptions (for the fake vLLM)
+## vLLM 0.24 discoveries
 1. ChatCompletionResponse.prompt_token_ids is a top-level list[int] | None, set only when request.return_token_ids is true:
   - https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/chat_completion/protocol.py#L129
   - https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/chat_completion/serving.py#L1070-L1072
@@ -137,8 +137,6 @@ items below (`src/chatddx/fake_vllm/test/`).
 
 20. `include_reasoning: false` leaves the reasoning out of the response, when a parser separates it
   (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/chat_completion/serving.py#L882-L883).
-
-Fake vLLM based on 0.24.0 should pin all of them
 
 ## The fake vLLM
 A request goes `server.py` → `chat.py:accept`, which refuses it or picks the served model → `chat.py:respond`, which
@@ -384,3 +382,34 @@ sample models, served as the old inventory served them, and checks each answer a
    ```
 
 ## Proposed amendments
+- ADD, as item 21 under "vLLM 0.24 assumptions": "A gpt-oss chat completion starts with Harmony's system message,
+  which holds the current date unless `VLLM_SYSTEM_START_DATE` is set, so the same request is a different prompt each
+  day (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/parser/harmony_utils.py#L132-L138,
+  called with no date by `build_harmony_preamble`, https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/parser/harmony_utils.py#L332-L339,
+  for every chat request, https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/serve/render/serving.py#L557-L563)."
+  `src/chatddx/inventory/report.py:_template` reports a gpt-oss engine whose env doesn't set it (`engine.harmony_date`).
+- ADD, as item 22 under "vLLM 0.24 assumptions": "A model whose `model_type` is `gpt_oss` is rendered with Harmony and
+  never with its chat template, `--chat-template` included
+  (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/serve/render/serving.py#L234,
+  https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/serve/render/serving.py#L377-L400). So a
+  gpt-oss engine's `chat_template` pins nothing, and what shapes its prompt is the `openai-harmony` package in the
+  runtime closure."
+  `src/chatddx/inventory/report.py:_template` reports it (`engine.chat_template_unused`), from o11n's report.
+- ADD, as item 23 under "vLLM 0.24 assumptions": "With `HF_HUB_OFFLINE`, a model given as a Hugging Face ID is
+  resolved to its snapshot with `snapshot_download(repo_id, revision, local_files_only=True)` and no file patterns
+  (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/engine/arg_utils.py#L759-L766,
+  https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/transformers_utils/repo_utils.py#L225-L242); a model given as a directory is read as it is.
+  huggingface_hub keeps the commit's file listing from the download (`<repo>/trees/<commit>.json`), and offline it
+  refuses a snapshot that lacks any listed file the call's patterns select, with `IncompleteSnapshotError`
+  (huggingface_hub `_snapshot_download.py:_raise_if_incomplete_snapshot`). So a snapshot downloaded with
+  `--exclude` doesn't start from its ID." o11n passes the snapshot's directory (Kompismoln/o11n 84612b2), and
+  `src/chatddx/inventory/report.py:imported` takes it as the host's location for the model.
+- CHANGE, under "The fake vLLM", "Schema instances", "the first non-null branch of `anyOf`/`oneOf`/`allOf`" → "the
+  first non-null branch of `anyOf`/`oneOf`/`allOf`, read together with the keywords beside it, as JSON Schema
+  applies them", since a branch may only add `required` beside `type` and `properties`, as the sample's
+  `targets.json` does for a target's `text` or `pattern` (`src/chatddx/fake_vllm/chat.py:instance`,
+  `src/chatddx/fake_vllm/test/test_fake_vllm.py:test_what_it_writes_holds_to_the_sample_s_schemas`).
+- CHANGE, under "The fake vLLM", "Schema instances", "Then `const`, the first `enum`," → "Then `const`, the first
+  `enum`, the first of `examples`,", since a string's `pattern` isn't followed and `fake <key>` may not match it, as
+  for a note's `language` in the sample's `targets.json` (`src/chatddx/fake_vllm/chat.py:instance`,
+  `src/chatddx/fake_vllm/test/test_fake_vllm.py:test_what_it_writes_holds_to_the_sample_s_schemas`).

@@ -1,5 +1,6 @@
 import argparse
 import getpass
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -11,10 +12,18 @@ from chatddx.facts.facts import Facts
 from chatddx.fake_vllm.server import run
 from chatddx.identity import Role
 from chatddx.inventory.inventory import Inventory
+from chatddx.inventory.report import (
+    Imported,
+    endpoints_toml,
+    factors_toml,
+    imported,
+    read,
+)
 from chatddx.inventory.sources import DirectorySource
-from chatddx.seed import load_cases, plan_factors, seed
+from chatddx.seed import load_cases, plan_factors, seed, wipe
 from chatddx.seed.plan import SAMPLE
 from chatddx.seed.world import endpoints
+from chatddx.seed.write import ARCHIVE
 from chatddx.store.migrate import TOP_TIER, migrate, pending
 from chatddx.store.people import People
 
@@ -55,7 +64,7 @@ def _person_password(args: argparse.Namespace) -> None:
 def _init_data(args: argparse.Namespace) -> None:
     sample: Path = args.data
     facts = Facts.load(*(args.facts or [sample / "facts.toml"]))
-    plan = plan_factors(sample / "factors.toml", facts, rig())
+    plan = plan_factors(sample / "factors.toml", facts, rig(), more=args.factors or ())
     cases = load_cases(sample / "cases.toml")
     world = None if args.world is None else Inventory.load(args.world)
     if world is not None:
@@ -72,17 +81,72 @@ def _init_data(args: argparse.Namespace) -> None:
             f"none of the sample's {len(cases)} cases is in source {args.source!r}; "
             + "the sample World has them: --world sample-world/inventory.toml"
         )
+    lines: list[str] = []
     with psycopg.connect(settings.database()) as conn:
-        user = People(conn).find(args.user)
+        people = People(conn)
+        user = people.find(args.user)
         if user is None:
-            raise SystemExit(
-                f"no person with login {args.user!r}: add them with `chatddx person add`"
-            )
-        lines = seed(conn, plan, cases, source, user, giftbag=args.giftbag)
+            user = people.add(args.user, args.user)
+            lines.append(f"[person] {args.user}: added")
+        lines += seed(conn, plan, cases, source, user, giftbag=args.giftbag)
     if world is not None:
         lines += endpoints(world, plan)
     for line in lines:
         print(line)
+
+
+def _wipe_data(args: argparse.Namespace) -> None:
+    if args.user == ARCHIVE:
+        raise SystemExit(
+            f"wipe-data: {ARCHIVE!r} holds the sample data; it isn't wiped"
+        )
+    with psycopg.connect(settings.database()) as conn:
+        user = People(conn).find(args.user)
+        if user is None:
+            raise SystemExit(f"wipe-data: no person with login {args.user!r}")
+        lines = wipe(conn, user)
+    for line in lines:
+        print(line)
+
+
+def _import_engine(args: argparse.Namespace) -> None:
+    if args.endpoint_host and len(args.reports) > 1:
+        raise SystemExit("import-engine: --endpoint-host takes one report")
+    try:
+        imports: list[Imported] = []
+        for source in args.reports:
+            report, url_host = read(source)
+            imports += [
+                imported(report, server, args.endpoint_host or url_host)
+                for server in report["servers"]
+                if not args.server or server in args.server
+            ]
+        if missing := sorted(set(args.server or ()) - {i.server for i in imports}):
+            raise LookupError(f"no report has a server {', '.join(missing)}")
+        factors, endpoints = factors_toml(imports), endpoints_toml(imports)
+    except (OSError, LookupError, ValueError) as e:
+        raise SystemExit(f"import-engine: {e}") from None
+    for i in imports:
+        for f in i.findings:
+            print(
+                f"[import {f.level}] {i.name}: {f.code}: {f.message}", file=sys.stderr
+            )
+    written = f"# Written by `{' '.join(['chatddx import-engine', *args.reports])}`.\n"
+    _ = args.factors.write_text(
+        written
+        + "# The models and engines its hosts serve; import again rather than edit.\n"
+        + f"# Where they're served: {args.endpoints.name}.\n\n"
+        + factors
+    )
+    _ = args.endpoints.write_text(
+        written
+        + f"# Where the engines in {args.factors.name} are served, and where their hosts\n"
+        + "# keep what they pin; import again rather than edit. A World inventory\n"
+        + "# includes it.\n\n"
+        + endpoints
+    )
+    for i in imports:
+        print(f"[import] {i.name}: engine {i.engine.digest} at {i.endpoint.url}")
 
 
 def _fake_vllm(args: argparse.Namespace) -> None:
@@ -123,7 +187,9 @@ def main(argv: Sequence[str] | None = None) -> None:
         "init-data",
         help="seed the sample data for the archive and share it with a person",
     )
-    _ = init.add_argument("user", help="the login to share the archive with")
+    _ = init.add_argument(
+        "user", help="the login to share the archive with, added when missing"
+    )
     vignettes = init.add_mutually_exclusive_group(required=True)
     _ = vignettes.add_argument(
         "--world",
@@ -151,12 +217,64 @@ def main(argv: Sequence[str] | None = None) -> None:
         + "(the sample data in the package)",
     )
     _ = init.add_argument(
+        "--factors",
+        type=Path,
+        action="append",
+        help="more factors to seed with the data's, such as a World's imported engines "
+        + "(world/factors.toml)",
+    )
+    _ = init.add_argument(
         "--facts",
         type=Path,
         action="append",
         help="model facts to write per-model chunks from (the sample's facts.toml)",
     )
     init.set_defaults(run=_init_data)
+
+    wipe_parser = commands.add_parser(
+        "wipe-data",
+        help="delete what a person owns and unshare what they collaborate on; "
+        + "init-data shares and gives it back",
+    )
+    _ = wipe_parser.add_argument("user", help="the person's login")
+    wipe_parser.set_defaults(run=_wipe_data)
+
+    imp = commands.add_parser(
+        "import-engine",
+        help="write the models, engines, endpoints and hosts of the vLLM servers "
+        + "o11n.vllm reports describe",
+    )
+    _ = imp.add_argument(
+        "reports",
+        nargs="+",
+        help="each host's report: its URL, such as http://pelle.km:12008/, a file, or "
+        + "- for stdin",
+    )
+    _ = imp.add_argument(
+        "--server",
+        action="append",
+        help="a server to import, by name (default: every server of every report)",
+    )
+    _ = imp.add_argument(
+        "--endpoint-host",
+        help="the host in the endpoints' URLs, for one report (default: the report "
+        + "URL's, or else the host's name)",
+    )
+    _ = imp.add_argument(
+        "--factors",
+        type=Path,
+        required=True,
+        help="the factors file to write the models and engines to, such as "
+        + "world/factors.toml, for init-data's --factors",
+    )
+    _ = imp.add_argument(
+        "--endpoints",
+        type=Path,
+        required=True,
+        help="the inventory file to write the endpoints and hosts to, such as "
+        + "world/endpoints.toml, for a World inventory's include",
+    )
+    imp.set_defaults(run=_import_engine)
 
     fake = commands.add_parser(
         "fake-vllm",

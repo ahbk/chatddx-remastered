@@ -551,7 +551,7 @@ A local engine (kind `engine.local`) is a vLLM server we run. It declares:
 - the model artifact it serves;
 - the SHA-256 of its chat-template file, which pins the template's content; where the file lives is the
   inventory's business, so moving it doesn't change the engine;
-- the raw `argv` and `env` passed to vLLM.
+- the raw `argv` passed to vLLM, and its `env` minus what the host sets to find the model, the GPU and CUDA.
 
 The start-up script owns `--model`, `--served-model-name`, `--chat-template`, `--tokenizer` and `--revision`
 (`engine.py:OWNED_FLAGS`), so `argv` may not set them, whether spelled with dashes or underscores, since vLLM reads

@@ -34,6 +34,7 @@ FAKES = [
     ),
 ]
 SAMPLE_WORLD = Path(__file__).parents[4] / "sample-world" / "inventory.toml"
+WORLD = Path(__file__).parents[4] / "world" / "inventory.toml"
 
 
 def sample_plan(factors: Path = SAMPLE / "factors.toml") -> Plan:
@@ -114,6 +115,7 @@ def test_init_data_seeds_the_archive(conn: Connection) -> None:
         ("view", 0): "differential",
         ("view", 1): "warning",
         ("view", 2): "disposition",
+        ("view", 3): "dont-miss",
     }
     [tool] = catalog.find("tool", "web_search", owner=archive.id)
     assert catalog.about(Subject(thread=tool)).description == (
@@ -135,15 +137,61 @@ def test_init_data_lints_what_it_lands(
     lines = seed(conn, plan, {**CASES, "Dutchfall11w": unlike}, vignettes(), alice)
     components = len({r.digest for r in plan.records}) + 2 * len(CASES)
     assert [line for line in lines if line.startswith("[lint")] == [
+        *FAKES,
         *(
             f"[lint warning] scorer {name}: scorer.revision: scorer code has no revision"
             for name in ("plan", "diagnoses", "free-text", "raw")
         ),
-        *FAKES,
         "[lint warning] expectation Dutchfall11w: expectation.invalid: at the root: "
         + "'diagnosis' is a required property",
         f"[lint] {5 + len(FAKES)} findings in {components} components",
     ]
+
+
+def test_from_facts_records_follow_the_models_the_engines_serve(
+    tmp_path: Path,
+) -> None:
+    factors = tmp_path / "factors.toml"
+    _ = factors.write_text(
+        """
+[remote_engine."qwen@api"]
+base_url = "https://api.example/v1/"
+model = "Qwen/Qwen3-8B-AWQ"
+
+[remote_engine."gemma@api"]
+base_url = "https://api.example/v1/"
+model = "google/gemma-3-27b-it"
+
+[prompt.case]
+segments = [{ slot = "vignette" }]
+
+[output.raw]
+contract = { kind = "text" }
+
+[sampling.recommended]
+from_facts = { effort = "default" }
+
+[recipe.raw]
+prompt = "case"
+output = "raw"
+sampling = "recommended"
+"""
+    )
+    plan = plan_factors(factors, Facts.load(SAMPLE / "facts.toml"), rig())
+    assert [(r.table, r.name) for r in plan.records] == [
+        ("remote_engine", "qwen@api"),
+        ("remote_engine", "gemma@api"),
+        ("prompt", "case"),
+        ("output", "raw"),
+        ("sampling", "recommended (Qwen/Qwen3-8B-AWQ)"),
+        ("recipe", "raw (Qwen/Qwen3-8B-AWQ)"),
+    ]
+    assert plan.skipped == [
+        "from_facts records for google/gemma-3-27b-it: the facts don't know it, served "
+        + "by engine.remote gemma@api",
+        "from_facts records for openai/gpt-oss-20b: no planned engine serves it",
+    ]
+    assert not [s for s in sample_plan().skipped if s.startswith("from_facts records")]
 
 
 def test_init_data_updates_and_gives_forks(conn: Connection, tmp_path: Path) -> None:
@@ -228,13 +276,11 @@ def test_init_data_command(
         _ = (cases / f"{id}.txt").write_text(f"The vignette of {id}.")
     world = tmp_path / "world.toml"
     _ = world.write_text('[source.sample]\npath = "cases"\n')
-    with pytest.raises(SystemExit, match="no person with login 'alice'"):
-        main(["init-data", "alice", "--world", str(world)])
-    main(["person", "add", "alice", "Alice"])
-    _ = capsys.readouterr()
     main(["init-data", "alice", "--world", str(world), "--giftbag"])
     out = capsys.readouterr().out.splitlines()
-    assert out[0].startswith("[archive chunk.prompt] case: created")
+    assert out[0] == "[person] alice: added"
+    assert out[1].startswith("[archive model] qwen3-8b-awq@fake: created")
+    assert any(line.startswith("[archive chunk.prompt] case: created") for line in out)
     assert any(line.startswith("[giftbag skeleton] plan (") for line in out)
     with connect(db) as conn:
         assert conn.execute("SELECT count(*) FROM catalog.family").fetchone() == (
@@ -243,6 +289,10 @@ def test_init_data_command(
 
     main(["init-data", "alice", "--vignettes", str(cases)])
     out = capsys.readouterr().out.splitlines()
+    assert not [line for line in out if line.startswith("[person]")]
+    with connect(db) as conn:
+        alice = People(conn).find("alice")
+    assert alice is not None and (alice.name, alice.roles) == ("alice", frozenset())
     assert {
         line.split(": ")[1].split(" ")[0] for line in out if line.startswith("[archive")
     } == {"validated"}
@@ -265,6 +315,83 @@ def test_init_data_command(
         + e.engine.removeprefix("sha256:")[:6]
         for name, e in sample.endpoints.items()
     ]
+
+    world = ["--world", str(WORLD), "--factors", str(WORLD.parent / "factors.toml")]
+    main(["init-data", "alice", *world])
+    real = Inventory.load(WORLD)
+    out = capsys.readouterr().out.splitlines()
+    for name in real.endpoints:
+        assert any(
+            line.startswith(f"[archive engine.local] {name}: created") for line in out
+        )
+    assert [line for line in out if line.startswith("[world endpoint]")] == [
+        f"[world endpoint] {name}: {e.url} serves engine.local {name} "
+        + e.engine.removeprefix("sha256:")[:6]
+        for name, e in real.endpoints.items()
+    ]
+
+
+def test_wipe_data_deletes_and_unshares_and_init_data_gives_it_back(
+    db: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("DB_NAME", db)
+    cases = tmp_path / "cases"
+    cases.mkdir()
+    for id in CASES:
+        _ = (cases / f"{id}.txt").write_text(f"The vignette of {id}.")
+
+    def run(*argv: str) -> list[str]:
+        main(list(argv))
+        return capsys.readouterr().out.splitlines()
+
+    def rows() -> tuple[int, int]:
+        with connect(db) as conn:
+            threads = conn.execute("SELECT count(*) FROM catalog.thread").fetchone()
+            entries = conn.execute("SELECT count(*) FROM catalog.entry").fetchone()
+        assert threads is not None and entries is not None
+        return threads[0], entries[0]
+
+    init = ["init-data", "alice", "--vignettes", str(cases), "--giftbag"]
+    seeded = run(*init)
+    gifts = sum(line.startswith("[giftbag ") for line in seeded)
+    shares = int(next(line for line in seeded if line.startswith("[share]")).split()[1])
+    threads, entries = rows()
+    _ = run(*init)
+    assert rows() == (threads, entries)
+
+    wiped = run("wipe-data", "alice")
+    assert sum(int(line.split("deleted ")[1].split(",")[0]) for line in wiped) == gifts
+    assert sum(int(line.split("unshared ")[1]) for line in wiped) == shares
+    assert rows() == (threads, entries + gifts + shares)
+    with connect(db) as conn:
+        catalog = Catalog(conn)
+        alice = People(conn).find("alice")
+        assert alice is not None
+        mine = catalog.involving(alice.id)
+        assert all(
+            catalog.about(s).deleted for s in mine if catalog.about(s).owner == alice.id
+        )
+        assert not [s for s in mine if alice.id in catalog.about(s).collaborators]
+    assert run("wipe-data", "alice") == ["[wipe] alice: nothing to delete or unshare"]
+    assert rows() == (threads, entries + gifts + shares)
+
+    # Each later run writes an entry per gift and per share, and no thread.
+    cost = gifts + shares
+    for cycle in (1, 2):
+        again = run(*init)
+        assert sum(line.endswith(": restored") for line in again) == gifts
+        assert not [line for line in again if ": created" in line or "forked" in line]
+        assert rows() == (threads, entries + 2 * cycle * cost)
+        _ = run("wipe-data", "alice")
+        assert rows() == (threads, entries + (2 * cycle + 1) * cost)
+
+    with pytest.raises(SystemExit, match="'archive' holds the sample data"):
+        main(["wipe-data", "archive"])
+    with pytest.raises(SystemExit, match="no person with login 'nobody'"):
+        main(["wipe-data", "nobody"])
 
 
 def test_the_sample_world_holds_the_vignettes_at_7893656() -> None:

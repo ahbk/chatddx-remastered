@@ -2,6 +2,11 @@
 # markers dropped: the targets are treated as live data. Keys are the vignettes' file names at the
 # source, `targets` is each case's expectation (schemas/targets.json), and `tags` and `language` are
 # entries on its family.
+#
+# `targets.notes` are Olof's comments, added to the ends of three vignettes after 7893656 (chatddx
+# 13d317d: Dutchfall11w and casesfromedn1; 504792c: Dutchfall1w). They're taken out as written, in
+# Swedish, with the "Chatddx:" block as the note's `answer`; only the headings, line endings and
+# trailing spaces are dropped. The vignettes stay as they were at 7893656.
 
 [case.DutchFall10w]
 tags = ["dutch-fall"]
@@ -16,6 +21,18 @@ language = "en"
 targets.diagnosis.pattern = "aaa | (abdominal | aortic) & aneurysm | dissection"
 targets.warning.pattern = "rupture* | dissection | shock | aneurysm*"
 targets.disposition.pattern = "surg* | operat* | vascular | icu | intensive & care"
+
+[[case.Dutchfall11w.targets.notes]]
+author = "Olof"
+language = "sv"
+comment = '''
+identifiera tecken på prechock eller chock, därmed oidentiferad chockbild där mycket talar för sepsis, men enligt guideline gå vidare med RUSH / EFAST (vid trauma) / eller riktat POCUS för att utesluta andra orsaker till chockbilden.
+Beroende på ultraljudsbild, avgör behov av högre vårdnivå eller ytterligare utredningar.
+Rundodling och inled bred empirisk antibiotikabehandling (i svensk regim, Tazocin eller Meronem).
+På huddingeakuten - sambedömningslarm med IVA, medicinjour /kirurgjour. Vidare till DT eller till OP.'''
+answer = '''
+vid tecken på prechock eller chock gå vidare med ultraljud t.ex. RUSH för att utesluta andra orsaker till chock.
+Rundodla, och påbörja empirisk bredspektrumantibiotika.'''
 
 [case.Dutchfall12w]
 tags = ["dutch-fall"]
@@ -79,6 +96,18 @@ language = "en"
 targets.diagnosis.pattern = "pneumonia"
 targets.warning.pattern = "pulmonary & embolism | pe | hypoxi* | sepsis"
 targets.disposition.pattern = "admit* | admission | hospital*"
+
+[[case.Dutchfall1w.targets.notes]]
+author = "Olof"
+language = "sv"
+comment = '''
+Noterbart är andningsbesvären, på akuten fått extra syrgas, multisjuk med spridd cancersjukdom, inte bättre efter doxycyklin avseende andningsbesvären - tecken på allvarligare infektion eller annan orsak.
+Andra orsaker:
+Ultraljud: hjärtsvikt? vätska på lungorna? vätska kring hjärtat? indirekta tecken på propp i lungorna?
+Breda odlingar för bakterier.
+Beställa skiktröntgen med kontrast för att utesluta propp i lungorna (lungemboli).
+Disposition: ultraljud - om inga fynd -> odlingar, DT, inläggning.
+den kliniska presentationen når för närvarande ej tröskel för behandling avseende blodpropp eller bredspektrum antibiotika. Om försämrad ge blodförtunnande + bredspektrum antibiotika före röntgen'''
 
 [case.Dutchfall20w]
 tags = ["dutch-fall"]
@@ -219,6 +248,19 @@ language = "sv"
 targets.diagnosis.pattern = "copd | (exacerbation | obstructive) & pulmonary"
 targets.warning.pattern = "respiratory & failure | hypercapni* | airway | intubat* | andningssvikt | intuber*"
 targets.disposition.pattern = "icu | intensive & care | iva | intensivvård*"
+
+[[case.casesfromedn1.targets.notes]]
+author = "Olof"
+language = "sv"
+comment = '''
+Medvetande sänkt patient med hypoventilation och låg syrenivå efter behandling med högt syrgasflöde då patienten mådde bra, har KOL. Misstänkt koldioxidnarkos med upphävd andning.
+Åtg: ta bort syrgas, försök smärtstimulera pat till att andas själv, om ingen effekt mask-blåsa-ventilation, försök även starta NIV.
+Om ingen luft går i - näskantarell / svalgtub.
+Om helt stel i käkarna, ineffektiv andning, försök relaxera patienten - benzodiazepiner -> mask-blåsa-ventilation och ventilera ut höga koldioxiden. Tillkalla narkosen - Överväg intubation.'''
+answer = '''
+Misstänkt koldioxidnarkos.
+Vädra ur patienten, snabba luftvägsmanövrar: haklyft, näskantarell, svalgtub, mask &blåsa, överväg muskelrelaxation om du inte kan ventilera. narkoslarma. sista utväg: akut coniotomi.
+varning för de-skill konsultation.'''
 
 [case.casesfromedn10]
 tags = ["edn"]
