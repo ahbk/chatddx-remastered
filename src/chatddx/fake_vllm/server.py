@@ -1,8 +1,10 @@
 import json
 import select
 import socket
+import threading
 import time
-from collections.abc import Sequence
+from collections.abc import Generator, Sequence
+from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, cast
 
@@ -136,6 +138,28 @@ def server(
         served[0].port if port is None else port,
     )
     return ThreadingHTTPServer(address, handler)
+
+
+# The fake in a thread of this process, for as long as the block lasts, at the address
+# it yields.
+@contextmanager
+def serving(
+    served: Sequence[Served],
+    host: str | None = None,
+    port: int | None = None,
+    delay: float = 0.0,
+    runaway: bool = False,
+) -> Generator[tuple[str, int]]:
+    fake = server(served, host, port, delay, runaway)
+    thread = threading.Thread(
+        target=fake.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
+    )
+    thread.start()
+    try:
+        yield str(fake.server_address[0]), int(fake.server_address[1])
+    finally:
+        fake.shutdown()
+        fake.server_close()
 
 
 def run(model: str, argv: Sequence[str], delay: float, runaway: bool) -> None:

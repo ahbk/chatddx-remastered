@@ -24,6 +24,7 @@ from chatddx.factors.trial import Execution, Trial
 from chatddx.ledger import (
     Call,
     CanaryCall,
+    Endpoint,
     ItemKey,
     JudgeCall,
     Run,
@@ -277,6 +278,27 @@ def test_seal_survives_a_storage_roundtrip() -> None:
     )
     assert stored.seal() == run.seal()
     assert "attempts" not in json.loads(items[0].canonical)["call"]
+
+
+def test_where_a_run_went_and_its_cutoff_are_added_without_moving_old_seals() -> None:
+    trial = "sha256:" + "0" * 64
+    started = RunStarted(run=uuid4(), at=NOW, rig=RIG, trial=trial)
+    doc = json.loads(started.canonical)
+    assert "endpoint" not in doc and "execution" not in doc
+    assert Execution().whitespace_limit == 100
+    reached = RunStarted(
+        run=started.run,
+        at=NOW,
+        rig=RIG,
+        trial=trial,
+        endpoint=Endpoint(name="qwen@pelle", url="http://pelle.km:12009/v1/"),
+        execution=Execution(whitespace_limit=None),
+    )
+    parsed = RunStarted.parse(reached.canonical)
+    assert parsed.endpoint == Endpoint(
+        name="qwen@pelle", url="http://pelle.km:12009/v1/"
+    )
+    assert parsed.execution.whitespace_limit is None
 
 
 def test_records_carry_their_schema_version() -> None:

@@ -75,6 +75,9 @@ class Execution(Frozen):
     concurrency: int = Field(default=1, ge=1)
     timeout_s: float | None = Field(default=None, gt=0)
     retries: int = Field(default=0, ge=0)
+    # A call answering this many tokens of nothing but whitespace in a row is cut short:
+    # a model that runs away would write them till its tokens or its context run out.
+    whitespace_limit: int | None = Field(default=100, ge=1)
 
     @model_validator(mode="after")
     def _shuffle_seed(self) -> "Execution":

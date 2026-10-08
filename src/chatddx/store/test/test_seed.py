@@ -7,6 +7,7 @@ import pytest
 
 from chatddx.catalog import Subject
 from chatddx.cli import main
+from chatddx.conftest import connect
 from chatddx.core.rig import rig
 from chatddx.factors.base import Fingerprint
 from chatddx.facts.facts import Facts
@@ -16,7 +17,6 @@ from chatddx.seed import Plan, load_cases, plan_factors, seed
 from chatddx.seed.plan import SAMPLE
 from chatddx.store import Catalog, People
 from chatddx.store.store import Connection
-from chatddx.store.test.conftest import connect
 
 CASES = load_cases(SAMPLE / "cases.toml")
 REVISION = "f" * 40

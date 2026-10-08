@@ -106,15 +106,12 @@ def served(url: str, timeout: float = 10.0) -> list[str]:
 def confirm(
     inventory: Inventory, get: Resolver, name: str, timeout: float = 10.0
 ) -> None:
-    engine = get(inventory.endpoint(name).engine)
-    match engine:
-        case LocalEngine():
+    match get(inventory.endpoint(name).engine):
+        case LocalEngine() | RemoteEngine() as engine:
             expected = engine.served_model_name
-        case RemoteEngine(model=model):
-            expected = model
-        case _:
+        case other:
             raise LookupError(
-                f"endpoint {name!r} names a {engine.kind_name}, not an engine"
+                f"endpoint {name!r} names a {other.kind_name}, not an engine"
             )
     url = url_of(inventory, get, name)
     listed = served(url, timeout)

@@ -1,11 +1,10 @@
 import json
 import socket
-import threading
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Generator, Iterator
-from contextlib import contextmanager
+from collections.abc import Iterator
+from contextlib import AbstractContextManager
 from typing import Any
 
 import pytest
@@ -13,7 +12,7 @@ import pytest
 from chatddx.cli import main
 from chatddx.fake_vllm.chat import ANSWER
 from chatddx.fake_vllm.served import VERSION, Served
-from chatddx.fake_vllm.server import server
+from chatddx.fake_vllm.server import serving as fake_serving
 
 QWEN = "Qwen/Qwen3-8B-AWQ"
 SERVED = Served.of(
@@ -38,19 +37,10 @@ def body(**fields: Any) -> dict[str, Any]:
     } | fields
 
 
-@contextmanager
-def serving(delay: float = 0.0, runaway: bool = False) -> Generator[tuple[str, int]]:
-    fake = server([SERVED], "127.0.0.1", 0, delay, runaway)
-    host, port = fake.server_address[:2]
-    thread = threading.Thread(
-        target=fake.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
-    )
-    thread.start()
-    try:
-        yield str(host), port
-    finally:
-        fake.shutdown()
-        fake.server_close()
+def serving(
+    delay: float = 0.0, runaway: bool = False
+) -> AbstractContextManager[tuple[str, int]]:
+    return fake_serving([SERVED], "127.0.0.1", 0, delay, runaway)
 
 
 @pytest.fixture

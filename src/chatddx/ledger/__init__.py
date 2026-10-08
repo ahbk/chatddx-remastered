@@ -2,6 +2,7 @@ from .call import Call, ToolRun, Turn, fingerprint_prompt_tokens, fingerprint_re
 from .record import ItemKey, Record
 from .run import (
     CanaryCall,
+    Endpoint,
     Run,
     RunFinished,
     RunItem,
@@ -22,6 +23,7 @@ from .score import (
 __all__ = [
     "Call",
     "CanaryCall",
+    "Endpoint",
     "ItemKey",
     "JudgeCall",
     "Record",
