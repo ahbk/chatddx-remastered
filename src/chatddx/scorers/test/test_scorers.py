@@ -1,12 +1,17 @@
-from typing import Any
+import json
+from typing import Any, cast
 
 import pytest
+from jsonschema import validators
 from pydantic import JsonValue
 
 from chatddx.core.rig import entry, rig
-from chatddx.factors.base import Code
+from chatddx.factors.base import Code, resolve
+from chatddx.factors.bundle import Registry
 from chatddx.factors.request import Skeleton
-from chatddx.factors.scoring import Scorer, View
+from chatddx.factors.scoring import Judge, Scorer, View
+from chatddx.factors.select import reaches
+from chatddx.factors.test.sample import world
 from chatddx.facts.facts import Facts
 from chatddx.fake_vllm.chat import ANSWER as ANSWER_TEXT, instance
 from chatddx.scorers.aggregate import AGGREGATES
@@ -262,6 +267,123 @@ def test_a_judged_view_can_t_be_scored_yet() -> None:
 
 # ------------------------------------------------------------------ the sample
 
+TARGETS_SCHEMA = json.loads((SAMPLE / "schemas" / "targets.json").read_text())
+
+
+def sample_scorer(name: str) -> tuple[Scorer, tuple[str | None, ...]]:
+    plan = plan_factors(
+        SAMPLE / "factors.toml", Facts.load(SAMPLE / "facts.toml"), rig()
+    )
+    record = plan.named("scorer", name)
+    scorer = plan.registry.get(record.digest)
+    assert isinstance(scorer, Scorer)
+    return scorer, record.labels
+
+
+def scored(name: str, answer: JsonValue, targets: JsonValue) -> dict[str, Scored]:
+    scorer, labels = sample_scorer(name)
+    values = score(scorer, function(scorer), answer, targets)
+    return {str(label): value for label, value in zip(labels, values, strict=True)}
+
+
+def test_the_targets_schema_takes_the_old_chatddx_s_target_kinds() -> None:
+    valid = validators.validator_for(TARGETS_SCHEMA)(TARGETS_SCHEMA).is_valid
+    pneumonia: JsonValue = {"pattern": "pneumonia"}
+    assert valid({"diagnosis": pneumonia})
+    assert valid({"diagnosis": {"text": "Community-acquired pneumonia"}})
+    assert valid(
+        {
+            "diagnosis": {"text": "Pneumonia", "pattern": "pneumonia"},
+            "warning": False,
+            "dont_miss": {"pattern": "pulmonary embolism"},
+        }
+    )
+    invalid_targets: list[JsonValue] = [
+        {"diagnosis": False},
+        {"diagnosis": pneumonia, "dont_miss": False},
+        {"diagnosis": {}},
+        {"diagnosis": {"pattern": ""}},
+        {"diagnosis": pneumonia, "critical": pneumonia},
+    ]
+    for invalid in invalid_targets:
+        assert not valid(invalid), invalid
+
+
+def test_a_dont_miss_is_held_to_what_each_output_can_say() -> None:
+    targets: JsonValue = {
+        "diagnosis": {"pattern": "pneumonia"},
+        "dont_miss": {"text": "Pulmonary embolism", "pattern": "pulmonary embolism"},
+    }
+
+    def plan(critical: bool) -> JsonValue:
+        return {
+            "diagnoses": [
+                {"diagnosis": "Pneumonia", "critical": False},
+                {"diagnosis": "Pulmonary embolism", "critical": critical},
+            ],
+            "acute_warning": None,
+            "management": {"disposition": "Admit"},
+        }
+
+    assert scored("plan", plan(critical=True), targets)["dont-miss"] == Scored(
+        1.0, {"answer": "Pulmonary embolism"}
+    )
+    named = scored("plan", plan(critical=False), targets)
+    assert named["dont-miss"] == Scored(0.0, {"reason": "not named"})
+    assert named["differential"] == Scored(1.0, {"answer": "1. Pneumonia"})
+    listed: JsonValue = {"diagnoses": ["Pneumonia", "Pulmonary embolism"]}
+    assert scored("diagnoses", listed, targets)["dont-miss"].value == 1.0
+    lines = "1. Pneumonia\n2. Pulmonary embolism"
+    assert scored("free-text", lines, targets)["dont-miss"].value == 1.0
+    assert scored("free-text", "1. Pneumonia", targets)["dont-miss"].value == 0.0
+    no_dont_miss: JsonValue = {"diagnosis": {"pattern": "pneumonia"}}
+    assert scored("plan", plan(critical=True), no_dont_miss)["dont-miss"] == Scored(
+        None, {"reason": "no target"}
+    )
+
+
+def test_a_case_that_calls_for_no_warning_is_met_by_a_plan_that_raises_none() -> None:
+    targets: JsonValue = {"diagnosis": {"pattern": "pneumonia"}, "warning": False}
+    plan: dict[str, JsonValue] = {
+        "diagnoses": [{"diagnosis": "Pneumonia", "critical": False}],
+        "acute_warning": None,
+        "management": {"disposition": "Home"},
+    }
+    assert scored("plan", plan, targets)["warning"] == Scored(
+        1.0, {"reason": "none named, as expected"}
+    )
+    raised = plan | {"acute_warning": "Signs of sepsis"}
+    assert scored("plan", raised, targets)["warning"] == Scored(
+        0.0, {"answer": "Signs of sepsis", "reason": "none expected"}
+    )
+
+
+def test_a_target_s_words_are_a_judge_s_and_its_pattern_the_pattern_scorers() -> None:
+    words: JsonValue = {"diagnosis": {"text": "Community-acquired pneumonia"}}
+    answer: JsonValue = {
+        "diagnoses": [{"diagnosis": "Pulmonary embolism"}, {"diagnosis": "Pneumonia"}],
+        "acute_warning": None,
+        "management": {"disposition": "Admit"},
+    }
+    assert scored("plan", answer, words)["differential"] == Scored(
+        None, {"reason": "the target has words, for a judge, but no pattern"}
+    )
+    assert reaches(TARGETS_SCHEMA, "/diagnosis/text")
+    reg = Registry()
+    ids = world(reg)
+    judge = resolve(reg.get, ids["judge"], Judge)
+    view = View(
+        output="$.diagnoses[*].diagnosis",
+        expectation="/diagnosis/text",
+        metric="judge",
+        judge=ids["judge"],
+    )
+    assert judge.fills(view, answer, words) == {
+        "completion": "Pulmonary embolism\nPneumonia",
+        "expectation": "Community-acquired pneumonia",
+    }
+
+
 # Which scorer reads each configuration's output, by the output's shape.
 READS = {
     "plan": "plan",
@@ -289,6 +411,12 @@ def test_each_sample_scorer_s_views_pick_from_the_answers_it_reads() -> None:
         assert isinstance(scorer, Scorer)
         schema = skeleton.output_schema
         answer: JsonValue = ANSWER_TEXT if schema is None else instance(schema)
+        # The fake writes every boolean false; the plan's dont-miss view reads only the
+        # diagnoses an answer marks critical.
+        if isinstance(answer, dict) and isinstance(answer.get("diagnoses"), list):
+            for item in cast(list[JsonValue], answer["diagnoses"]):
+                if isinstance(item, dict) and "critical" in item:
+                    item["critical"] = True
         for view in scorer.views:
             assert view.output_items(answer), (record.name, view.output)
         values = score(scorer, function(scorer), answer, TARGETS)

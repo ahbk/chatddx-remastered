@@ -204,31 +204,38 @@ json_schema_path = "schemas/targets.json"
 # first_mention the whole text, and warning_mentions and disposition_mentions their parts of the plan, all against
 # the case's targets. A scorer here is bound to an output's shape by its selectors, so there is one per shape, with
 # the old scorers as its views and the old view names as their labels.
+# A case's `dont_miss` is held to what each output can say: a plan marks the diagnoses it holds critical, so the plan
+# scorer reads only those, while a list or free text can only name it. A `warning = false` is met by a plan whose
+# acute_warning is null. A target's `text` is for people and judges; the pattern views leave a target without a
+# pattern unscored.
 [scorer.plan]
-description = "The management plan's differential, warning and disposition, against the case's targets."
+description = "The management plan's differential, warning, disposition and critical diagnoses, against the case's targets."
 entry_point = "chatddx.scorers.patterns:score"
 expectation_schema = "targets"
 views = [
   { label = "differential", output = "$.diagnoses[*].diagnosis", expectation = "/diagnosis", metric = "reciprocal_rank" },
   { label = "warning", output = "$.acute_warning", expectation = "/warning", metric = "mentions" },
   { label = "disposition", output = "$.management.disposition", expectation = "/disposition", metric = "mentions" },
+  { label = "dont-miss", output = "$.diagnoses[?@.critical == true].diagnosis", expectation = "/dont_miss", metric = "mentions" },
 ]
 
 [scorer.diagnoses]
-description = "The listed differential, against the case's diagnosis."
+description = "The listed differential, against the case's diagnosis and the diagnosis it mustn't miss."
 entry_point = "chatddx.scorers.patterns:score"
 expectation_schema = "targets"
 views = [
   { label = "differential", output = "$.diagnoses[*]", expectation = "/diagnosis", metric = "reciprocal_rank" },
+  { label = "dont-miss", output = "$.diagnoses[*]", expectation = "/dont_miss", metric = "mentions" },
 ]
 
 [scorer.free-text]
-description = "The free text, whole and line by line, against the case's diagnosis."
+description = "The free text, whole and line by line, against the case's diagnosis and the diagnosis it mustn't miss."
 entry_point = "chatddx.scorers.patterns:score"
 expectation_schema = "targets"
 views = [
   { label = "text", expectation = "/diagnosis", metric = "first_mention" },
   { label = "differential", split = "lines@1", expectation = "/diagnosis", metric = "reciprocal_rank" },
+  { label = "dont-miss", split = "lines@1", expectation = "/dont_miss", metric = "mentions" },
 ]
 
 [scorer.raw]

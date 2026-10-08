@@ -115,6 +115,7 @@ def test_init_data_seeds_the_archive(conn: Connection) -> None:
         ("view", 0): "differential",
         ("view", 1): "warning",
         ("view", 2): "disposition",
+        ("view", 3): "dont-miss",
     }
     [tool] = catalog.find("tool", "web_search", owner=archive.id)
     assert catalog.about(Subject(thread=tool)).description == (

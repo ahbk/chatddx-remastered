@@ -101,8 +101,16 @@ replaced the planned `import-engine` run on a host, which would have read `nvidi
   minimum on repeated `init-data`/`wipe-data`: no thread is created again, `init-data --giftbag` restores the forks
   `wipe` deleted rather than forking anew, and a cycle writes one entry per gift and per share
   (`src/chatddx/store/test/test_seed.py:test_wipe_data_deletes_and_unshares_and_init_data_gives_it_back`).
-- The old target format's `dont_miss`, `warning = false` and `text`, which no case used. `text`, a target in plain
-  words "for people or LLM judges", meets the free-text expectations (see "Parked").
+- Done (decided): the old target format's `dont_miss`, `warning = false` and `text`, which no case used, are in
+  `targets.json` and the sample's scorers, to show how an output, a view and a scorer meet
+  (`src/chatddx/scorers/test/test_scorers.py`, the three tests after `sample_scorer`):
+  - `dont_miss`, the diagnosis an answer mustn't miss, is read by a `dont-miss` view (`mentions`) in three scorers:
+    the plan's reads only the diagnoses the plan marks critical (`$.diagnoses[?@.critical == true].diagnosis`, the
+    old `critical` view), while the list's and the free text's (`lines@1`) read any diagnosis named;
+  - `warning = false`, the only target that may be false, is met by a plan whose nullable `acute_warning` is null;
+  - a target is `text`, `pattern` or both. The pattern views leave a words-only target unscored ("the target has
+    words, for a judge, but no pattern"), and a judged view would read `/diagnosis/text`. No sample view is judged,
+    since `score` refuses a scorer with one until judges can run.
 
 ### After parity
 The free-text expectations (see "Parked"), and the runner, which the fake vLLM, the endpoints and `confirm` are
@@ -181,7 +189,8 @@ them as a World would:
 - The four old scorers are views of four scorers, one per output shape (see "Tools and scorers").
 - `coercion.*` is folded into outputs (G4, G5), and `extends` became `fork_of` (G9).
 - `dont_miss`, a target kind in the old schema (`src/chatddx/repo/entities/case/pydantic.py:22`) and in
-  `docs/clinical-input.md`, isn't in `targets.json`. No case had one.
+  `docs/clinical-input.md`, is in `targets.json`, with `warning = false` and a target's `text` (see "Then the small
+  parity items"). No case has one.
 
 ### init-data
 `chatddx init-data USER (--vignettes DIR | --world FILE) [--source NAME] [--giftbag] [--data DIR] [--factors FILE …] [--facts PATH …]`
@@ -293,11 +302,11 @@ Where tool and scorer code lives is settled (see "Decided"):
   nothing, so a plan's `acute_warning: null` is no warning. The old aggregates are in `aggregate.py`.
 - **The sample's scorers.** The old scorers each read a named view of whichever output had it. Here selectors bind a
   scorer to a shape, so there are four, with the old view names as catalog labels (`Catalog.label`):
-  - `plan`: `differential` (`reciprocal_rank`), `warning` and `disposition` (`mentions`);
-  - `diagnoses`: `differential`;
-  - `free-text`: `text` (`first_mention`, the whole text) and `differential` (lines);
+  - `plan`: `differential` (`reciprocal_rank`), `warning`, `disposition` and `dont-miss` (`mentions`), the last
+    over the diagnoses the plan marks critical;
+  - `diagnoses`: `differential` and `dont-miss`;
+  - `free-text`: `text` (`first_mention`, the whole text), `differential` and `dont-miss` (lines);
   - `raw`: `text`. No sample configuration uses `output.raw`, as in the old inventory.
-  The old `critical` view had no scorer, so it has no view.
 - **The tool.** `chatddx.tools.web_search` is the old tool on `urllib`, with the old record's name, description and
   parameters, in `toolset.web` with its guidance. It sends the model's query to DuckDuckGo, a third party, so the
   clearance hard block must cover it (`docs/clearance.md`, "Tools") when the runner runs tools.
@@ -517,8 +526,9 @@ sample stays on 7893656 until this starts.
   last line's LF into CRLF. Only `casesfromedn1` is a pure append. Unless the old bytes are restored exactly, those
   cases need a repair (`docs/catalog.md`, "Families and repairs").
 - **What it needs:**
-  - an expectation schema for free text beside `targets.json`, whose `additionalProperties: false` leaves no room.
-    Open: one text, or the comment and the "Chatddx:" answer kept apart;
+  - an expectation schema for free text beside `targets.json`, whose `additionalProperties: false` leaves no room. A
+    target's `text` holds words per kind, not notes on the whole case. Open: one text, or the comment and the
+    "Chatddx:" answer kept apart;
   - a judge-purpose prompt with `completion` and `expectation`, and maybe `vignette`; a judge, which needs an
     engine; and a scorer whose view names the judge. So it waits on a judge engine and a way to run judges;
   - a language for the notes. They're `sv`, while 79 of the cases are `en`, so a judge would read Swedish notes

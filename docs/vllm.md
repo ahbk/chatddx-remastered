@@ -406,3 +406,8 @@ sample models, served as the old inventory served them, and checks each answer a
   (huggingface_hub `_snapshot_download.py:_raise_if_incomplete_snapshot`). So a snapshot downloaded with
   `--exclude` doesn't start from its ID." o11n passes the snapshot's directory (Kompismoln/o11n 84612b2), and
   `src/chatddx/inventory/report.py:imported` takes it as the host's location for the model.
+- CHANGE, under "The fake vLLM", "Schema instances", "the first non-null branch of `anyOf`/`oneOf`/`allOf`" → "the
+  first non-null branch of `anyOf`/`oneOf`/`allOf`, read together with the keywords beside it, as JSON Schema
+  applies them", since a branch may only add `required` beside `type` and `properties`, as the sample's
+  `targets.json` does for a target's `text` or `pattern` (`src/chatddx/fake_vllm/chat.py:instance`,
+  `src/chatddx/fake_vllm/test/test_fake_vllm.py:test_what_it_writes_holds_to_the_sample_s_schemas`).

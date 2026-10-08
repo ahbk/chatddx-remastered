@@ -479,7 +479,10 @@ def instance(
             if o.get("type") != "null"
         ]
         if options:
-            return instance(options[0], root, key, n, depth + 1)
+            # A branch holds together with the keywords beside it, as `required` beside
+            # `type` and `properties` does.
+            beside = {k: v for k, v in schema.items() if k != union}
+            return instance(beside | options[0], root, key, n, depth + 1)
     kind = schema.get("type")
     if isinstance(kind, list):
         kind = next((k for k in cast(list[str], kind) if k != "null"), "null")
