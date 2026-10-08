@@ -19,7 +19,7 @@ max_jobs = 4
 bind = "::"
 
 [host.pelle.models]
-"sha256:269a1b722c13eb6692de5fa3b438796ee70c39f79f4f9f16e3711c10eca844f6" = "Qwen/Qwen3-8B-AWQ"
+"sha256:269a1b722c13eb6692de5fa3b438796ee70c39f79f4f9f16e3711c10eca844f6" = "/srv/models/huggingface/models--Qwen--Qwen3-8B-AWQ/snapshots/4da05a8edb55c6046cce958586c33b61da07bb79"
 
 [host.pelle.templates]
 e132ae041e1217b5e1114eb9dc292484a7f478df945d72fa49ba01b88d8ec01a = "/nix/store/sxqqnn8jqlch6nklh7g2rwfkz29ya33x-chat_template.jinja"
@@ -28,7 +28,7 @@ e132ae041e1217b5e1114eb9dc292484a7f478df945d72fa49ba01b88d8ec01a = "/nix/store/s
 bind = "::"
 
 [host.malborg.models]
-"sha256:1c249b7c8dfc85748abe853504e35d084adb1ae0cd241713fb8fcbbf5f2f454e" = "openai/gpt-oss-20b"
+"sha256:1c249b7c8dfc85748abe853504e35d084adb1ae0cd241713fb8fcbbf5f2f454e" = "/srv/models/huggingface/models--openai--gpt-oss-20b/snapshots/6cee5e81ee83917806bbde320786a8fb61efebee"
 
 [host.malborg.templates]
 a4c9919cbbd4acdd51ccffe22da049264b1b73e59055fa58811a99efbd7c8146 = "/nix/store/b2wrirjmiw1zk4ciprdgpvjk12cximh9-chat_template.jinja"
