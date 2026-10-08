@@ -404,5 +404,5 @@ sample models, served as the old inventory served them, and checks each answer a
   huggingface_hub keeps the commit's file listing from the download (`<repo>/trees/<commit>.json`), and offline it
   refuses a snapshot that lacks any listed file the call's patterns select, with `IncompleteSnapshotError`
   (huggingface_hub `_snapshot_download.py:_raise_if_incomplete_snapshot`). So a snapshot downloaded with
-  `--exclude` doesn't start from its ID." o11n passes the snapshot's directory (Kompismoln/o11n 4450c3b), and
+  `--exclude` doesn't start from its ID." o11n passes the snapshot's directory (Kompismoln/o11n 84612b2), and
   `src/chatddx/inventory/report.py:imported` takes it as the host's location for the model.

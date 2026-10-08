@@ -52,7 +52,7 @@ replaced the planned `import-engine` run on a host, which would have read `nvidi
      Malborg's cache was downloaded again without them (52d728b): the other files' hashes are the same, and the model's
      digest went from `c642e8` to `1c249b`, the engine's from `9a5ca7` to `598792`. vLLM then wouldn't start: given a
      model ID offline, it resolves it with huggingface_hub, which refuses a snapshot missing any file of its commit
-     (`docs/vllm.md`, proposed item 23). o11n now gives vLLM the snapshot's directory (Kompismoln/o11n 4450c3b), and
+     (`docs/vllm.md`, proposed item 23). o11n now gives vLLM the snapshot's directory (Kompismoln/o11n 84612b2), and
      `import-engine` records that directory as the host's location for the model. The digests don't change.
 2. **Still open:**
    - **Decision 1**, which models `from_facts` writes chunks for. Today it's every model the facts know
@@ -81,13 +81,14 @@ replaced the planned `import-engine` run on a host, which would have read `nvidi
 5. **Seeded and checked** (52d728b). `init-data alice --world world/inventory.toml --factors world/factors.toml` creates
    the two models and engines, their lints are clean, and each World endpoint serves the engine it names:
    `qwen3-8b@pelle` `sha256:a6845f87…`, `gpt-oss-20b@malborg` `sha256:598792a2…`.
-   Once o11n 4450c3b is deployed, importing again should change only `world/endpoints.toml`'s model locations, from
-   repo IDs to snapshot directories.
-6. **Serve them under their digests.** Put each engine's digest first in its server's `servedModelNames` (responses
-   carry the first name), as `import-engine`'s `endpoint.served_name` says. The served names aren't part of the
-   digest, so this doesn't change it. Then `confirm` passes.
-7. **Optionally, check against HuggingFace** (4B as a check, not a source). With `huggingface.co` allowed in the
-   environment's network policy, the revisions and the weights' SHA-256s can be compared with the hub's.
+   With o11n 84612b2 deployed, importing again (9eab37a) changed only `world/endpoints.toml`'s model locations, from
+   repo IDs to snapshot directories; the factors and digests stayed the same.
+6. **Served under their digests.** Each engine's digest is first in its server's `servedModelNames` (responses carry
+   the first name), and the import of 9eab37a reports no `endpoint.served_name`: both servers answer under their
+   digests, so `confirm` passes. The served names aren't part of the digest, and the import changed none.
+7. **Optionally, check against Hugging Face** (4B as a check, not a source), offline. huggingface_hub keeps the
+   commit's file listing from the download (`<repo>/trees/<commit>.json`): the hub's SHA-256 for each LFS file and
+   the git blob hash for the rest. The report could compare every hashed file with it, with no network.
 
 ### 2. Then the small parity items
 - The old `init-data` created USER when missing; remastered requires `chatddx person add`. Take: keep it explicit,
