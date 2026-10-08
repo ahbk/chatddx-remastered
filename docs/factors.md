@@ -551,7 +551,7 @@ A local engine (kind `engine.local`) is a vLLM server we run. It declares:
 - the model artifact it serves;
 - the SHA-256 of its chat-template file, which pins the template's content; where the file lives is the
   inventory's business, so moving it doesn't change the engine;
-- the raw `argv` and `env` passed to vLLM.
+- the raw `argv` passed to vLLM, and its `env` minus what the host sets to find the model, the GPU and CUDA.
 
 The start-up script owns `--model`, `--served-model-name`, `--chat-template`, `--tokenizer` and `--revision`
 (`engine.py:OWNED_FLAGS`), so `argv` may not set them, whether spelled with dashes or underscores, since vLLM reads
@@ -943,6 +943,3 @@ reference, straight from the schema. `RefTo` used to do this, and was stopped be
 Schema plays no part in a component's digest, so adding it back changes no digest.
 
 ## Proposed amendments
-- CHANGE, under "Local engine", "the raw `argv` and `env` passed to vLLM" → "the raw `argv` passed to vLLM, and its
-  `env` less what the host sets to find the model, the GPU and CUDA (`src/chatddx/inventory/report.py:HOST_ENV`):
-  where an engine runs, not what it is". `chatddx import-engine` drops those keys from what a host reports.

@@ -65,23 +65,26 @@ Both raise `Refused`, with the fact's reason when there is one, when:
 - a budget is asked for and the model's budget is refused or unknown (`reasoning_chunk`);
 - nothing is recommended for the level the effort lands on (`sampling_chunk`).
 
-The seeder is the only caller today (`agents/wip-sample-data.md`, "init-data"). A `from_facts` record in a factors
-file is written once per model the facts know, named `<record> (<model>)`, and a recipe that uses it comes once per
-model too (`src/chatddx/seed/plan.py:_component`, `src/chatddx/seed/plan.py:plan_factors`). A refused chunk, and the
-recipes that need it, are skipped and reported. `chatddx init-data --facts PATH …` names the facts files, by default
-the data directory's `facts.toml` (`src/chatddx/cli.py`).
+The seeder is the only caller today (`agents/wip-sample-data.md`, "init-data").
 
-A collapsed level writes the same chunk as the level it lands on, so seeding gives them one digest under several
-names. The sample's Qwen3 has six reasoning threads for `enable_thinking = true`.
+A `from_facts` record in a factors file is written once per model that a planned engine serves and the facts
+know. Models and engines are planned first, from the data and any `--factors` files, and a model is the
+`ModelArtifact.repo` of a local engine or a remote engine's `model`. A served model the facts don't know, and a
+known one no planned engine serves, get no records and are reported as skipped.
+
+Named `<record> (<model>)`, and a recipe that uses it comes once per model too.
+
+A refused chunk, and the recipes that need it, are skipped and reported. `chatddx init-data --facts PATH …`
+names the facts files, by default the data directory's `facts.toml` (`src/chatddx/cli.py`).
 
 ## Checking pairs
 A trial or a judge pairs a skeleton with an engine, whose model may have facts. `lint.py:lint(registry, facts,
 digests)` checks those pairs:
 - `facts.missing` (info): there are no facts about the engine's model, so the model-level checks were skipped.
-- `facts.reasoning_unmatched`: the skeleton's `reasoning_effort` and `chat_template_kwargs` match none of the model's
-  level writes. This catches a skeleton written for one model and paired with another: `enable_thinking` sent to
-  gpt-oss, or `reasoning_effort = "none"` sent to gpt-oss, whose `off` is refused. A skeleton that sets neither
-  isn't checked.
+- `facts.sampling_unmatched`: the skeleton's sampling is what the facts recommend for another model, at some level,
+  and for none of the paired model's levels, so it was written for that model: Qwen3's sampling sent to gpt-oss.
+  It's checked when the paired model has no facts too. Sampling that is no model's recommendation, such as greedy,
+  is the skeleton's own and isn't checked; nor is a model whose recommendations equal another's.
 - `facts.budget_refused`: `thinking_token_budget` on a model whose budget is refused.
 - `facts.output_refused`: the facts refuse the skeleton's contract.
 - `facts.output_note` (info): the facts have a note on the skeleton's contract.
@@ -113,8 +116,6 @@ Left behind:
   issues").
 
 ## Open design issues
-- **Which models get seeded.** A `from_facts` record is written for every model the facts know, not for the models of
-  the engines that will run it. Once engines are seeded, the two lists can differ.
 - **`xhigh` can't be written.** It's a level, but neither `Reasoning.effort` nor `Writes.effort` has the value, so a
   model can only collapse or refuse it. Adding it to both is additive, if a model that supports it shows up.
 - **`tool_choice` on harmony.** Named and `required` tool choices are unverified for gpt-oss. vLLM 0.24's gpt-oss
@@ -137,18 +138,3 @@ Left behind:
   unknown.
 
 ## Proposed amendments
-- CHANGE, under "Writing chunks", "A `from_facts` record in a factors file is written once per model the facts know"
-  → "A `from_facts` record in a factors file is written once per model that a planned engine serves and the facts
-  know. Models and engines are planned first, from the data and any `--factors` files, and a model is the
-  `ModelArtifact.repo` of a local engine or a remote engine's `model`. A served model the facts don't know, and a
-  known one no planned engine serves, get no records and are reported as skipped"
-  (`src/chatddx/seed/plan.py:plan_factors`, `src/chatddx/store/test/test_seed.py:test_from_facts_records_follow_the_models_the_engines_serve`).
-- REMOVE, under "Open design issues", "Which models get seeded": the records follow the planned engines now (see the
-  amendment above). Before, an engine whose model had no facts got no records and nothing said so, and a model with
-  facts but no engine got skeletons nothing could run.
-- ADD, under "Checking pairs", after `facts.reasoning_unmatched`: "`facts.sampling_unmatched`: the skeleton's
-  sampling is what the facts recommend for another model, at some level, and for none of the paired model's levels,
-  so it was written for that model: Qwen3's sampling sent to gpt-oss. It's checked when the paired model has no facts
-  too. Sampling that is no model's recommendation, such as greedy, is the skeleton's own and isn't checked; nor is a
-  model whose recommendations equal another's" (`src/chatddx/facts/lint.py:_sampled_for`,
-  `src/chatddx/facts/test/test_facts.py:test_facts_check_that_a_pair_s_sampling_is_for_its_model`).

@@ -55,9 +55,10 @@ It must be possible to deliver the cage together with the results, for scientifi
 - **Vetted:** a fact within the planned clearance pipeline.
 - **Portal:** the web-interface used to configure factors, watch runs and export results.
 - **World:** factor parameters outside of the orchestrator's direct control. (the vignette source, model files, the Nix closure, the chat-template file, the remote engine)
-- **Inventory:** Vignette sources are `[source.<name>]` tables (a directory of files
-  today, sensitive unless declared otherwise), engines' endpoints are `[endpoint.<name>]` tables, and what hosts keep
-  where are `[host.<name>]` tables (`src/chatddx/inventory/inventory.py`).
+- **Inventory:** Vignette sources are `[source.<name>]` tables (a directory of files today, sensitive unless
+  declared otherwise), engines' endpoints are `[endpoint.<name>]` tables, and what hosts keep where are
+  `[host.<name>]` tables. `include` names files whose endpoints and hosts the inventory takes too, so what
+  `chatddx import-engine` writes stays apart from what people write.
 - **Facts:** ops- or developer-authored knowledge about models (how each reasoning level is expressed or refused,
   recommended sampling, output caveats, specs), typed in code, written in TOML and keyed by model name.
   Not factors: they write and check literal chunks, and no digest depends on them.
@@ -270,7 +271,3 @@ Each code is described where it's produced: `docs/factors.md`, "Lints"; `docs/le
 **Canary drift are not implemented:** nothing compares canary outputs between phases or runs.
 
 ## Proposed amendments
-- CHANGE, in the glossary's "Inventory", "and what hosts keep where are `[host.<name>]` tables" → "and what hosts keep
-  where are `[host.<name>]` tables. `include` names files whose endpoints and hosts the inventory takes too, so what
-  `chatddx import-engine` writes stays apart from what people write" (`src/chatddx/inventory/inventory.py:Inventory.load`,
-  `world/inventory.toml`).

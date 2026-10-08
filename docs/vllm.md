@@ -4,7 +4,7 @@ vLLM is used for running local models within our control. `chatddx.fake_vllm` is
 stand in for vLLM on the same command line (`src/chatddx/fake_vllm/served.py:Served.of`), and its tests pin the
 items below (`src/chatddx/fake_vllm/test/`).
 
-## vLLM 0.24 assumptions (for the fake vLLM)
+## vLLM 0.24 discoveries
 1. ChatCompletionResponse.prompt_token_ids is a top-level list[int] | None, set only when request.return_token_ids is true:
   - https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/chat_completion/protocol.py#L129
   - https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/chat_completion/serving.py#L1070-L1072
@@ -137,8 +137,6 @@ items below (`src/chatddx/fake_vllm/test/`).
 
 20. `include_reasoning: false` leaves the reasoning out of the response, when a parser separates it
   (https://github.com/vllm-project/vllm/blob/v0.24.0/vllm/entrypoints/openai/chat_completion/serving.py#L882-L883).
-
-Fake vLLM based on 0.24.0 should pin all of them
 
 ## The fake vLLM
 A request goes `server.py` → `chat.py:accept`, which refuses it or picks the served model → `chat.py:respond`, which
