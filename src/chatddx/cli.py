@@ -20,9 +20,10 @@ from chatddx.inventory.report import (
     read,
 )
 from chatddx.inventory.sources import DirectorySource
-from chatddx.seed import load_cases, plan_factors, seed
+from chatddx.seed import load_cases, plan_factors, seed, wipe
 from chatddx.seed.plan import SAMPLE
 from chatddx.seed.world import endpoints
+from chatddx.seed.write import ARCHIVE
 from chatddx.store.migrate import TOP_TIER, migrate, pending
 from chatddx.store.people import People
 
@@ -80,15 +81,30 @@ def _init_data(args: argparse.Namespace) -> None:
             f"none of the sample's {len(cases)} cases is in source {args.source!r}; "
             + "the sample World has them: --world sample-world/inventory.toml"
         )
+    lines: list[str] = []
+    with psycopg.connect(settings.database()) as conn:
+        people = People(conn)
+        user = people.find(args.user)
+        if user is None:
+            user = people.add(args.user, args.user)
+            lines.append(f"[person] {args.user}: added")
+        lines += seed(conn, plan, cases, source, user, giftbag=args.giftbag)
+    if world is not None:
+        lines += endpoints(world, plan)
+    for line in lines:
+        print(line)
+
+
+def _wipe_data(args: argparse.Namespace) -> None:
+    if args.user == ARCHIVE:
+        raise SystemExit(
+            f"wipe-data: {ARCHIVE!r} holds the sample data; it isn't wiped"
+        )
     with psycopg.connect(settings.database()) as conn:
         user = People(conn).find(args.user)
         if user is None:
-            raise SystemExit(
-                f"no person with login {args.user!r}: add them with `chatddx person add`"
-            )
-        lines = seed(conn, plan, cases, source, user, giftbag=args.giftbag)
-    if world is not None:
-        lines += endpoints(world, plan)
+            raise SystemExit(f"wipe-data: no person with login {args.user!r}")
+        lines = wipe(conn, user)
     for line in lines:
         print(line)
 
@@ -171,7 +187,9 @@ def main(argv: Sequence[str] | None = None) -> None:
         "init-data",
         help="seed the sample data for the archive and share it with a person",
     )
-    _ = init.add_argument("user", help="the login to share the archive with")
+    _ = init.add_argument(
+        "user", help="the login to share the archive with, added when missing"
+    )
     vignettes = init.add_mutually_exclusive_group(required=True)
     _ = vignettes.add_argument(
         "--world",
@@ -212,6 +230,14 @@ def main(argv: Sequence[str] | None = None) -> None:
         help="model facts to write per-model chunks from (the sample's facts.toml)",
     )
     init.set_defaults(run=_init_data)
+
+    wipe_parser = commands.add_parser(
+        "wipe-data",
+        help="delete what a person owns and unshare what they collaborate on; "
+        + "init-data shares and gives it back",
+    )
+    _ = wipe_parser.add_argument("user", help="the person's login")
+    wipe_parser.set_defaults(run=_wipe_data)
 
     imp = commands.add_parser(
         "import-engine",

@@ -93,10 +93,14 @@ replaced the planned `import-engine` run on a host, which would have read `nvidi
    the git blob hash for the rest. The report could compare every hashed file with it, with no network.
 
 ### 2. Then the small parity items
-- The old `init-data` created USER when missing; remastered requires `chatddx person add`. Take: keep it explicit,
-  since people have roles and passwords now.
-- `wipe-data`: tier 2 forbids DELETE, so removing a user's records means `deleted` entries and dropping them as
-  collaborators. Its semantics are to decide.
+- Done (decided): `init-data` creates USER when missing, named by the login and without roles, as the old one did;
+  `chatddx person add` and `person password` remain for the rest.
+- Done (decided): `chatddx wipe-data USER` deletes what USER owns and unshares what they collaborate on, a
+  `deleted` entry and a collaborator entry with `present` false, each written only when it changes something
+  (`src/chatddx/seed/write.py:wipe`). The person and the archive stay; `wipe-data archive` is refused. Kept to a
+  minimum on repeated `init-data`/`wipe-data`: no thread is created again, `init-data --giftbag` restores the forks
+  `wipe` deleted rather than forking anew, and a cycle writes one entry per gift and per share
+  (`src/chatddx/store/test/test_seed.py:test_wipe_data_deletes_and_unshares_and_init_data_gives_it_back`).
 - The old target format's `dont_miss`, `warning = false` and `text`, which no case used. `text`, a target in plain
   words "for people or LLM judges", meets the free-text expectations (see "Parked").
 
@@ -182,8 +186,8 @@ them as a World would:
 ### init-data
 `chatddx init-data USER (--vignettes DIR | --world FILE) [--source NAME] [--giftbag] [--data DIR] [--factors FILE …] [--facts PATH …]`
 (`src/chatddx/cli.py`) connects as `DB_USER` and seeds in one transaction for the `archive` person, created if
-missing. It shares everything with USER, who must exist (`chatddx person add`). It prints one line per record:
-created, validated, updated, skipped, missing, needs repair, forked or kept. It ends with the lints' findings.
+missing. It shares everything with USER, who is added when missing. It prints one line per record: created,
+validated, updated, skipped, missing, needs repair, forked, kept or restored. It ends with the lints' findings.
 - **Inputs.** `--data` is what gets seeded, the package's sample data by default, and `--factors` more factors
   files planned with its own, such as `world/factors.toml`; a name may be defined only once per table. The
   vignettes come from `--vignettes`, a directory of `<id>.txt` files such as `sample-world/vignettes`, or from
@@ -206,7 +210,8 @@ created, validated, updated, skipped, missing, needs repair, forked or kept. It 
 - **Sharing.** USER becomes a collaborator on every archive thread and family.
 - **`--giftbag`.** USER also gets their own fork of every chunk, tool, skeleton and expectation thread, so the
   catalog's variations and proposals follow the archive when it moves. Expectation schemas and scorers stay the
-  archive's. Existing forks are kept (`src/chatddx/seed/write.py:_gifted`).
+  archive's. Existing forks are kept, and deleted ones (by `wipe-data`) restored (`src/chatddx/seed/write.py:_gifted`,
+  `_Seeder.giftbag`).
 - **Lints.** Every component that got a thread or a family this run, validated or not, is linted
   (`src/chatddx/seed/write.py:_Seeder.lint`): `src/chatddx/factors/lint.py:lint`, with the catalog's languages and
   the facts' `reasons`, and `src/chatddx/facts/lint.py:lint`, with the facts the plan was made with (`Plan.facts`).

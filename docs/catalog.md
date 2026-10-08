@@ -391,3 +391,8 @@ moment can create two families, since nothing makes current bindings unique.
   notice rather than a warning.
 
 ## Proposed amendments
+- ADD, under "Deleting", after the list: "`Catalog.involving(person)` gives the subjects whose entries have ever named
+  a person as owner or collaborator, for `about` to tell what holds now. `chatddx wipe-data` deletes those the person
+  owns and unshares those they collaborate on, writing an entry only where it changes something, and
+  `init-data --giftbag` restores a deleted fork rather than forking anew" (`src/chatddx/store/catalog.py:Catalog.involving`,
+  `src/chatddx/seed/write.py:wipe`, `src/chatddx/seed/write.py:_Seeder.giftbag`).

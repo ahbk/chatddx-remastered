@@ -1,3 +1,4 @@
+from collections import Counter
 from collections.abc import Iterable
 
 from chatddx.catalog import Entry, EntryField, Subject
@@ -185,13 +186,23 @@ class _Seeder:
         for (kind, name), thread in self.threads.items():
             if not _gifted(kind):
                 continue
-            mine = [
-                t
+            forks = {
+                t: self.catalog.about(Subject(thread=t))
                 for t in self.catalog.forks(thread)
-                if self.catalog.about(Subject(thread=t)).owner == user.id
-            ]
-            if mine:
+            }
+            mine = {t: about for t, about in forks.items() if about.owner == user.id}
+            if any(not about.deleted for about in mine.values()):
                 self.lines.append(f"[giftbag {kind}] {name}: kept")
+                continue
+            # A fork `wipe` deleted comes back rather than a new one piling up.
+            if mine:
+                restored = max(mine)
+                self.catalog.note(
+                    Subject(thread=restored),
+                    Entry(field=EntryField.DELETED, present=False),
+                    user.id,
+                )
+                self.lines.append(f"[giftbag {kind}] {name}: restored")
                 continue
             head = self.catalog.head(thread)
             about = self.catalog.about(Subject(thread=thread))
@@ -203,6 +214,37 @@ class _Seeder:
                 name=about.name,
             )
             self.lines.append(f"[giftbag {kind}] {name}: forked {short(head.digest)}")
+
+
+def _what(catalog: Catalog, subject: Subject) -> str:
+    if subject.thread is not None:
+        return f"thread {catalog.thread(subject.thread).kind}"
+    return "family" if subject.family is not None else "run" if subject.run else "score"
+
+
+# What a person owns is deleted and what they collaborate on is unshared, each with one
+# entry and only when it holds, so wiping again writes nothing. The person stays.
+def wipe(conn: Connection, user: Person) -> list[str]:
+    deleted: Counter[str] = Counter()
+    unshared: Counter[str] = Counter()
+    with conn.transaction():
+        catalog = Catalog(conn)
+        for subject in catalog.involving(user.id):
+            about = catalog.about(subject)
+            if about.owner == user.id and not about.deleted:
+                catalog.note(subject, Entry(field=EntryField.DELETED), user.id)
+                deleted[_what(catalog, subject)] += 1
+            if user.id in about.collaborators:
+                catalog.note(
+                    subject,
+                    Entry(field=EntryField.COLLABORATOR, person=user.id, present=False),
+                    user.id,
+                )
+                unshared[_what(catalog, subject)] += 1
+    return [
+        f"[wipe {what}] {user.login}: deleted {deleted[what]}, unshared {unshared[what]}"
+        for what in sorted(deleted | unshared)
+    ] or [f"[wipe] {user.login}: nothing to delete or unshare"]
 
 
 def seed(
