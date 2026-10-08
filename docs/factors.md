@@ -943,3 +943,18 @@ reference, straight from the schema. `RefTo` used to do this, and was stopped be
 Schema plays no part in a component's digest, so adding it back changes no digest.
 
 ## Proposed amendments
+- CHANGE in "Rendering", "`render` sets four of them; `stream` and `n` are not sent." → "`render` sets four of them,
+  and `n` is not sent. `stream` is the runner's: it streams every request and adds the chunks up to the completion it
+  records, while `Call.request` fingerprints the body as `render` made it." (`src/chatddx/runner/send.py:send`,
+  `src/chatddx/runner/wire.py:assemble`)
+- ADD to "Execution", after `retries`: "- `whitespace_limit` (100 by default, or none): a call answering this many
+  tokens of nothing but whitespace in a row is cut short and keeps what came, as a model that runs away would write
+  them till its tokens or its context run out. Like a timeout, it decides what answer gets recorded.
+  `Sampling.max_output_tokens` bounds every answer; the cutoff bounds only a runaway."
+  (`src/chatddx/factors/trial.py:Execution`, `src/chatddx/runner/send.py:send`)
+- REMOVE from "Smaller issues" the item "The model name is chosen in several places": both engines have
+  `served_model_name`, which `check_run`, `confirm` and the runner read (`src/chatddx/factors/engine.py`).
+- CHANGE in "Runs don't record where calls went", "Either way `Call` (`src/chatddx/ledger/call.py`) records no URL, so
+  the ledger can't show which endpoint received case-derived content, which clearance may need." → "A run's started
+  row names the endpoint its calls went to, by name and URL, so the ledger shows which endpoint received case-derived
+  content." (`src/chatddx/ledger/run.py:RunStarted.endpoint`)

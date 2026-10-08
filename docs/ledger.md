@@ -410,3 +410,5 @@ Most of the plan is compared with what happened (see "What a record holds"), but
   separate mechanism, as linting is for factors, but nothing is planned or decided.
 
 ## Proposed amendments
+- ADD to "RunStarted", after `tool_code`: "- the endpoint its calls go to (`endpoint`: the World inventory's name for it
+  and its URL), left out when not given." (`src/chatddx/ledger/run.py:Endpoint`, `src/chatddx/runner/run.py:Runner.start`)

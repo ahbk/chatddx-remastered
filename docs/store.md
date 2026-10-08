@@ -80,3 +80,10 @@ fail, rather than skip, when Postgres is unreachable.
   `docs/factors.md`, "Splitting expectations", already considers a bump of `Scorer.schema_version`.
 
 ## Proposed amendments
+- CHANGE in "Tests", "`test/`: a migrated template database per session" → "`src/chatddx/conftest.py`: a migrated
+  template database per session, shared by every package's tests" (`src/chatddx/conftest.py`)
+- CHANGE in "Known gaps", "No async API yet; the runner may want one (psycopg 3 has both)." → "No async API. The
+  runner is synchronous, and wants a connection in autocommit mode so that each row lands as it's written: on a
+  connection that isn't, a statement outside a transaction block (`Catalog.note`, `People.find`) opens a transaction
+  only the caller commits, and `Store.append`'s transactions become savepoints inside it."
+  (`src/chatddx/runner/run.py:Runner`, `src/chatddx/store/store.py:Store.append`)

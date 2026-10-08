@@ -395,3 +395,7 @@ moment can create two families, since nothing makes current bindings unique.
   notice rather than a warning.
 
 ## Proposed amendments
+- CHANGE in "Owners", "A run's owner should be whoever started it. That is a rule for the runner, which doesn't exist
+  yet: nothing writes it, and a run's started row records no person" → "A run's owner is whoever started it: the
+  runner writes the entry right after the run's started row, which itself records no person."
+  (`src/chatddx/runner/run.py:Runner.start`)
