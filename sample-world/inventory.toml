@@ -35,3 +35,10 @@ bind = "127.0.0.1"
 
 [host.fake.templates]
 "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" = "/dev/null"
+
+# The sensitive sources each endpoint may receive case-derived content from; the runner refuses anything else. The
+# fake engines run on this machine, so they're cleared for the sample.
+
+[cleared]
+"qwen3-8b-awq@fake" = ["sample"]
+"gpt-oss-20b@fake" = ["sample"]

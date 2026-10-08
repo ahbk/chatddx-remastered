@@ -149,6 +149,10 @@ class RemoteEngine(Component):
     base_url: HttpUrl
     model: str
 
+    @property
+    def served_model_name(self) -> str:
+        return self.model
+
 
 Engine = LocalEngine | RemoteEngine
 EngineRef = Annotated[Digest, RefTo("engine.local", "engine.remote")]

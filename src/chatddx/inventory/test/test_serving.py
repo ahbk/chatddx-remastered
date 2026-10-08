@@ -1,8 +1,5 @@
 import hashlib
 import socket
-import threading
-from collections.abc import Generator
-from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -20,7 +17,7 @@ from chatddx.factors.engine import (
 )
 from chatddx.facts.facts import Facts
 from chatddx.fake_vllm.served import Served
-from chatddx.fake_vllm.server import server
+from chatddx.fake_vllm.server import serving
 from chatddx.inventory.inventory import EndpointSpec, HostSpec, Inventory
 from chatddx.inventory.serving import confirm, start_up, url_of
 from chatddx.seed import Plan, plan_factors
@@ -133,6 +130,38 @@ def test_an_inventory_includes_the_endpoints_and_hosts_of_other_files(
         _ = Inventory.load(path)
 
 
+def test_an_inventory_says_which_sources_an_endpoint_is_cleared_for(
+    tmp_path: Path,
+) -> None:
+    engine = "sha256:" + "c" * 64
+    imported = tmp_path / "imported.toml"
+    _ = imported.write_text(
+        f'[endpoint.qwen]\nengine = "{engine}"\nurl = "http://pelle.km:12009/v1/"\n'
+    )
+    path = tmp_path / "inventory.toml"
+    sources = '[source.sample]\npath = "a"\n\n[source.registry]\npath = "b"\n\n'
+    _ = path.write_text(
+        f'include = ["imported.toml"]\n\n{sources}[cleared]\nqwen = ["sample"]\n'
+    )
+    inventory = Inventory.load(path)
+    assert inventory.cleared_for("qwen") == {"sample"}
+    assert inventory.cleared_for("other") == frozenset()
+    _ = path.write_text(f'include = ["imported.toml"]\n\n{sources}')
+    assert Inventory.load(path).cleared_for("qwen") == frozenset()
+    _ = path.write_text(f'{sources}[cleared]\nqwen = ["sample"]\n')
+    with pytest.raises(ValidationError, match="cleared names no endpoint 'qwen'"):
+        _ = Inventory.load(path)
+    _ = path.write_text(
+        f'include = ["imported.toml"]\n\n{sources}[cleared]\nqwen = ["other"]\n'
+    )
+    with pytest.raises(ValidationError, match="'qwen' is cleared for no source other"):
+        _ = Inventory.load(path)
+    _ = imported.write_text(imported.read_text() + '\n[cleared]\nqwen = ["sample"]\n')
+    _ = path.write_text(f'include = ["imported.toml"]\n\n{sources}')
+    with pytest.raises(ValueError, match="has only 'endpoint' and 'host' tables"):
+        _ = Inventory.load(path)
+
+
 def test_a_start_up_joins_the_engine_with_where_its_host_keeps_things() -> None:
     reg = Registry()
     model, engine = local(reg, "--max-model-len", "8192")
@@ -222,20 +251,6 @@ def free_port() -> int:
         return int(s.getsockname()[1])
 
 
-@contextmanager
-def serving(served: Served) -> Generator[None]:
-    fake = server([served])
-    thread = threading.Thread(
-        target=fake.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
-    )
-    thread.start()
-    try:
-        yield
-    finally:
-        fake.shutdown()
-        fake.server_close()
-
-
 def test_a_fake_started_from_an_endpoint_serves_its_engine(tmp_path: Path) -> None:
     port = str(free_port())
     moved = tmp_path / "inventory.toml"
@@ -245,7 +260,7 @@ def test_a_fake_started_from_an_endpoint_serves_its_engine(tmp_path: Path) -> No
     inventory = Inventory.load(moved)
     plan = sample_plan()
     startup = start_up(inventory, plan.registry.get, "qwen3-8b-awq@fake")
-    with serving(Served.of(startup.argv[0], startup.argv[1:])):
+    with serving([Served.of(startup.argv[0], startup.argv[1:])]):
         confirm(inventory, plan.registry.get, "qwen3-8b-awq@fake")
         qwen = inventory.endpoint("qwen3-8b-awq@fake").engine
         gpt_oss = inventory.endpoint("gpt-oss-20b@fake").engine

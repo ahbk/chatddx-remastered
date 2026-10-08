@@ -36,7 +36,7 @@ def test_sources_are_declared_in_the_inventory(tmp_path: Path) -> None:
     assert not Inventory.load(path).source("sample").sensitive
     _ = path.write_text('[machine.pelle]\naddress = "pelle.km"\n')
     with pytest.raises(
-        ValueError, match="only 'include', 'source', 'endpoint' and 'host'"
+        ValueError, match="only 'include', 'source', 'endpoint', 'host' and 'cleared'"
     ):
         _ = Inventory.load(path)
     _ = path.write_text('[source.sample]\nkind = "s3"\npath = "x"\n')

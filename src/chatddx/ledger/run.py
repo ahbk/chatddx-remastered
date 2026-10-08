@@ -51,6 +51,12 @@ def _by_tool(entries: tuple[ToolCode, ...]) -> tuple[ToolCode, ...]:
     return tuple(sorted(entries, key=lambda e: e.tool))
 
 
+# The inventory's endpoint a run's calls went to.
+class Endpoint(Frozen):
+    name: str
+    url: str
+
+
 class RunStarted(Record):
     case_derived: ClassVar[bool] = False
     stage: Literal["started"] = "started"
@@ -64,6 +70,7 @@ class RunStarted(Record):
         default=PHASES, min_length=1
     )
     tool_code: Annotated[tuple[ToolCode, ...], AfterValidator(_by_tool)] = ()
+    endpoint: Endpoint | None = None
 
     @model_validator(mode="after")
     def _verify_at(self) -> "RunStarted":
@@ -194,7 +201,7 @@ def check_run(run: Run, registry: Registry) -> list[Finding]:
     findings.extend(_tool_code(started, skeleton, registry))
     engine = registry.get(trial.engine)
     assert isinstance(engine, LocalEngine | RemoteEngine)
-    want = engine.served_model_name if isinstance(engine, LocalEngine) else engine.model
+    want = engine.served_model_name
     for item in run.items:
         returned = {c.returned_model for c in item.calls if c.response is not None}
         for got in sorted(m for m in returned - {want} if m is not None):

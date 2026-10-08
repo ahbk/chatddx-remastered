@@ -40,6 +40,10 @@ class Inventory(Frozen):
     sources: dict[str, DirectorySourceSpec] = Field(default_factory=dict)
     endpoints: dict[str, EndpointSpec] = Field(default_factory=dict)
     hosts: dict[str, HostSpec] = Field(default_factory=dict)
+    # The sensitive sources each endpoint may receive case-derived content from. Only
+    # the inventory's own file says so, never an included one, so importing endpoints
+    # again can't clear anything.
+    cleared: dict[str, tuple[str, ...]] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _hosts_exist(self) -> Self:
@@ -48,16 +52,27 @@ class Inventory(Frozen):
                 raise ValueError(f"endpoint {name!r} names no host {endpoint.host!r}")
         return self
 
+    @model_validator(mode="after")
+    def _cleared_exist(self) -> Self:
+        for name, sources in self.cleared.items():
+            if name not in self.endpoints:
+                raise ValueError(f"cleared names no endpoint {name!r}")
+            if unknown := sorted(set(sources) - set(self.sources)):
+                raise ValueError(
+                    f"endpoint {name!r} is cleared for no source {', '.join(unknown)}"
+                )
+        return self
+
     # `include` names files, relative to this one, whose endpoints and hosts are this
     # inventory's too, such as what `chatddx import-engine` writes.
     @classmethod
     def load(cls, path: Path) -> Self:
         with path.open("rb") as f:
             data = tomllib.load(f)
-        if stray := set(data) - {"include", "source", "endpoint", "host"}:
+        if stray := set(data) - {"include", "source", "endpoint", "host", "cleared"}:
             raise ValueError(
-                f"{path}: the inventory has only 'include', 'source', 'endpoint' and "
-                + f"'host', not {sorted(stray)}"
+                f"{path}: the inventory has only 'include', 'source', 'endpoint', "
+                + f"'host' and 'cleared', not {sorted(stray)}"
             )
         tables = {t: dict(data.get(t, {})) for t in ("source", "endpoint", "host")}
         for name in data.get("include", []):
@@ -79,6 +94,7 @@ class Inventory(Frozen):
                 "sources": tables["source"],
                 "endpoints": tables["endpoint"],
                 "hosts": tables["host"],
+                "cleared": data.get("cleared", {}),
             }
         )
 
@@ -98,3 +114,6 @@ class Inventory(Frozen):
         if spec is None:
             raise LookupError(f"no endpoint {name!r} in the inventory")
         return spec
+
+    def cleared_for(self, endpoint: str) -> frozenset[str]:
+        return frozenset(self.cleared.get(endpoint, ()))

@@ -129,6 +129,7 @@ phase, in whatever order they happen, then `RunFinished`.
 - optionally a canary set (`canaries`), and the phases at which its canaries are sent (`verify_at`): `start`,
   `end`, or both, the default;
 - the code each of the skeleton's tools runs with, as the runner loaded it (`tool_code`, see below).
+- `endpoint`: the World inventory's name for it and its URL, left out when not given.
 
 It holds the run's recorded factors, but it is not part of the trial's digest. To run a trial again under the same
 conditions, write a new started row with a new id and time and the same `trial`, `execution`, `canaries` and
