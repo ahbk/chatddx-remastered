@@ -178,3 +178,41 @@ def test_facts_check_pairs(facts: Facts) -> None:
         RemoteEngine(base_url=HttpUrl("https://example.org/v1"), model=GPT_OSS)
     )
     assert findings(effort, remote) == {}
+
+
+def test_facts_check_that_a_pair_s_sampling_is_for_its_model(facts: Facts) -> None:
+    reg = Registry()
+    ids = world(reg)
+    user = Message(role="user", content=(Slot(slot="vignette"),))
+
+    def findings(engine_model: str, **body: JsonValue) -> dict[str, str]:
+        engine = reg.add(
+            RemoteEngine(base_url=HttpUrl("https://example.org/v1"), model=engine_model)
+        )
+        skeleton = reg.add(Skeleton(messages=(user,), body=body, contract=TextOutput()))
+        trial = reg.add(
+            Trial(skeleton=skeleton, engine=engine, cases=(ids["case"],), seeds=(1,))
+        )
+        return {f.code: f.message for f in lint_facts(reg, facts, [trial])}
+
+    qwen_on = facts.models[QWEN].sampling_chunk("on").body()
+    qwen_off = facts.models[QWEN].sampling_chunk("off").body()
+    gpt_oss = facts.models[GPT_OSS].sampling_chunk("medium").body()
+    assert findings(QWEN, **qwen_on) == findings(QWEN, **qwen_off) == {}
+    assert findings(GPT_OSS, **gpt_oss) == findings(GPT_OSS) == {}
+    assert findings(GPT_OSS, **qwen_on) == {
+        "facts.sampling_unmatched": "the skeleton's sampling is what the facts "
+        + f"recommend for {QWEN}, not for {GPT_OSS}"
+    }
+    assert set(findings(QWEN, **gpt_oss)) == {"facts.sampling_unmatched"}
+    assert set(findings("google/gemma-3-27b-it", **qwen_on)) == {
+        "facts.missing",
+        "facts.sampling_unmatched",
+    }
+    greedy = Sampling(temperature=0).body()
+    assert findings(GPT_OSS, **greedy) == {}
+    assert findings(GPT_OSS, **{**qwen_on, "temperature": 0.5}) == {}
+    assert findings(GPT_OSS, **qwen_on, reasoning_effort="low") == {
+        "facts.sampling_unmatched": "the skeleton's sampling is what the facts "
+        + f"recommend for {QWEN}, not for {GPT_OSS}"
+    }

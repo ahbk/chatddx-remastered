@@ -5,9 +5,11 @@
 # Tables are kinds and keys are component fields, except:
 # - a reference names a record of the referenced kind;
 # - `json_schema_path` loads a JSON file, relative to this one, in place of `json_schema`;
-# - `from_facts` makes the record per model in the facts: its chunk is written from each model's facts
-#   (`ModelFacts.sampling_chunk` or `reasoning_chunk`), named "<record> (<model>)", and a record referencing it
-#   is made per model too. A model whose facts refuse the chunk gets none, and is reported;
+# - `from_facts` makes the record per model that a planned engine serves and the facts know: its chunk is
+#   written from each model's facts (`ModelFacts.sampling_chunk` or `reasoning_chunk`), named
+#   "<record> (<model>)", and a record referencing it is made per model too. A model whose facts refuse the
+#   chunk gets none, and is reported, and so is a served model the facts don't know or a known one no engine
+#   serves;
 # - `fork_of` names a record of the same kind that this one is a variation of. It's seeded as a fork of that
 #   record's thread, and doesn't inherit its fields;
 # - a tool or a scorer without a `code` pins the running chatddx, as compilations record it as their compiler, and

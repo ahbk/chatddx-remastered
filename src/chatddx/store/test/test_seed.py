@@ -136,15 +136,61 @@ def test_init_data_lints_what_it_lands(
     lines = seed(conn, plan, {**CASES, "Dutchfall11w": unlike}, vignettes(), alice)
     components = len({r.digest for r in plan.records}) + 2 * len(CASES)
     assert [line for line in lines if line.startswith("[lint")] == [
+        *FAKES,
         *(
             f"[lint warning] scorer {name}: scorer.revision: scorer code has no revision"
             for name in ("plan", "diagnoses", "free-text", "raw")
         ),
-        *FAKES,
         "[lint warning] expectation Dutchfall11w: expectation.invalid: at the root: "
         + "'diagnosis' is a required property",
         f"[lint] {5 + len(FAKES)} findings in {components} components",
     ]
+
+
+def test_from_facts_records_follow_the_models_the_engines_serve(
+    tmp_path: Path,
+) -> None:
+    factors = tmp_path / "factors.toml"
+    _ = factors.write_text(
+        """
+[remote_engine."qwen@api"]
+base_url = "https://api.example/v1/"
+model = "Qwen/Qwen3-8B-AWQ"
+
+[remote_engine."gemma@api"]
+base_url = "https://api.example/v1/"
+model = "google/gemma-3-27b-it"
+
+[prompt.case]
+segments = [{ slot = "vignette" }]
+
+[output.raw]
+contract = { kind = "text" }
+
+[sampling.recommended]
+from_facts = { effort = "default" }
+
+[recipe.raw]
+prompt = "case"
+output = "raw"
+sampling = "recommended"
+"""
+    )
+    plan = plan_factors(factors, Facts.load(SAMPLE / "facts.toml"), rig())
+    assert [(r.table, r.name) for r in plan.records] == [
+        ("remote_engine", "qwen@api"),
+        ("remote_engine", "gemma@api"),
+        ("prompt", "case"),
+        ("output", "raw"),
+        ("sampling", "recommended (Qwen/Qwen3-8B-AWQ)"),
+        ("recipe", "raw (Qwen/Qwen3-8B-AWQ)"),
+    ]
+    assert plan.skipped == [
+        "from_facts records for google/gemma-3-27b-it: the facts don't know it, served "
+        + "by engine.remote gemma@api",
+        "from_facts records for openai/gpt-oss-20b: no planned engine serves it",
+    ]
+    assert not [s for s in sample_plan().skipped if s.startswith("from_facts records")]
 
 
 def test_init_data_updates_and_gives_forks(conn: Connection, tmp_path: Path) -> None:
@@ -235,7 +281,8 @@ def test_init_data_command(
     _ = capsys.readouterr()
     main(["init-data", "alice", "--world", str(world), "--giftbag"])
     out = capsys.readouterr().out.splitlines()
-    assert out[0].startswith("[archive chunk.prompt] case: created")
+    assert out[0].startswith("[archive model] qwen3-8b-awq@fake: created")
+    assert any(line.startswith("[archive chunk.prompt] case: created") for line in out)
     assert any(line.startswith("[giftbag skeleton] plan (") for line in out)
     with connect(db) as conn:
         assert conn.execute("SELECT count(*) FROM catalog.family").fetchone() == (

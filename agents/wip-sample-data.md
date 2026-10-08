@@ -54,11 +54,13 @@ replaced the planned `import-engine` run on a host, which would have read `nvidi
      model ID offline, it resolves it with huggingface_hub, which refuses a snapshot missing any file of its commit
      (`docs/vllm.md`, proposed item 23). o11n now gives vLLM the snapshot's directory (Kompismoln/o11n 84612b2), and
      `import-engine` records that directory as the host's location for the model. The digests don't change.
-2. **Still open:**
-   - **Decision 1**, which models `from_facts` writes chunks for. Today it's every model the facts know
-     (`src/chatddx/seed/plan.py:plan_factors`); the real engines serve the same two models as the fakes, so nothing
-     changes yet. Take: the seeded engines' models, reporting a model without facts (`docs/facts.md`, "Open design
-     issues").
+2. **Decided since:**
+   - **Decision 1, B**: `from_facts` records are written for the models the planned engines serve and the
+     facts know (`src/chatddx/seed/plan.py:plan_factors`, which plans models and engines first). A served model
+     without facts and a known model without an engine are reported as skipped. The sample's seeding is unchanged:
+     its engines serve the two models the facts know. With it came `facts.sampling_unmatched`, a pair lint for a
+     skeleton whose sampling was written for another model (`src/chatddx/facts/lint.py:_sampled_for`); `docs/facts.md`
+     has proposed amendments for both.
 3. **Done: `chatddx import-engine REPORT … [--server NAME …] --factors FILE --endpoints FILE`**
    (`src/chatddx/inventory/report.py`). It reads each host's report from its URL or a file and writes the
    `[model]` and `[local_engine]` tables to `--factors` and the `[endpoint]` and `[host]` tables to `--endpoints`,
@@ -188,9 +190,10 @@ created, validated, updated, skipped, missing, needs repair, forked or kept. It 
   `--world`, a World inventory whose `[source.<name>]` table locates them, such as `sample-world/inventory.toml`.
   `--source` names the source (`sample`), which the cases are keyed by. A path that holds none of the sample's cases is refused before
   anything is written. `--facts` names the facts files, the data directory's `facts.toml` by default.
-- **Planning.** `chatddx.seed.plan_factors` is pure. It plans 50 records: 14 recipes (7 configurations × 2 models),
-  12 reasoning chunks, 5 sampling chunks, 7 outputs, a prompt, a tool, a toolset, an expectation schema, 4
-  scorers, 2 models and 2 engines. It skips 4 reasoning chunks the facts refuse for gpt-oss.
+- **Planning.** `chatddx.seed.plan_factors` is pure. It plans models and engines first, then everything else for
+  the models those engines serve that the facts know. For the sample that's 50 records: 2 models and 2 engines,
+  14 recipes (7 configurations × 2 models), 12 reasoning chunks, 5 sampling chunks, 7 outputs, a prompt, a tool, a
+  toolset, an expectation schema and 4 scorers. It skips 4 reasoning chunks the facts refuse for gpt-oss.
 - **Chunks and recipes.** Each record becomes a thread named after it and owned by the archive. Recipes are
   compiled, and their compilations are recorded. A `from_facts` chunk is written from each model's facts, so the
   recipes using it come once per model, named `plan (Qwen/Qwen3-8B-AWQ)`. A refused combination is skipped and

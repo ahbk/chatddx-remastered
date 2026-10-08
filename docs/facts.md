@@ -137,3 +137,18 @@ Left behind:
   unknown.
 
 ## Proposed amendments
+- CHANGE, under "Writing chunks", "A `from_facts` record in a factors file is written once per model the facts know"
+  → "A `from_facts` record in a factors file is written once per model that a planned engine serves and the facts
+  know. Models and engines are planned first, from the data and any `--factors` files, and a model is the
+  `ModelArtifact.repo` of a local engine or a remote engine's `model`. A served model the facts don't know, and a
+  known one no planned engine serves, get no records and are reported as skipped"
+  (`src/chatddx/seed/plan.py:plan_factors`, `src/chatddx/store/test/test_seed.py:test_from_facts_records_follow_the_models_the_engines_serve`).
+- REMOVE, under "Open design issues", "Which models get seeded": the records follow the planned engines now (see the
+  amendment above). Before, an engine whose model had no facts got no records and nothing said so, and a model with
+  facts but no engine got skeletons nothing could run.
+- ADD, under "Checking pairs", after `facts.reasoning_unmatched`: "`facts.sampling_unmatched`: the skeleton's
+  sampling is what the facts recommend for another model, at some level, and for none of the paired model's levels,
+  so it was written for that model: Qwen3's sampling sent to gpt-oss. It's checked when the paired model has no facts
+  too. Sampling that is no model's recommendation, such as greedy, is the skeleton's own and isn't checked; nor is a
+  model whose recommendations equal another's" (`src/chatddx/facts/lint.py:_sampled_for`,
+  `src/chatddx/facts/test/test_facts.py:test_facts_check_that_a_pair_s_sampling_is_for_its_model`).
