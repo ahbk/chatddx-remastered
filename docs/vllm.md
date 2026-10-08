@@ -411,3 +411,7 @@ sample models, served as the old inventory served them, and checks each answer a
   applies them", since a branch may only add `required` beside `type` and `properties`, as the sample's
   `targets.json` does for a target's `text` or `pattern` (`src/chatddx/fake_vllm/chat.py:instance`,
   `src/chatddx/fake_vllm/test/test_fake_vllm.py:test_what_it_writes_holds_to_the_sample_s_schemas`).
+- CHANGE, under "The fake vLLM", "Schema instances", "Then `const`, the first `enum`," → "Then `const`, the first
+  `enum`, the first of `examples`,", since a string's `pattern` isn't followed and `fake <key>` may not match it, as
+  for a note's `language` in the sample's `targets.json` (`src/chatddx/fake_vllm/chat.py:instance`,
+  `src/chatddx/fake_vllm/test/test_fake_vllm.py:test_what_it_writes_holds_to_the_sample_s_schemas`).

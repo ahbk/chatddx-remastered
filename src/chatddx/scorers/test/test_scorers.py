@@ -8,7 +8,7 @@ from pydantic import JsonValue
 from chatddx.core.rig import entry, rig
 from chatddx.factors.base import Code, resolve
 from chatddx.factors.bundle import Registry
-from chatddx.factors.request import Skeleton
+from chatddx.factors.request import Skeleton, SlotName
 from chatddx.factors.scoring import Judge, Scorer, View
 from chatddx.factors.select import reaches
 from chatddx.factors.test.sample import world
@@ -79,7 +79,9 @@ def test_a_pattern_that_doesn_t_read_is_refused(pattern: str, problem: str) -> N
 def test_every_sample_target_reads() -> None:
     for case in load_cases(SAMPLE / "cases.toml").values():
         assert isinstance(case.targets, dict)
-        for target in case.targets.values():
+        for kind, target in case.targets.items():
+            if kind == "notes":
+                continue
             assert isinstance(target, dict) and isinstance(target["pattern"], str)
             _ = Pattern(target["pattern"])
 
@@ -307,6 +309,85 @@ def test_the_targets_schema_takes_the_old_chatddx_s_target_kinds() -> None:
     ]
     for invalid in invalid_targets:
         assert not valid(invalid), invalid
+
+
+def test_a_case_s_notes_keep_their_author_language_comment_and_answer() -> None:
+    valid = validators.validator_for(TARGETS_SCHEMA)(TARGETS_SCHEMA).is_valid
+    note: dict[str, JsonValue] = {
+        "author": "Olof",
+        "language": "sv",
+        "comment": "Chock.",
+    }
+    pneumonia: JsonValue = {"pattern": "pneumonia"}
+    assert valid({"diagnosis": pneumonia, "notes": [note]})
+    assert valid({"diagnosis": pneumonia, "notes": [note | {"answer": "Rundodla."}]})
+    invalid_notes: list[JsonValue] = [
+        [],
+        [{k: v for k, v in note.items() if k != "author"}],
+        [note | {"language": "Swedish"}],
+        [note | {"comment": ""}],
+        [note | {"answer": ""}],
+        [note | {"date": "2026-09-28"}],
+    ]
+    for notes in invalid_notes:
+        assert not valid({"diagnosis": pneumonia, "notes": notes}), notes
+
+
+def test_the_sample_holds_olof_s_notes_on_three_cases_as_written() -> None:
+    cases = load_cases(SAMPLE / "cases.toml")
+    valid = validators.validator_for(TARGETS_SCHEMA)(TARGETS_SCHEMA).is_valid
+    assert all(valid(case.targets) for case in cases.values())
+    noted = {
+        id: case.targets["notes"]
+        for id, case in cases.items()
+        if isinstance(case.targets, dict) and "notes" in case.targets
+    }
+    assert sorted(noted) == ["Dutchfall11w", "Dutchfall1w", "casesfromedn1"]
+    for id, notes in noted.items():
+        assert isinstance(notes, list) and len(notes) == 1
+        [note] = notes
+        assert isinstance(note, dict)
+        assert (note["author"], note["language"]) == ("Olof", "sv")
+        assert ("answer" in note) == (id != "Dutchfall1w")
+    [eleven] = cast(list[dict[str, str]], noted["Dutchfall11w"])
+    assert eleven["comment"].startswith("identifiera tecken på prechock eller chock")
+    assert eleven["answer"].endswith("påbörja empirisk bredspektrumantibiotika.")
+
+
+def test_a_judge_reads_a_case_s_notes_beside_the_targets_the_patterns_read() -> None:
+    targets = load_cases(SAMPLE / "cases.toml")["Dutchfall11w"].targets
+    answer: JsonValue = {
+        "diagnoses": [
+            {"diagnosis": "Septic shock", "critical": True},
+            {"diagnosis": "Ruptured abdominal aortic aneurysm", "critical": True},
+        ],
+        "acute_warning": "Signs of shock",
+        "management": {"disposition": "Intensive care"},
+    }
+    assert scored("plan", answer, targets)["differential"] == Scored(
+        0.5, {"answer": "2. Ruptured abdominal aortic aneurysm"}
+    )
+    olof = "$.notes[?@.author == 'Olof']"
+    assert reaches(TARGETS_SCHEMA, f"{olof}.comment")
+    reg = Registry()
+    ids = world(reg)
+    judge = resolve(reg.get, ids["judge"], Judge)
+
+    def fills(expectation: str) -> dict[SlotName, str]:
+        view = View(
+            output="$.diagnoses[*].diagnosis",
+            expectation=expectation,
+            metric="judge",
+            judge=ids["judge"],
+        )
+        return judge.fills(view, answer, targets)
+
+    [note] = cast(dict[str, list[dict[str, str]]], targets)["notes"]
+    assert fills(f"{olof}.comment") == {
+        "completion": "Septic shock\nRuptured abdominal aortic aneurysm",
+        "expectation": note["comment"],
+    }
+    assert fills(f"{olof}.answer")["expectation"] == note["answer"]
 
 
 def test_a_dont_miss_is_held_to_what_each_output_can_say() -> None:

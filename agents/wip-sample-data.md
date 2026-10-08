@@ -113,8 +113,8 @@ replaced the planned `import-engine` run on a host, which would have read `nvidi
     since `score` refuses a scorer with one until judges can run.
 
 ### After parity
-The free-text expectations (see "Parked"), and the runner, which the fake vLLM, the endpoints and `confirm` are
-ready for.
+The free-text expectations' judges (see "Parked", "Free-text expectations"), and the runner, which the fake vLLM,
+the endpoints and `confirm` are ready for.
 
 ## Decided
 - Seed now: chunks, recipes (as compiled skeleton threads), cases with their families, an expectation schema and
@@ -135,8 +135,9 @@ ready for.
   and the params, and gives a value and a detail.
 - Base the sample data on 7893656. Quirks found while tweaking it, such as 13d317d's rename and the
   `DutchFall10w`/`Dutchfall*` spelling, are welcome stress tests.
-- Olof's comments on the cases (13d317d, 504792c) will be the foundation for a free-text expectation scored by
-  judges. The sample stays on 7893656 until that work starts (see "Parked", "Free-text expectations").
+- Olof's comments on the cases (13d317d, 504792c) are the foundation for a free-text expectation scored by
+  judges. They're in the sample as `targets.notes`, and the vignettes stay on 7893656 (see "Parked", "Free-text
+  expectations").
 - `max_tokens` is dropped from sampling.
 - Instructions: the hand edit changes the mechanism but keeps the spirit; remastered must support the same things
   (G3).
@@ -383,7 +384,7 @@ Not faked yet:
 | reasoning | 9 | `chunk.reasoning`, written from the facts (G1, G2) | |
 | sampling | 5 | `chunk.sampling`, `recommended` written from the facts (G1) | |
 | configuration | 7 | `Recipe` → skeleton thread + `Compilation` (G9) | |
-| case | 99 | `case` + family (tags, language) + `expectation` (G11–G14) | free-text expectations |
+| case | 99 | `case` + family (tags, language) + `expectation`, with Olof's notes (G11–G14) | judges for the notes |
 | scorer | 4 | views of 4 `scorer`s, one per output shape, code in `chatddx.scorers` | aggregates, scorings |
 
 ## Gaps
@@ -511,31 +512,40 @@ The scorers are seeded (see "Tools and scorers"). Still open:
 - scorings (old D9).
 
 ### Free-text expectations
-Decided: Olof's comments on the cases will be the foundation for a free-text expectation that judges score. The
-sample stays on 7893656 until this starts.
+Decided: Olof's comments on the cases are the foundation for a free-text expectation that judges score.
 - **What's there.** Olof, a clinician, added comments to the end of three vignettes in the old repo after 7893656:
   `Dutchfall11w` and `casesfromedn1` in 13d317d (2026-09-28), and `Dutchfall1w` in 504792c (2026-10-04). Each is a
   block headed "Olof comments" or "Olof kommenterar", in Swedish even for an English vignette: their reading of the
   case, what to do, and the disposition. `Dutchfall11w` and `casesfromedn1` end in a "Chatddx:" block too, the short
   answer they'd want ChatDDx to give. 13d317d also renamed `DutchFall10w` to `Dutchfall10w`, with the same bytes.
-- **They can't stay in the vignette.** A vignette is sent whole, so the comments would reach the model as part of
-  the case. Appendices are sent too (`docs/factors.md`, "Appendix"), so they're no home either. They're expectation
-  data, and the design already has judges read free-text notes in expectations (`docs/factors.md`, "View",
-  "Judge").
-- **Cutting them off doesn't restore 7893656.** In `Dutchfall11w` and `Dutchfall1w` the edit also turned the old
-  last line's LF into CRLF. Only `casesfromedn1` is a pure append. Unless the old bytes are restored exactly, those
-  cases need a repair (`docs/catalog.md`, "Families and repairs").
-- **What it needs:**
-  - an expectation schema for free text beside `targets.json`, whose `additionalProperties: false` leaves no room. A
-    target's `text` holds words per kind, not notes on the whole case. Open: one text, or the comment and the
-    "Chatddx:" answer kept apart;
-  - a judge-purpose prompt with `completion` and `expectation`, and maybe `vignette`; a judge, which needs an
-    engine; and a scorer whose view names the judge. So it waits on a judge engine and a way to run judges;
-  - a language for the notes. They're `sv`, while 79 of the cases are `en`, so a judge would read Swedish notes
-    about an English answer (G18);
-  - somewhere for clinicians to write them other than the vignette files. Expectations are written in the portal
-    (`docs/factors.md`, "Expectation"). Take: until there is one, a file in the sample data beside `cases.toml`,
-    keyed by case id.
+- **Done (decided): the comments are expectation data**, not vignette text, since a vignette and its appendices are
+  sent to the model. They're `notes` in the targets (`src/chatddx/data/sample/schemas/targets.json`,
+  `src/chatddx/data/sample/cases.toml`), as the user decided:
+  1. **Kept apart.** A note's `comment` is the reading of the case, its optional `answer` the "Chatddx:" block, so a
+     judge can be given either.
+  2. **The targets schema is extended**, rather than a schema of its own: `notes` is an optional list beside the
+     targets, so a case keeps one expectation, which pattern views and judged views read side by side. A target's
+     `text` stays words per kind.
+  3. **Kept as written**, in Swedish, with `language = "sv"` on each note, checked as the catalog checks a family's
+     language (`src/chatddx/catalog/model.py:LANGUAGE`). Only the headings, line endings and trailing spaces were
+     dropped; the text before each heading is the 7893656 vignette, word for word.
+  4. **The author is a field** on the note (`author = "Olof"`).
+
+  The vignettes stay as they were at 7893656, so no case needs a repair. A judged view picks a note's text with
+  `$.notes[?@.author == 'Olof'].comment` (or `.answer`), and `Judge.fills` puts it in the `expectation` slot
+  (`src/chatddx/scorers/test/test_scorers.py:test_a_judge_reads_a_case_s_notes_beside_the_targets_the_patterns_read`).
+  The fake vLLM writes a schema's first `examples` value, so its notes hold to the language pattern (`docs/vllm.md`,
+  proposed amendments). Re-running `init-data` updates the targets schema, the four scorers that consume it and all
+  99 expectations, as their digests pin the schema's.
+- **Next, in order:**
+  1. a judge-purpose prompt: what a judge is asked about an answer, given a note, and how it scores. It needs Olof.
+     Open: the `comment`, the `answer` or both (as two views); whether the `vignette` slot goes in; and how a
+     Swedish note is read against an English answer (G18), in the prompt or by translating once into an
+     expectation of its own;
+  2. a judge in the sample: the skeleton, an engine (a real one; the fakes for tests), seeds, and a scorer whose
+     views name it. A judge engine falls under the clearance rule (`docs/clearance.md`);
+  3. running judges: the scorer interface's next version for judged views, and the judge calls, recorded per score
+     item (`docs/ledger.md:JudgeCall`). `score` refuses judged views until then, and the calls go with the runner.
 - **They can disagree with the targets.** On `Dutchfall11w`, Olof leads with shock, most likely sepsis, and uses
   ultrasound (RUSH) to rule out other causes, with blood cultures and broad empirical antibiotics. The targets,
   guessed before their markers were dropped, have AAA or dissection as the diagnosis. `Dutchfall1w` and

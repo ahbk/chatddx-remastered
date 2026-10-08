@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Targets",
-  "description": "What a case's answer is held to, per kind. Hand-written for the sample data, with the old chatddx's target kinds (7893656, src/chatddx/repo/entities/case/pydantic.py).",
+  "description": "What a case's answer is held to: targets per kind, with the old chatddx's target kinds (7893656, src/chatddx/repo/entities/case/pydantic.py), and clinicians' notes on the case. Hand-written for the sample data.",
   "type": "object",
   "required": ["diagnosis"],
   "additionalProperties": false,
@@ -15,6 +15,12 @@
     "dont_miss": {
       "description": "A diagnosis the answer mustn't miss: the dangerous one, which may not be the likeliest.",
       "$ref": "#/$defs/target"
+    },
+    "notes": {
+      "description": "Clinicians' notes on the case, for judges: each as its author wrote it, in its language.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/note" }
     }
   },
   "$defs": {
@@ -30,6 +36,22 @@
           "minLength": 1,
           "description": "Words joined by & (and) and | (or), with parentheses; a trailing * matches any ending."
         }
+      }
+    },
+    "note": {
+      "type": "object",
+      "required": ["author", "language", "comment"],
+      "additionalProperties": false,
+      "properties": {
+        "author": { "type": "string", "minLength": 1, "description": "Who wrote the note." },
+        "language": {
+          "type": "string",
+          "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$",
+          "examples": ["sv", "en"],
+          "description": "The note's language, as a BCP 47 tag."
+        },
+        "comment": { "type": "string", "minLength": 1, "description": "The clinician's reading of the case and what to do." },
+        "answer": { "type": "string", "minLength": 1, "description": "The answer the clinician would want, in short." }
       }
     }
   }

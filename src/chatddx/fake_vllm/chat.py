@@ -472,6 +472,8 @@ def instance(
         return schema["const"]
     if schema.get("enum"):
         return schema["enum"][0]
+    if schema.get("examples"):
+        return schema["examples"][0]
     for union in ("anyOf", "oneOf", "allOf"):
         options = [
             o
